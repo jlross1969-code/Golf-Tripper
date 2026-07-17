@@ -22,6 +22,13 @@
       "when": 1784288325632,
       "tag": "0002_slow_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1784301800552,
+      "tag": "0003_clammy_stingray",
+      "breakpoints": true
     }
   ]
 }

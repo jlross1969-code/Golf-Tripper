@@ -7,6 +7,7 @@ import {
   GroupPlayer,
   HandicapHistory,
   Hole,
+  InsertTripInvite,
   InsertUser,
   Notification,
   Round,
@@ -14,6 +15,7 @@ import {
   SideMatch,
   SideMatchPlayer,
   Trip,
+  TripInvite,
   TripPlayer,
   User,
   achievements,
@@ -27,6 +29,7 @@ import {
   scores,
   sideMatchPlayers,
   sideMatches,
+  tripInvites,
   tripPlayers,
   trips,
   users,
@@ -699,4 +702,52 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     .orderBy(desc(tripMessages.id))
     .limit(limit);
   return rows.map((r) => ({ ...r, userName: r.userName ?? null }));
+}
+
+// ─── Trip Invites ─────────────────────────────────────────────────────────────
+
+export async function createInvite(data: InsertTripInvite): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(tripInvites).values(data);
+  return (result[0] as any).insertId as number;
+}
+
+export async function getInvitesByTrip(tripId: number): Promise<TripInvite[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripInvites).where(eq(tripInvites.tripId, tripId)).orderBy(tripInvites.createdAt);
+}
+
+export async function getInviteByToken(token: string): Promise<TripInvite | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(tripInvites).where(eq(tripInvites.token, token)).limit(1);
+  return rows[0];
+}
+
+export async function acceptInvite(token: string, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(tripInvites)
+    .set({ status: "accepted", acceptedByUserId: userId, acceptedAt: new Date() })
+    .where(eq(tripInvites.token, token));
+}
+
+export async function revokeInvite(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(tripInvites).set({ status: "revoked" }).where(eq(tripInvites.id, id));
+}
+
+export async function updateInvite(id: number, data: Partial<Pick<TripInvite, "name" | "email" | "startingHandicap">>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(tripInvites).set(data).where(eq(tripInvites.id, id));
+}
+
+export async function deleteInvite(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(tripInvites).where(eq(tripInvites.id, id));
 }

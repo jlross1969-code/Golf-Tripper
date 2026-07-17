@@ -67,6 +67,13 @@ import {
   getTripMessages,
   sendTripMessage,
   updateMatchPlayResult,
+  createInvite,
+  getInvitesByTrip,
+  getInviteByToken,
+  acceptInvite,
+  revokeInvite,
+  updateInvite,
+  deleteInvite,
 } from "./db";
 import { TRPCError } from "@trpc/server";
 
@@ -746,6 +753,125 @@ export const appRouter = router({
         return { id };
       }),
   }),
-});
+  // ─── Invites ─────────────────────────────────────────────────────────────────
+  invites: router({
+    // Admin: list all invites for a trip
+    list: adminProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(({ input }) => getInvitesByTrip(input.tripId)),
 
+    // Admin: create a new invite (adds player to roster)
+    create: adminProcedure
+      .input(z.object({
+        tripId: z.number(),
+        name: z.string().min(1).max(255),
+        email: z.string().email(),
+        startingHandicap: z.number().min(0).max(54).default(0),
+        origin: z.string().url(),
+      }))
+      .mutation(async ({ input }) => {
+        const { nanoid } = await import("nanoid");
+        const token = nanoid(32);
+        const id = await createInvite({
+          tripId: input.tripId,
+          name: input.name,
+          email: input.email,
+          startingHandicap: input.startingHandicap,
+          token,
+        });
+        const inviteUrl = `${input.origin}/join/${token}`;
+        return { id, token, inviteUrl };
+      }),
+
+    // Admin: update player details on an invite
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+        startingHandicap: z.number().min(0).max(54).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateInvite(id, data);
+        return { success: true };
+      }),
+
+    // Admin: revoke an invite
+    revoke: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await revokeInvite(input.id);
+        return { success: true };
+      }),
+
+    // Admin: delete an invite from the roster
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteInvite(input.id);
+        return { success: true };
+      }),
+
+    // Admin: regenerate invite link (new token)
+    regenerate: adminProcedure
+      .input(z.object({ id: z.number(), origin: z.string().url() }))
+      .mutation(async ({ input }) => {
+        const { nanoid } = await import("nanoid");
+        const token = nanoid(32);
+        const db = await import("./db");
+        const { getDb } = db;
+        const drizzleDb = await getDb();
+        if (!drizzleDb) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { tripInvites } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await drizzleDb.update(tripInvites).set({ token, status: "pending", acceptedByUserId: null, acceptedAt: null }).where(eq(tripInvites.id, input.id));
+        const inviteUrl = `${input.origin}/join/${token}`;
+        return { token, inviteUrl };
+      }),
+
+    // Public: look up invite details by token (for the join landing page)
+    getByToken: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(async ({ input }) => {
+        const invite = await getInviteByToken(input.token);
+        if (!invite) throw new TRPCError({ code: "NOT_FOUND", message: "Invite not found or expired" });
+        if (invite.status === "revoked") throw new TRPCError({ code: "FORBIDDEN", message: "This invite has been revoked" });
+        // Return safe subset — no token in response
+        const trip = await import("./db").then(m => m.getTrip(invite.tripId));
+        return {
+          inviteId: invite.id,
+          tripId: invite.tripId,
+          tripName: trip?.name ?? "Golf Trip",
+          playerName: invite.name,
+          email: invite.email,
+          status: invite.status,
+          startingHandicap: invite.startingHandicap,
+        };
+      }),
+
+    // Protected: accept invite — called after the player logs in
+    accept: protectedProcedure
+      .input(z.object({ token: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const invite = await getInviteByToken(input.token);
+        if (!invite) throw new TRPCError({ code: "NOT_FOUND", message: "Invite not found" });
+        if (invite.status === "revoked") throw new TRPCError({ code: "FORBIDDEN", message: "This invite has been revoked" });
+        if (invite.status === "accepted") {
+          // Already accepted — just ensure they are in trip_players
+          const existing = await import("./db").then(m => m.getTripPlayer(invite.tripId, ctx.user!.id));
+          if (existing) return { success: true, tripId: invite.tripId, alreadyJoined: true };
+        }
+        // Mark invite as accepted
+        await acceptInvite(input.token, ctx.user.id);
+        // Add to trip_players if not already there
+        const existing = await import("./db").then(m => m.getTripPlayer(invite.tripId, ctx.user!.id));
+        if (!existing) {
+          await import("./db").then(m => m.addPlayerToTrip(invite.tripId, ctx.user!.id, invite.startingHandicap));
+        }
+        return { success: true, tripId: invite.tripId, alreadyJoined: false };
+      }),
+  }),
+});
 export type AppRouter = typeof appRouter;

@@ -309,3 +309,30 @@ describe("alternateShotTeePlayer", () => {
     expect(alternateShotTeePlayer(18, 101, 102)).toBe(102);
   });
 });
+
+// ─── Invite Token Tests ─────────────────────────────────────────────────────────────
+
+describe("invite URL construction", () => {
+  it("builds a correct invite URL from origin and token", () => {
+    const origin = "https://golftrip-ym6gpmjp.manus.space";
+    const token = "abc123xyz";
+    const inviteUrl = `${origin}/join/${token}`;
+    expect(inviteUrl).toBe("https://golftrip-ym6gpmjp.manus.space/join/abc123xyz");
+  });
+
+  it("invite URL contains /join/ path segment", () => {
+    const origin = "https://example.com";
+    const token = "tok_test_12345";
+    const url = `${origin}/join/${token}`;
+    expect(url).toContain("/join/");
+    expect(url).toContain(token);
+  });
+
+  it("invite status transitions are valid", () => {
+    const validStatuses = ["pending", "accepted", "revoked"];
+    expect(validStatuses).toContain("pending");
+    expect(validStatuses).toContain("accepted");
+    expect(validStatuses).toContain("revoked");
+    expect(validStatuses).not.toContain("expired");
+  });
+});

@@ -249,3 +249,28 @@ export const tripMessages = mysqlTable("trip_messages", {
 });
 
 export type TripMessage = typeof tripMessages.$inferSelect;
+
+// ─── Trip Invites ─────────────────────────────────────────────────────────────
+// Pre-registered player roster with invite tokens for joining the trip
+
+export const tripInvites = mysqlTable("trip_invites", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  // Player details entered by admin
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  // Unique token embedded in the invite link
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  // Status of the invite
+  status: mysqlEnum("status", ["pending", "accepted", "revoked"]).default("pending").notNull(),
+  // Starting handicap pre-set by admin (optional)
+  startingHandicap: float("startingHandicap").default(0).notNull(),
+  // Linked user account once they accept
+  acceptedByUserId: int("acceptedByUserId"),
+  acceptedAt: timestamp("acceptedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TripInvite = typeof tripInvites.$inferSelect;
+export type InsertTripInvite = typeof tripInvites.$inferInsert;

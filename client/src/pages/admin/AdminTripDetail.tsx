@@ -1,6 +1,6 @@
 import { Link, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users, Calendar, BarChart2, Flag } from "lucide-react";
+import { ArrowLeft, Users, Calendar, BarChart2, Flag, Mail } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 export default function AdminTripDetail() {
@@ -17,6 +17,7 @@ export default function AdminTripDetail() {
       </header>
       <div className="max-w-2xl mx-auto px-6 py-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
+          { href: `/admin/trips/${tripId}/roster`, icon: Mail, label: "Invite Players (Roster)" },
           { href: `/admin/trips/${tripId}/players`, icon: Users, label: "Manage Players" },
           { href: `/admin/trips/${tripId}/rounds`, icon: Calendar, label: "Manage Rounds" },
           { href: `/admin/trips/${tripId}/handicap`, icon: BarChart2, label: "Handicap Settings" },

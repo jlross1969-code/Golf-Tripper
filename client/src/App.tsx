@@ -21,6 +21,8 @@ import SideMatches from "./pages/SideMatches";
 import TripDashboard from "./pages/TripDashboard";
 import TripChat from "./pages/TripChat";
 import MatchPlay from "./pages/MatchPlay";
+import JoinTrip from "./pages/JoinTrip";
+import AdminRoster from "./pages/admin/AdminRoster";
 
 function Router() {
   return (
@@ -42,6 +44,8 @@ function Router() {
       <Route path="/admin/trips/:tripId/rounds/:roundId/groups" component={AdminGroups} />
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
+      <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />
+      <Route path="/join/:token" component={JoinTrip} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
