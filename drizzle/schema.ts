@@ -91,6 +91,8 @@ export const rounds = mysqlTable("rounds", {
   strokePlayEnabled: boolean("strokePlayEnabled").default(true).notNull(),
   fourBBBEnabled: boolean("fourBBBEnabled").default(false).notNull(),
   skinsEnabled: boolean("skinsEnabled").default(false).notNull(),
+  matchPlayEnabled: boolean("matchPlayEnabled").default(false).notNull(),
+  alternateShotEnabled: boolean("alternateShotEnabled").default(false).notNull(),
   status: mysqlEnum("status", ["scheduled", "active", "completed"]).default("scheduled").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -206,3 +208,44 @@ export const sideMatchPlayers = mysqlTable("side_match_players", {
 });
 
 export type SideMatchPlayer = typeof sideMatchPlayers.$inferSelect;
+
+// ─── Match Play Results ───────────────────────────────────────────────────────
+// Stores hole-by-hole match play result between two players/pairs in a round
+
+export const matchPlayResults = mysqlTable("matchplay_results", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  groupId: int("groupId").notNull(),
+  // The two competitors (can be individual or 4BBB pairs)
+  player1Id: int("player1Id").notNull(),
+  player2Id: int("player2Id").notNull(),
+  // partner IDs for alternate shot / 4BBB matchplay
+  player1PartnerId: int("player1PartnerId"),
+  player2PartnerId: int("player2PartnerId"),
+  // Hole-by-hole results stored as JSON: [{hole:1, result:'player1'|'player2'|'halved'}]
+  holeResults: text("holeResults").default("[]").notNull(),
+  // Running match status: positive = player1 up, negative = player2 up, 0 = AS
+  matchStatus: int("matchStatus").default(0).notNull(),
+  // Final result
+  winner: mysqlEnum("winner", ["player1", "player2", "halved", "pending"]).default("pending").notNull(),
+  // How the match ended
+  endedOnHole: int("endedOnHole"),
+  // Alternate shot: whose turn it is to tee off next hole
+  nextTeePlayer: int("nextTeePlayer"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MatchPlayResult = typeof matchPlayResults.$inferSelect;
+
+// ─── Trip Chat Messages ───────────────────────────────────────────────────────
+
+export const tripMessages = mysqlTable("trip_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  userId: int("userId").notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripMessage = typeof tripMessages.$inferSelect;

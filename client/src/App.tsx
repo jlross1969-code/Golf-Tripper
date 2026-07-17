@@ -18,6 +18,8 @@ import TripLeaderboard from "./pages/TripLeaderboard";
 import NotificationFeed from "./pages/NotificationFeed";
 import SideMatches from "./pages/SideMatches";
 import TripDashboard from "./pages/TripDashboard";
+import TripChat from "./pages/TripChat";
+import MatchPlay from "./pages/MatchPlay";
 
 function Router() {
   return (
@@ -29,6 +31,8 @@ function Router() {
       <Route path="/round/:roundId/leaderboard" component={DailyLeaderboard} />
       <Route path="/round/:roundId/score" component={ScoreEntry} />
       <Route path="/round/:roundId/side-matches" component={SideMatches} />
+      <Route path="/round/:roundId/match-play" component={MatchPlay} />
+      <Route path="/trip/:tripId/chat" component={TripChat} />
       <Route path="/admin" component={AdminTrips} />
       <Route path="/admin/trips" component={AdminTrips} />
       <Route path="/admin/trips/:id" component={AdminTripDetail} />

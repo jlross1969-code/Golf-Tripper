@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   Achievement,
@@ -610,4 +610,93 @@ export async function getTripLeaderboard(tripId: number): Promise<
   );
 
   return result;
+}
+
+// ─── Match Play ───────────────────────────────────────────────────────────────
+
+import { matchPlayResults, tripMessages, MatchPlayResult, TripMessage } from "../drizzle/schema";
+
+export async function createMatchPlayResult(data: {
+  roundId: number;
+  groupId: number;
+  player1Id: number;
+  player2Id: number;
+  player1PartnerId?: number;
+  player2PartnerId?: number;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(matchPlayResults).values({
+    roundId: data.roundId,
+    groupId: data.groupId,
+    player1Id: data.player1Id,
+    player2Id: data.player2Id,
+    player1PartnerId: data.player1PartnerId ?? null,
+    player2PartnerId: data.player2PartnerId ?? null,
+    holeResults: "[]",
+    matchStatus: 0,
+    winner: "pending",
+  });
+  return (result as any).insertId;
+}
+
+export async function getMatchPlayResult(id: number): Promise<MatchPlayResult | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(matchPlayResults).where(eq(matchPlayResults.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function getMatchPlayResultsByRound(roundId: number): Promise<MatchPlayResult[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(matchPlayResults).where(eq(matchPlayResults.roundId, roundId));
+}
+
+export async function updateMatchPlayResult(
+  id: number,
+  data: {
+    holeResults: string;
+    matchStatus: number;
+    winner: "player1" | "player2" | "halved" | "pending";
+    endedOnHole?: number;
+    nextTeePlayer?: number;
+  }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(matchPlayResults).set(data).where(eq(matchPlayResults.id, id));
+}
+
+// ─── Trip Chat ────────────────────────────────────────────────────────────────
+
+export async function sendTripMessage(data: { tripId: number; userId: number; message: string }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripMessages).values(data);
+  return (result as any).insertId;
+}
+
+export async function getTripMessages(tripId: number, limit = 50, beforeId?: number): Promise<(TripMessage & { userName: string | null })[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: tripMessages.id,
+      tripId: tripMessages.tripId,
+      userId: tripMessages.userId,
+      message: tripMessages.message,
+      createdAt: tripMessages.createdAt,
+      userName: users.name,
+    })
+    .from(tripMessages)
+    .leftJoin(users, eq(tripMessages.userId, users.id))
+    .where(
+      beforeId
+        ? and(eq(tripMessages.tripId, tripId), lt(tripMessages.id, beforeId))
+        : eq(tripMessages.tripId, tripId)
+    )
+    .orderBy(desc(tripMessages.id))
+    .limit(limit);
+  return rows.map((r) => ({ ...r, userName: r.userName ?? null }));
 }

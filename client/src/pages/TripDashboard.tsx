@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function TripDashboard() {
@@ -52,6 +52,12 @@ export default function TripDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link href={`/trip/${id}/chat`}>
+            <Button variant="outline" size="sm" className="gap-2">
+              <MessageCircle className="w-4 h-4" />
+              Chat
+            </Button>
+          </Link>
           <Link href={`/trip/${id}/notifications`}>
             <Button variant="outline" size="sm" className="gap-2">
               <Bell className="w-4 h-4" />
@@ -61,7 +67,7 @@ export default function TripDashboard() {
           <Link href={`/trip/${id}/leaderboard`}>
             <Button size="sm" className="gap-2">
               <Trophy className="w-4 h-4" />
-              Trip Leaderboard
+              Leaderboard
             </Button>
           </Link>
         </div>
@@ -131,6 +137,8 @@ export default function TripDashboard() {
                       {round.strokePlayEnabled && <span className="text-xs text-muted-foreground">Stroke Play</span>}
                       {round.fourBBBEnabled && <span className="text-xs text-muted-foreground">• 4BBB</span>}
                       {round.skinsEnabled && <span className="text-xs text-muted-foreground">• Skins</span>}
+                      {(round as any).matchPlayEnabled && <span className="text-xs text-muted-foreground">• Match Play</span>}
+                      {(round as any).alternateShotEnabled && <span className="text-xs text-muted-foreground">• Alt Shot</span>}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -142,11 +150,27 @@ export default function TripDashboard() {
                           </Button>
                         </Link>
                         {round.status === "active" && (
-                          <Link href={`/round/${round.id}/score`}>
-                            <Button size="sm" className="gap-1">
-                              <Flag className="w-3 h-3" /> Score
+                          <>
+                            <Link href={`/round/${round.id}/score`}>
+                              <Button size="sm" className="gap-1">
+                                <Flag className="w-3 h-3" /> Score
+                              </Button>
+                            </Link>
+                            {(round as any).matchPlayEnabled && (
+                              <Link href={`/round/${round.id}/match-play`}>
+                                <Button size="sm" variant="outline" className="gap-1">
+                                  <Swords className="w-3 h-3" /> Match
+                                </Button>
+                              </Link>
+                            )}
+                          </>
+                        )}
+                        {round.status === "completed" && (
+                          <a href={`/api/pdf/scorecard/${round.id}`} target="_blank" rel="noopener noreferrer">
+                            <Button size="sm" variant="ghost" className="gap-1">
+                              <Download className="w-3 h-3" /> PDF
                             </Button>
-                          </Link>
+                          </a>
                         )}
                       </>
                     )}

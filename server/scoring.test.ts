@@ -186,3 +186,126 @@ describe("buildAchievementMessage", () => {
     expect(msg).toContain("12");
   });
 });
+
+// ─── Match Play ───────────────────────────────────────────────────────────────
+
+import {
+  matchPlayHoleResult,
+  calculateMatchStatus,
+  checkMatchOver,
+  formatMatchStatus,
+  calculateAlternateShotHandicap,
+  alternateShotTeePlayer,
+} from "../shared/scoring";
+
+describe("matchPlayHoleResult", () => {
+  it("returns player1 when player1 has lower net score", () => {
+    expect(matchPlayHoleResult(3, 4)).toBe("player1");
+  });
+
+  it("returns player2 when player2 has lower net score", () => {
+    expect(matchPlayHoleResult(5, 4)).toBe("player2");
+  });
+
+  it("returns halved when scores are equal", () => {
+    expect(matchPlayHoleResult(4, 4)).toBe("halved");
+  });
+});
+
+describe("calculateMatchStatus", () => {
+  it("returns positive when player1 is ahead", () => {
+    const holes = [
+      { holeNumber: 1, result: "player1" as const },
+      { holeNumber: 2, result: "player1" as const },
+      { holeNumber: 3, result: "player2" as const },
+    ];
+    expect(calculateMatchStatus(holes)).toBe(1); // 2 up - 1 = 1 up
+  });
+
+  it("returns 0 for all square", () => {
+    const holes = [
+      { holeNumber: 1, result: "player1" as const },
+      { holeNumber: 2, result: "player2" as const },
+    ];
+    expect(calculateMatchStatus(holes)).toBe(0);
+  });
+
+  it("returns negative when player2 is ahead", () => {
+    const holes = [
+      { holeNumber: 1, result: "player2" as const },
+      { holeNumber: 2, result: "player2" as const },
+    ];
+    expect(calculateMatchStatus(holes)).toBe(-2);
+  });
+});
+
+describe("checkMatchOver", () => {
+  it("returns null when match is still live", () => {
+    expect(checkMatchOver(3, 10, 18)).toBeNull(); // 3 up with 8 to play — still live
+  });
+
+  it("detects match won when up by more than holes remaining", () => {
+    expect(checkMatchOver(4, 15, 18)).toBe("player1"); // 4 up with 3 to play — match over
+    expect(checkMatchOver(-4, 15, 18)).toBe("player2");
+  });
+
+  it("detects halved match at 18 holes", () => {
+    expect(checkMatchOver(0, 18, 18)).toBe("halved");
+  });
+
+  it("detects winner at end of 18 holes", () => {
+    expect(checkMatchOver(2, 18, 18)).toBe("player1");
+    expect(checkMatchOver(-1, 18, 18)).toBe("player2");
+  });
+});
+
+describe("formatMatchStatus", () => {
+  it("formats all square correctly", () => {
+    expect(formatMatchStatus(0, 9, 18)).toBe("All Square");
+  });
+
+  it("formats player up correctly", () => {
+    expect(formatMatchStatus(3, 10, 18)).toBe("3 UP");
+  });
+
+  it("formats dormie correctly", () => {
+    expect(formatMatchStatus(3, 15, 18)).toBe("3 UP (Dormie)");
+  });
+
+  it("formats match over correctly", () => {
+    expect(formatMatchStatus(4, 15, 18)).toContain("Match Over");
+  });
+});
+
+// ─── Alternate Shot ───────────────────────────────────────────────────────────
+
+describe("calculateAlternateShotHandicap", () => {
+  it("calculates combined handicap with 60% allowance", () => {
+    // (18 + 10) / 2 = 14, 14 * 0.6 = 8.4 → floor (≤.5 rounds down) → 8
+    expect(calculateAlternateShotHandicap(18, 10)).toBe(8);
+  });
+
+  it("rounds up at .6", () => {
+    // (20 + 10) / 2 = 15, 15 * 0.6 = 9.0 → 9
+    expect(calculateAlternateShotHandicap(20, 10)).toBe(9);
+  });
+
+  it("handles scratch players", () => {
+    // (0 + 0) / 2 = 0, 0 * 0.6 = 0
+    expect(calculateAlternateShotHandicap(0, 0)).toBe(0);
+  });
+});
+
+describe("alternateShotTeePlayer", () => {
+  it("player 1 tees off on odd holes", () => {
+    expect(alternateShotTeePlayer(1, 101, 102)).toBe(101);
+    expect(alternateShotTeePlayer(3, 101, 102)).toBe(101);
+    expect(alternateShotTeePlayer(17, 101, 102)).toBe(101);
+  });
+
+  it("player 2 tees off on even holes", () => {
+    expect(alternateShotTeePlayer(2, 101, 102)).toBe(102);
+    expect(alternateShotTeePlayer(4, 101, 102)).toBe(102);
+    expect(alternateShotTeePlayer(18, 101, 102)).toBe(102);
+  });
+});

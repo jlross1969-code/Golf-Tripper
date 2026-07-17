@@ -66,3 +66,22 @@
 - [x] Vitest unit tests: handicap calculation, skins logic, achievement detection (27 tests passing)
 - [x] Empty states, loading skeletons
 - [x] Final checkpoint and delivery
+
+## Phase 8 — New Features (Match Play, Alt Shot, PDF Export, Chat)
+
+- [x] Extend DB schema: add matchplay_results table, extend rounds.format enum to include matchPlay and alternateShot
+- [x] Backend: Match Play scoring engine — hole-by-hole win/loss/halve, running match status (X Up / AS / X Down), match result
+- [x] Backend: Alternate Shot scoring engine — shared ball, alternating shots, combined handicap allowance
+- [x] Frontend: Match Play score entry — per-hole result selector, live match status banner
+- [x] Frontend: Match Play leaderboard — match status for all pairings via getByRound
+- [x] Frontend: Alternate Shot score entry — combined handicap calculation, tee player alternation
+- [x] Frontend: Alternate Shot leaderboard — net score ranking for pairs (via standard score entry)
+- [x] Admin: Add matchPlay and alternateShot to round format selector
+- [x] PDF Export: End-of-round scorecard PDF per player/group
+- [x] PDF Export: End-of-trip results PDF (full leaderboard + achievement log)
+- [x] PDF Export: Download button on Daily and Trip Leaderboard pages
+- [x] In-App Chat: trip_messages DB table (tripId, userId, message, timestamp)
+- [x] In-App Chat: tRPC procedures — sendMessage, getMessages (paginated), real-time polling
+- [x] In-App Chat: Chat UI — message thread, input box, sender name, timestamps
+- [ ] In-App Chat: Unread message badge on nav (future enhancement)
+- [x] In-App Chat: Link from Trip Dashboard

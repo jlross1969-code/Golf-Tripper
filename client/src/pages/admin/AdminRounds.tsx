@@ -25,6 +25,8 @@ export default function AdminRounds() {
   const [strokePlay, setStrokePlay] = useState(true);
   const [fourBBB, setFourBBB] = useState(false);
   const [skins, setSkins] = useState(false);
+  const [matchPlay, setMatchPlay] = useState(false);
+  const [alternateShot, setAlternateShot] = useState(false);
 
   const createRound = trpc.rounds.create.useMutation({
     onSuccess: () => { toast.success("Round created"); setOpen(false); refetch(); setName(""); setCourseId(""); setRoundDate(""); },
@@ -79,6 +81,8 @@ export default function AdminRounds() {
                     {round.strokePlayEnabled && <Badge variant="outline" className="text-xs">Stroke Play</Badge>}
                     {round.fourBBBEnabled && <Badge variant="outline" className="text-xs">4BBB</Badge>}
                     {round.skinsEnabled && <Badge variant="outline" className="text-xs">Skins</Badge>}
+                    {(round as any).matchPlayEnabled && <Badge variant="outline" className="text-xs">Match Play</Badge>}
+                    {(round as any).alternateShotEnabled && <Badge variant="outline" className="text-xs">Alt Shot</Badge>}
                   </div>
                 </div>
                 <div className="flex gap-2 flex-wrap justify-end">
@@ -149,6 +153,8 @@ export default function AdminRounds() {
                 { label: "Stroke Play", value: strokePlay, set: setStrokePlay },
                 { label: "4BBB", value: fourBBB, set: setFourBBB },
                 { label: "Skins", value: skins, set: setSkins },
+                { label: "Match Play", value: matchPlay, set: setMatchPlay },
+                { label: "Alternate Shot", value: alternateShot, set: setAlternateShot },
               ].map(({ label, value, set }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-sm text-foreground">{label}</span>
@@ -164,6 +170,7 @@ export default function AdminRounds() {
               onClick={() => createRound.mutate({
                 tripId: id, courseId: Number(courseId), name, roundDate,
                 strokePlayEnabled: strokePlay, fourBBBEnabled: fourBBB, skinsEnabled: skins,
+                matchPlayEnabled: matchPlay, alternateShotEnabled: alternateShot,
               })}
             >
               Create Round

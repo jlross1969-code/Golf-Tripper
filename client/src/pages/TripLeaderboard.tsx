@@ -2,7 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 
@@ -79,10 +79,18 @@ export default function TripLeaderboard() {
             {trip && <p className="text-xs text-muted-foreground">{trip.name}</p>}
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-2">
-          <RefreshCw className={`w-3 h-3 ${isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <a href={`/api/pdf/trip/${id}`} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" size="sm" className="gap-2">
+              <Download className="w-3 h-3" />
+              Export PDF
+            </Button>
+          </a>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-2">
+            <RefreshCw className={`w-3 h-3 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8">

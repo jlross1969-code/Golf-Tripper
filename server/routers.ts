@@ -49,13 +49,25 @@ import {
 import {
   buildAchievementMessage,
   calculate4BBBScore,
+  calculateAlternateShotHandicap,
+  calculateMatchStatus,
   calculateNewHandicap,
   calculateNetScore,
   calculateSkins,
   calculateStablefordPoints,
+  checkMatchOver,
   detectAchievement,
   formatAchievementType,
+  matchPlayHoleResult,
 } from "../shared/scoring";
+import {
+  createMatchPlayResult,
+  getMatchPlayResult,
+  getMatchPlayResultsByRound,
+  getTripMessages,
+  sendTripMessage,
+  updateMatchPlayResult,
+} from "./db";
 import { TRPCError } from "@trpc/server";
 
 // Admin guard middleware
@@ -238,6 +250,8 @@ export const appRouter = router({
           strokePlayEnabled: z.boolean().default(true),
           fourBBBEnabled: z.boolean().default(false),
           skinsEnabled: z.boolean().default(false),
+          matchPlayEnabled: z.boolean().default(false),
+          alternateShotEnabled: z.boolean().default(false),
         })
       )
       .mutation(async ({ input }) => {
@@ -257,6 +271,8 @@ export const appRouter = router({
           strokePlayEnabled: z.boolean().optional(),
           fourBBBEnabled: z.boolean().optional(),
           skinsEnabled: z.boolean().optional(),
+          matchPlayEnabled: z.boolean().optional(),
+          alternateShotEnabled: z.boolean().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -631,6 +647,103 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await updateSideMatchStatus(input.id, input.status);
         return { success: true };
+      }),
+  }),
+
+  // ─── Match Play ─────────────────────────────────────────────────────────────
+  matchPlay: router({
+    create: protectedProcedure
+      .input(
+        z.object({
+          roundId: z.number(),
+          groupId: z.number(),
+          player1Id: z.number(),
+          player2Id: z.number(),
+          player1PartnerId: z.number().optional(),
+          player2PartnerId: z.number().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const id = await createMatchPlayResult(input);
+        return { id };
+      }),
+
+    getByRound: protectedProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => {
+        return getMatchPlayResultsByRound(input.roundId);
+      }),
+
+    submitHoleResult: protectedProcedure
+      .input(
+        z.object({
+          matchId: z.number(),
+          holeNumber: z.number(),
+          player1NetScore: z.number(),
+          player2NetScore: z.number(),
+          totalHoles: z.number().default(18),
+          // For alternate shot: which player tees off next hole
+          nextTeePlayer: z.number().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const match = await getMatchPlayResult(input.matchId);
+        if (!match) throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
+
+        const existingResults: { holeNumber: number; result: "player1" | "player2" | "halved" }[] =
+          JSON.parse(match.holeResults || "[]");
+
+        // Remove any existing result for this hole (re-entry)
+        const filtered = existingResults.filter((r) => r.holeNumber !== input.holeNumber);
+        const holeResult = matchPlayHoleResult(input.player1NetScore, input.player2NetScore);
+        filtered.push({ holeNumber: input.holeNumber, result: holeResult });
+        filtered.sort((a, b) => a.holeNumber - b.holeNumber);
+
+        const newStatus = calculateMatchStatus(filtered);
+        const winner = checkMatchOver(newStatus, filtered.length, input.totalHoles);
+
+        await updateMatchPlayResult(input.matchId, {
+          holeResults: JSON.stringify(filtered),
+          matchStatus: newStatus,
+          winner: winner ?? "pending",
+          endedOnHole: winner !== null ? input.holeNumber : undefined,
+          nextTeePlayer: input.nextTeePlayer,
+        });
+
+        return {
+          holeResult,
+          matchStatus: newStatus,
+          winner,
+          holeResults: filtered,
+        };
+      }),
+
+    calculateAlternateShotHcp: protectedProcedure
+      .input(z.object({ player1Handicap: z.number(), player2Handicap: z.number() }))
+      .query(({ input }) => ({
+        combinedHandicap: calculateAlternateShotHandicap(input.player1Handicap, input.player2Handicap),
+      })),
+  }),
+
+  // ─── Trip Chat ───────────────────────────────────────────────────────────────
+  chat: router({
+    getMessages: protectedProcedure
+      .input(z.object({ tripId: z.number(), limit: z.number().default(50), beforeId: z.number().optional() }))
+      .query(async ({ input }) => {
+        const messages = await getTripMessages(input.tripId, input.limit, input.beforeId);
+        return messages.reverse(); // Return oldest-first for display
+      }),
+
+    sendMessage: protectedProcedure
+      .input(z.object({ tripId: z.number(), message: z.string().min(1).max(1000) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const id = await sendTripMessage({
+          tripId: input.tripId,
+          userId: ctx.user.id,
+          message: input.message.trim(),
+        });
+        return { id };
       }),
   }),
 });

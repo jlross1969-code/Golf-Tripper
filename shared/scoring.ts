@@ -126,3 +126,104 @@ export function calculateSkins(
 
   return skinsMap;
 }
+
+// ─── Match Play Scoring ───────────────────────────────────────────────────────
+
+export type HoleResult = "player1" | "player2" | "halved";
+
+export interface MatchPlayHoleResult {
+  holeNumber: number;
+  result: HoleResult;
+}
+
+/**
+ * Determine the result of a single hole in match play.
+ * Lower net score wins the hole. Equal net scores are halved.
+ */
+export function matchPlayHoleResult(
+  player1NetScore: number,
+  player2NetScore: number
+): HoleResult {
+  if (player1NetScore < player2NetScore) return "player1";
+  if (player2NetScore < player1NetScore) return "player2";
+  return "halved";
+}
+
+/**
+ * Calculate running match status from hole results.
+ * Returns: positive = player1 up by N, negative = player2 up by N, 0 = All Square.
+ */
+export function calculateMatchStatus(holeResults: MatchPlayHoleResult[]): number {
+  let status = 0;
+  for (const h of holeResults) {
+    if (h.result === "player1") status++;
+    else if (h.result === "player2") status--;
+  }
+  return status;
+}
+
+/**
+ * Format match status as a display string.
+ * e.g. +3 → "3 UP", -2 → "2 DOWN", 0 → "All Square"
+ */
+export function formatMatchStatus(status: number, holesPlayed: number, totalHoles: number): string {
+  const holesRemaining = totalHoles - holesPlayed;
+  if (status === 0) return "All Square";
+  const absStatus = Math.abs(status);
+  const direction = status > 0 ? "UP" : "DOWN";
+  // Check for dormie or closed match
+  if (absStatus > holesRemaining) return `${absStatus} & ${holesRemaining} (Match Over)`;
+  if (absStatus === holesRemaining) return `${absStatus} UP (Dormie)`;
+  return `${absStatus} ${direction}`;
+}
+
+/**
+ * Determine if a match has been won (player is up by more holes than remain).
+ * Returns the winner or null if match is still live.
+ */
+export function checkMatchOver(
+  status: number,
+  holesPlayed: number,
+  totalHoles: number
+): "player1" | "player2" | "halved" | null {
+  const holesRemaining = totalHoles - holesPlayed;
+  if (holesPlayed === totalHoles) {
+    if (status > 0) return "player1";
+    if (status < 0) return "player2";
+    return "halved";
+  }
+  if (status > holesRemaining) return "player1";
+  if (-status > holesRemaining) return "player2";
+  return null;
+}
+
+// ─── Alternate Shot Scoring ───────────────────────────────────────────────────
+
+/**
+ * Calculate the combined handicap allowance for an Alternate Shot pair.
+ * Standard rule: combined handicap = (player1Hcp + player2Hcp) / 2, then apply 60% allowance.
+ * Rounded to nearest integer.
+ */
+export function calculateAlternateShotHandicap(
+  player1Handicap: number,
+  player2Handicap: number
+): number {
+  const combined = (player1Handicap + player2Handicap) / 2;
+  const allowance = combined * 0.6;
+  const decimal = allowance - Math.floor(allowance);
+  return decimal <= 0.5 ? Math.floor(allowance) : Math.ceil(allowance);
+}
+
+/**
+ * Determine which partner tees off on a given hole in Alternate Shot.
+ * The player who tees off on hole 1 alternates each hole.
+ * Returns the userId of the player who should tee off.
+ */
+export function alternateShotTeePlayer(
+  holeNumber: number,
+  firstTeePlayerId: number,
+  partnerId: number
+): number {
+  // Odd holes → first tee player, Even holes → partner (1-indexed)
+  return holeNumber % 2 === 1 ? firstTeePlayerId : partnerId;
+}
