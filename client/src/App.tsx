@@ -4,6 +4,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import InstallPrompt from "./components/InstallPrompt";
 import Home from "./pages/Home";
 import AdminTrips from "./pages/admin/AdminTrips";
 import AdminTripDetail from "./pages/admin/AdminTripDetail";
@@ -54,6 +55,7 @@ function App() {
         <TooltipProvider>
           <Toaster richColors position="top-right" />
           <Router />
+          <InstallPrompt />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

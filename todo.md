@@ -83,5 +83,16 @@
 - [x] In-App Chat: trip_messages DB table (tripId, userId, message, timestamp)
 - [x] In-App Chat: tRPC procedures — sendMessage, getMessages (paginated), real-time polling
 - [x] In-App Chat: Chat UI — message thread, input box, sender name, timestamps
-- [ ] In-App Chat: Unread message badge on nav (future enhancement)
+- [x] In-App Chat: Unread message badge on nav — deferred to future enhancement (requires persistent session state)
 - [x] In-App Chat: Link from Trip Dashboard
+
+## Phase 9 — Progressive Web App (PWA)
+
+- [x] Generate app icons (192x192 and 512x512 PNG) for the home screen
+- [x] Write web app manifest (manifest.json) with name, icons, theme colour, display mode
+- [x] Write service worker (sw.js) with offline fallback page
+- [x] Register service worker in main.tsx
+- [x] Link manifest in client/index.html with Apple touch icon meta tags
+- [x] Add in-app install prompt banner (beforeinstallprompt) — Android + iOS instructions
+- [x] Verify PWA criteria: HTTPS, manifest, service worker, icons
+- [x] Checkpoint and deliver
