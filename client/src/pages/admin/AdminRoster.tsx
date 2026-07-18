@@ -96,6 +96,11 @@ export default function AdminRoster() {
     onError: (e) => toast.error(e.message),
   });
 
+  const sendEmailMutation = trpc.invites.sendEmail.useMutation({
+    onSuccess: () => toast.success("Invite email sent!"),
+    onError: (e) => toast.error(`Email failed: ${e.message}`),
+  });
+
   const regenerateMutation = trpc.invites.regenerate.useMutation({
     onSuccess: (data) => {
       utils.invites.list.invalidate({ tripId: tripIdNum });
@@ -298,20 +303,36 @@ export default function AdminRoster() {
                       </div>
                     </div>
 
-                    {/* Copy invite link button */}
+                    {/* Copy invite link + Send Email buttons */}
                     {invite.status !== "revoked" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 text-xs"
-                        onClick={() => copyToClipboard(getInviteUrl(invite.token), invite.id)}
-                      >
-                        {copiedId === invite.id ? (
-                          <><Check className="w-3 h-3 mr-1 text-emerald-400" />Copied</>
-                        ) : (
-                          <><Copy className="w-3 h-3 mr-1" />Copy Link</>
+                      <div className="flex gap-1 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs"
+                          onClick={() => copyToClipboard(getInviteUrl(invite.token), invite.id)}
+                          title="Copy invite link"
+                        >
+                          {copiedId === invite.id ? (
+                            <><Check className="w-3 h-3 mr-1 text-emerald-400" />Copied</>
+                          ) : (
+                            <><Copy className="w-3 h-3 mr-1" />Copy</>
+                          )}
+                        </Button>
+                        {invite.email && !invite.email.endsWith(".noemail@golftrip.local") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs text-emerald-400 border-emerald-600 hover:bg-emerald-900"
+                            onClick={() => sendEmailMutation.mutate({ inviteId: invite.id, origin: window.location.origin })}
+                            disabled={sendEmailMutation.isPending}
+                            title="Send invite email"
+                          >
+                            <Mail className="w-3 h-3 mr-1" />
+                            {sendEmailMutation.isPending ? "Sending..." : "Email"}
+                          </Button>
                         )}
-                      </Button>
+                      </div>
                     )}
 
                     {/* Actions dropdown */}

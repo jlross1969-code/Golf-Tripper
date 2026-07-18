@@ -850,6 +850,44 @@ export const appRouter = router({
         };
       }),
 
+    // Admin: send invite email via Resend
+    sendEmail: adminProcedure
+      .input(z.object({
+        inviteId: z.number(),
+        origin: z.string().url(),
+      }))
+      .mutation(async ({ input }) => {
+        const { sendInviteEmail } = await import("./email");
+        const invite = await getInviteByToken("").then(() => null).catch(() => null);
+        // Fetch the invite directly
+        const db = await import("./db");
+        const drizzleDb = await db.getDb();
+        if (!drizzleDb) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { tripInvites } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const rows = await drizzleDb.select().from(tripInvites).where(eq(tripInvites.id, input.inviteId)).limit(1);
+        const inv = rows[0];
+        if (!inv) throw new TRPCError({ code: "NOT_FOUND", message: "Invite not found" });
+        if (inv.status === "revoked") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot email a revoked invite" });
+        // Fetch trip details for the email
+        const trip = await db.getTrip(inv.tripId);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        const startDate = trip.startDate ? new Date(trip.startDate).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : "";
+        const endDate = trip.endDate ? new Date(trip.endDate).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" }) : "";
+        const tripDates = startDate && endDate ? `${startDate} – ${endDate}` : trip.name;
+        const inviteUrl = `${input.origin}/join/${inv.token}`;
+        const result = await sendInviteEmail({
+          toName: inv.name,
+          toEmail: inv.email,
+          tripName: trip.name,
+          tripDates,
+          startingHandicap: inv.startingHandicap,
+          inviteUrl,
+        });
+        if (!result.success) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error ?? "Failed to send email" });
+        return { success: true };
+      }),
+
     // Protected: accept invite — called after the player logs in
     accept: protectedProcedure
       .input(z.object({ token: z.string() }))
