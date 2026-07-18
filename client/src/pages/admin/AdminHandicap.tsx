@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, BarChart2, Save, History } from "lucide-react";
+import { ArrowLeft, BarChart2, Save, History, AlertTriangle, Info } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { calculateNewHandicap } from "../../../../shared/scoring";
@@ -17,18 +17,21 @@ export default function AdminHandicap() {
   const { data: trip, refetch: refetchTrip } = trpc.trips.get.useQuery({ id });
   const { data: players } = trpc.players.tripPlayers.useQuery({ tripId: id });
   const { data: history } = trpc.handicap.history.useQuery({ tripId: id });
+  const { data: rounds } = trpc.rounds.list.useQuery({ tripId: id });
 
   const [baseline, setBaseline] = useState("");
   const [factor, setFactor] = useState("");
   const [autoAdjust, setAutoAdjust] = useState(true);
   const [mode, setMode] = useState<"stableford" | "net_stroke">("stableford");
 
+  // Per-round daily adjustment state: roundId → adjustment string
+  const [dailyAdjs, setDailyAdjs] = useState<Record<number, string>>({});
+
   // Sensible defaults per mode
   const DEFAULT_BASELINE: Record<"stableford" | "net_stroke", number> = { stableford: 34, net_stroke: 70 };
 
   useEffect(() => {
     if (trip) {
-      // If the stored baseline is still 0 (never configured), apply the mode-appropriate default
       const storedBaseline = trip.handicapBaseline;
       const storedMode = trip.handicapMode as "stableford" | "net_stroke";
       const effectiveBaseline = storedBaseline === 0 ? DEFAULT_BASELINE[storedMode] : storedBaseline;
@@ -39,8 +42,17 @@ export default function AdminHandicap() {
     }
   }, [trip]);
 
-  // When the admin switches scoring mode, reset baseline to the new mode's default
-  // only if the current value matches the OTHER mode's default (i.e. hasn't been customised)
+  // Initialise per-round daily adjustment inputs from fetched rounds
+  useEffect(() => {
+    if (rounds) {
+      const init: Record<number, string> = {};
+      for (const r of rounds) {
+        init[r.id] = ((r as any).dailyAdjustment ?? 0).toString();
+      }
+      setDailyAdjs(init);
+    }
+  }, [rounds]);
+
   const handleModeChange = (newMode: "stableford" | "net_stroke") => {
     const currentBaseline = parseFloat(baseline);
     const oldDefault = DEFAULT_BASELINE[mode];
@@ -55,6 +67,11 @@ export default function AdminHandicap() {
     onError: (e) => toast.error(e.message),
   });
 
+  const updateRound = trpc.rounds.update.useMutation({
+    onSuccess: () => toast.success("Daily adjustment saved"),
+    onError: (e) => toast.error(e.message),
+  });
+
   // Preview calculation
   const baselineNum = parseFloat(baseline);
   const factorNum = parseFloat(factor);
@@ -66,6 +83,22 @@ export default function AdminHandicap() {
     }
     return { ...p, previewHcp: null, exampleScore: null };
   }) ?? [];
+
+  // Build a userId → player name map for the history tab
+  const playerNameMap = new Map<number, string>();
+  if (players) {
+    for (const p of players) {
+      playerNameMap.set(p.userId, p.nickname ?? p.user?.name ?? `Player ${p.userId}`);
+    }
+  }
+
+  // Build a roundId → round name map for the history tab
+  const roundNameMap = new Map<number, string>();
+  if (rounds) {
+    for (const r of rounds) roundNameMap.set(r.id, r.name);
+  }
+
+  const baselineIsUnconfigured = !trip || trip.handicapBaseline === 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -82,10 +115,26 @@ export default function AdminHandicap() {
         <Tabs defaultValue="settings">
           <TabsList className="mb-6 w-full">
             <TabsTrigger value="settings" className="flex-1">Settings</TabsTrigger>
+            <TabsTrigger value="rounds" className="flex-1">Daily Adjustments</TabsTrigger>
             <TabsTrigger value="history" className="flex-1 gap-2"><History className="w-4 h-4" />History</TabsTrigger>
           </TabsList>
 
+          {/* ── Settings Tab ── */}
           <TabsContent value="settings" className="space-y-6">
+            {/* Validation note for unconfigured trips */}
+            {baselineIsUnconfigured && (
+              <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-sm">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-amber-300">Baseline not configured</p>
+                  <p className="text-amber-300/80 mt-0.5">
+                    This trip's baseline is set to 0. Handicap adjustments will not work correctly until you save a baseline below.
+                    Defaults are <strong>34 pts</strong> for Stableford and <strong>70 strokes</strong> for Net Stroke.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Config form */}
             <div className="bg-card border border-border rounded-xl p-5 space-y-5">
               <h2 className="font-semibold text-foreground">Configuration</h2>
@@ -181,7 +230,95 @@ export default function AdminHandicap() {
             )}
           </TabsContent>
 
+          {/* ── Daily Adjustments Tab ── */}
+          <TabsContent value="rounds" className="space-y-4">
+            <div className="flex items-start gap-3 bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 text-sm">
+              <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+              <div className="text-muted-foreground">
+                <p className="font-medium text-foreground">Daily Adjustment</p>
+                <p className="mt-0.5">
+                  Shift the effective baseline for a specific round. Use a <strong className="text-foreground">positive value</strong> for a harder course
+                  (raises the baseline so players aren't penalised as much) or a <strong className="text-foreground">negative value</strong> for an easier course.
+                  The formula uses <code className="text-primary">trip baseline + daily adjustment</code> as the effective baseline for that round.
+                </p>
+              </div>
+            </div>
+
+            {!rounds || rounds.length === 0 ? (
+              <div className="text-center py-12 bg-card border border-border rounded-xl text-muted-foreground">
+                No rounds scheduled yet.
+              </div>
+            ) : (
+              rounds.map((round) => {
+                const adjStr = dailyAdjs[round.id] ?? "0";
+                const adjNum = parseFloat(adjStr);
+                const effectiveBaseline = isNaN(baselineNum) ? "—" : (baselineNum + (isNaN(adjNum) ? 0 : adjNum)).toFixed(1);
+                return (
+                  <div key={round.id} className="bg-card border border-border rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-foreground">{round.name}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(round.roundDate).toLocaleDateString()}</p>
+                      </div>
+                      <Badge variant={round.status === "active" ? "default" : round.status === "completed" ? "secondary" : "outline"}>
+                        {round.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1">
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                          Daily Adjustment ({mode === "stableford" ? "pts" : "strokes"})
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          value={adjStr}
+                          onChange={(e) => setDailyAdjs((prev) => ({ ...prev, [round.id]: e.target.value }))}
+                          placeholder="0"
+                          className="w-full"
+                        />
+                      </div>
+                      <div className="text-sm text-muted-foreground pb-2 whitespace-nowrap">
+                        Effective baseline: <span className="text-foreground font-medium">{effectiveBaseline}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={updateRound.isPending}
+                        onClick={() => updateRound.mutate({ id: round.id, dailyAdjustment: isNaN(adjNum) ? 0 : adjNum })}
+                      >
+                        <Save className="w-3 h-3 mr-1" /> Save
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </TabsContent>
+
+          {/* ── History Tab ── */}
           <TabsContent value="history">
+            {/* Active baseline summary */}
+            {trip && (
+              <div className="bg-card border border-border rounded-xl px-4 py-3 mb-4 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Active baseline:</span>
+                  <span className="font-semibold text-foreground">
+                    {trip.handicapBaseline === 0
+                      ? `${DEFAULT_BASELINE[trip.handicapMode as "stableford" | "net_stroke"]} (default)`
+                      : trip.handicapBaseline}
+                    {" "}{trip.handicapMode === "stableford" ? "pts" : "strokes"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Mode:</span>
+                  <Badge variant="outline" className="text-xs">{trip.handicapMode === "stableford" ? "Stableford" : "Net Stroke"}</Badge>
+                  <span className="text-muted-foreground">Factor:</span>
+                  <span className="font-medium text-foreground">{trip.handicapFactor}</span>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3">
               {!history || history.length === 0 ? (
                 <div className="text-center py-12 bg-card border border-border rounded-xl text-muted-foreground">
@@ -191,8 +328,13 @@ export default function AdminHandicap() {
                 history.map((h) => (
                   <div key={h.id} className="bg-card border border-border rounded-xl px-4 py-3">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-foreground">Player {h.userId}</span>
+                      <span className="font-medium text-foreground">
+                        {playerNameMap.get(h.userId) ?? `Player ${h.userId}`}
+                      </span>
                       <div className="flex items-center gap-2">
+                        {h.roundId && roundNameMap.has(h.roundId) && (
+                          <span className="text-xs text-muted-foreground">{roundNameMap.get(h.roundId)}</span>
+                        )}
                         <Badge variant={h.isManual ? "secondary" : "outline"} className="text-xs">
                           {h.isManual ? "Manual" : "Auto"}
                         </Badge>

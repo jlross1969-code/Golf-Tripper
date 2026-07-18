@@ -2,7 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Users } from "lucide-react";
+import { ArrowLeft, Users, BarChart2 } from "lucide-react";
 
 export default function TripPlayers() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -24,7 +24,23 @@ export default function TripPlayers() {
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-6 py-8 space-y-3">
+      {/* My Handicap Journey CTA */}
+      <div className="max-w-2xl mx-auto px-6 pt-6">
+        <Link href={`/trip/${id}/my-handicap`}>
+          <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-primary/15 transition-colors">
+            <div className="flex items-center gap-3">
+              <BarChart2 className="w-5 h-5 text-primary" />
+              <div>
+                <p className="font-semibold text-foreground text-sm">My Handicap Journey</p>
+                <p className="text-xs text-muted-foreground">View your initial and dynamic handicap per round</p>
+              </div>
+            </div>
+            <ArrowLeft className="w-4 h-4 text-primary rotate-180" />
+          </div>
+        </Link>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-6 py-4 space-y-3">
         {isLoading ? (
           [1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)
         ) : !players || players.length === 0 ? (

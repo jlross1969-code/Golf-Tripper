@@ -122,3 +122,16 @@
 - [x] Add nickname input on JoinTrip success screen
 - [x] Update db.ts helpers to return nickname ?? name as displayName
 - [x] Display nickname in leaderboards, score entry, chat, and roster
+
+## Session - Handicap Enhancements
+
+- [ ] Show active baseline on Handicap History tab
+- [ ] Add validation note for existing trips with unconfigured baseline
+- [ ] DB: add dailyAdjustment (float, default 0) column to rounds table
+- [ ] Apply DB migration for dailyAdjustment
+- [ ] Backend: rounds.update accepts dailyAdjustment field
+- [ ] Backend: handicap recalculation chains from previous round's handicap (not initial)
+- [ ] Backend: dailyAdjustment applied before formula (shifts effective baseline)
+- [ ] Admin UI: per-round daily adjustment input on AdminHandicap settings tab
+- [ ] Player UI: /trip/:tripId/my-handicap page — initial HCP + per-round dynamic HCP journey
+- [ ] Link to my-handicap page from TripDashboard or Players page

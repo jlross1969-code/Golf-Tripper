@@ -24,6 +24,7 @@ import MatchPlay from "./pages/MatchPlay";
 import JoinTrip from "./pages/JoinTrip";
 import AdminRoster from "./pages/admin/AdminRoster";
 import TripPlayers from "./pages/TripPlayers";
+import MyHandicap from "./pages/MyHandicap";
 
 function Router() {
   return (
@@ -38,6 +39,7 @@ function Router() {
       <Route path="/round/:roundId/match-play" component={MatchPlay} />
       <Route path="/trip/:tripId/chat" component={TripChat} />
       <Route path="/trip/:tripId/players" component={TripPlayers} />
+      <Route path="/trip/:tripId/my-handicap" component={MyHandicap} />
       <Route path="/admin" component={AdminTrips} />
       <Route path="/admin/trips" component={AdminTrips} />
       <Route path="/admin/trips/:id" component={AdminTripDetail} />

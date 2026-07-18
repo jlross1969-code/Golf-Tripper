@@ -96,6 +96,8 @@ export const rounds = mysqlTable("rounds", {
   matchPlayEnabled: boolean("matchPlayEnabled").default(false).notNull(),
   alternateShotEnabled: boolean("alternateShotEnabled").default(false).notNull(),
   status: mysqlEnum("status", ["scheduled", "active", "completed"]).default("scheduled").notNull(),
+  // Per-round handicap adjustment applied before the formula (positive = harder course, negative = easier)
+  dailyAdjustment: float("dailyAdjustment").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

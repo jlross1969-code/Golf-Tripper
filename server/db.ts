@@ -158,7 +158,7 @@ export async function createTrip(data: {
     endDate: data.endDate,
     createdBy: data.createdBy,
     handicapMode: data.handicapMode ?? "stableford",
-    handicapBaseline: data.handicapBaseline ?? 32,
+    handicapBaseline: data.handicapBaseline ?? 0,
     handicapFactor: data.handicapFactor ?? 0.25,
     handicapAutoAdjust: data.handicapAutoAdjust ?? true,
   });

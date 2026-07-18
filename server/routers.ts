@@ -141,7 +141,7 @@ export const appRouter = router({
           startDate: z.string(),
           endDate: z.string(),
           handicapMode: z.enum(["stableford", "net_stroke"]).default("stableford"),
-          handicapBaseline: z.number().default(32),
+          handicapBaseline: z.number().default(0),
           handicapFactor: z.number().default(0.25),
           handicapAutoAdjust: z.boolean().default(true),
         })
@@ -294,6 +294,7 @@ export const appRouter = router({
           skinsEnabled: z.boolean().optional(),
           matchPlayEnabled: z.boolean().optional(),
           alternateShotEnabled: z.boolean().optional(),
+          dailyAdjustment: z.number().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -462,10 +463,27 @@ export const appRouter = router({
   handicap: router({
     recalculateAfterRound: adminProcedure
       .input(z.object({ roundId: z.number(), tripId: z.number() }))
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const trip = await getTrip(input.tripId);
         if (!trip) throw new TRPCError({ code: "NOT_FOUND" });
         if (!trip.handicapAutoAdjust) return { updated: 0 };
+
+        // Fetch the round to get its dailyAdjustment
+        const currentRound = await getRound(input.roundId);
+        if (!currentRound) throw new TRPCError({ code: "NOT_FOUND", message: "Round not found" });
+        const dailyAdj = (currentRound as any).dailyAdjustment ?? 0;
+
+        // Effective baseline: trip baseline shifted by the round's daily adjustment
+        // Positive dailyAdj = harder course → raise effective baseline (players score higher, HCP goes up less)
+        // Negative dailyAdj = easier course → lower effective baseline
+        const effectiveBaseline = trip.handicapBaseline + dailyAdj;
+
+        // Determine the previous completed round (by date) to chain handicaps correctly
+        const allRounds = await getRoundsByTrip(input.tripId);
+        const completedBefore = allRounds
+          .filter((r) => r.status === "completed" && r.id !== input.roundId)
+          .sort((a, b) => new Date(a.roundDate).getTime() - new Date(b.roundDate).getTime());
+        const prevRound = completedBefore.length > 0 ? completedBefore[completedBefore.length - 1] : null;
 
         const scorecard = await getRoundScorecard(input.roundId);
         let updated = 0;
@@ -476,22 +494,35 @@ export const appRouter = router({
 
           if (player.holesPlayed < 18) continue; // Only adjust for complete rounds
 
+          // Chain from previous round's handicap result (not the initial handicap)
+          // Look up the most recent handicap history entry for this player from the previous round
+          let sourceHandicap = player.handicap; // fallback: current trip handicap
+          if (prevRound) {
+            const history = await getHandicapHistory(input.tripId, player.userId);
+            const prevEntry = history.find((h) => h.roundId === prevRound.id);
+            if (prevEntry) sourceHandicap = prevEntry.newHandicap;
+          } else {
+            // First round — use the player's starting handicap
+            const tripPlayer = await getTripPlayer(input.tripId, player.userId);
+            if (tripPlayer) sourceHandicap = tripPlayer.startingHandicap;
+          }
+
           const newHandicap = calculateNewHandicap(
-            player.handicap,
+            sourceHandicap,
             roundScore,
-            trip.handicapBaseline,
+            effectiveBaseline,
             trip.handicapFactor
           );
 
-          if (newHandicap !== player.handicap) {
+          if (newHandicap !== sourceHandicap) {
             await recordHandicapChange({
               tripId: input.tripId,
               userId: player.userId,
               roundId: input.roundId,
-              oldHandicap: player.handicap,
+              oldHandicap: sourceHandicap,
               newHandicap,
               roundScore,
-              reason: `Auto-adjusted after round. Score: ${roundScore}, Baseline: ${trip.handicapBaseline}, Factor: ${trip.handicapFactor}`,
+              reason: `Auto-adjusted after round. Score: ${roundScore}, Baseline: ${effectiveBaseline}${dailyAdj !== 0 ? ` (trip ${trip.handicapBaseline} ${dailyAdj > 0 ? "+" : ""}${dailyAdj} daily adj)` : ""}, Factor: ${trip.handicapFactor}`,
               isManual: false,
             });
             await updatePlayerHandicap(input.tripId, player.userId, newHandicap);
