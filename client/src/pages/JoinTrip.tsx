@@ -1,11 +1,13 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { getLoginUrl } from "@/const";
 import { CheckCircle, Flag, Loader2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
+import { toast } from "sonner";
 
 export default function JoinTrip() {
   const { token } = useParams<{ token: string }>();
@@ -13,6 +15,8 @@ export default function JoinTrip() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [joined, setJoined] = useState(false);
   const [joinedTripId, setJoinedTripId] = useState<number | null>(null);
+  const [nickname, setNickname] = useState("");
+  const [nicknameSaved, setNicknameSaved] = useState(false);
 
   // Look up invite details (public — no auth required)
   const { data: invite, isLoading: inviteLoading, error: inviteError } = trpc.invites.getByToken.useQuery(
@@ -26,6 +30,14 @@ export default function JoinTrip() {
       setJoined(true);
       setJoinedTripId(data.tripId);
     },
+  });
+
+  const setNicknameMutation = trpc.players.setNickname.useMutation({
+    onSuccess: () => {
+      setNicknameSaved(true);
+      toast.success("Nickname saved!");
+    },
+    onError: (e) => toast.error(e.message),
   });
 
   // Auto-accept once the user logs in and invite is loaded
@@ -74,15 +86,56 @@ export default function JoinTrip() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="bg-card border-border max-w-md w-full">
-          <CardContent className="p-8 text-center">
-            <CheckCircle className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-foreground mb-2">You're In!</h1>
-            <p className="text-muted-foreground mb-1">
-              Welcome to <strong className="text-foreground">{invite?.tripName}</strong>, {invite?.playerName}!
-            </p>
-            <p className="text-sm text-muted-foreground mb-6">
-              You've been added to the trip. Get ready to play.
-            </p>
+          <CardContent className="p-8">
+            <div className="text-center mb-6">
+              <CheckCircle className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
+              <h1 className="text-2xl font-bold text-foreground mb-2">You're In!</h1>
+              <p className="text-muted-foreground mb-1">
+                Welcome to <strong className="text-foreground">{invite?.tripName}</strong>!
+              </p>
+              <p className="text-sm text-muted-foreground">
+                You've been added as <strong className="text-foreground">{invite?.playerName}</strong>.
+              </p>
+            </div>
+
+            {/* Nickname section */}
+            <div className="bg-background rounded-lg p-4 mb-6 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Set a Nickname (optional)</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Choose how your name appears on leaderboards and in chat. Leave blank to use your registered name.
+                </p>
+              </div>
+              {nicknameSaved ? (
+                <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                  <CheckCircle className="w-4 h-4" />
+                  Nickname set to <strong>{nickname}</strong>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder={invite?.playerName ?? "e.g. Rossy"}
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    maxLength={64}
+                    className="bg-card flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    className="shrink-0 border-emerald-600 text-emerald-400 hover:bg-emerald-900"
+                    onClick={() => {
+                      if (nickname.trim()) {
+                        setNicknameMutation.mutate({ tripId: joinedTripId, nickname: nickname.trim() });
+                      }
+                    }}
+                    disabled={!nickname.trim() || setNicknameMutation.isPending}
+                  >
+                    {setNicknameMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={() => navigate(`/trip/${joinedTripId}`)}

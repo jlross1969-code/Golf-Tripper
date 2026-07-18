@@ -112,3 +112,13 @@
 - [x] Player UI: Auto-join trip after OAuth login when token is in session
 - [x] Player UI: Welcome confirmation screen after joining
 - [x] Tests and checkpoint
+
+## Session - Player Layout Fix & Nickname Feature
+
+- [x] Fix AdminRoster player row layout: full name visible, HCP not overlapping buttons
+- [x] Add `nickname` column to `trip_players` DB table (nullable varchar 64)
+- [x] Apply DB migration via webdev_execute_sql
+- [x] Add `players.setNickname` tRPC procedure (protectedProcedure)
+- [x] Add nickname input on JoinTrip success screen
+- [x] Update db.ts helpers to return nickname ?? name as displayName
+- [x] Display nickname in leaderboards, score entry, chat, and roster

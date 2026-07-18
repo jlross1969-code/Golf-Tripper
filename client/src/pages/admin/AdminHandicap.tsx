@@ -143,7 +143,7 @@ export default function AdminHandicap() {
                 <div className="space-y-2">
                   {previewPlayers.map((p) => (
                     <div key={p.userId} className="flex items-center justify-between text-sm">
-                      <span className="text-foreground">{p.user?.name ?? `Player ${p.userId}`}</span>
+                      <span className="text-foreground">{p.nickname ?? p.user?.name ?? `Player ${p.userId}`}</span>
                       <div className="flex items-center gap-3">
                         <span className="text-muted-foreground">HCP {p.currentHandicap}</span>
                         <span className="text-muted-foreground">→</span>

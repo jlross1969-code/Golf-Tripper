@@ -291,88 +291,94 @@ export default function AdminRoster() {
             ) : (
               <div className="divide-y divide-border">
                 {invites.map((invite) => (
-                  <div key={invite.id} className="flex items-center gap-3 px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground truncate">{invite.name}</span>
-                        {statusBadge(invite.status)}
+                  <div key={invite.id} className="px-4 py-3 space-y-2">
+                    {/* Row 1: Name + status badge + dropdown (always visible) */}
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-foreground">
+                            {invite.nickname ? (
+                              <>{invite.nickname} <span className="font-normal text-muted-foreground text-xs">({invite.name})</span></>
+                            ) : invite.name}
+                          </span>
+                          {statusBadge(invite.status)}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
+                          {invite.email && !invite.email.endsWith(".noemail@golftrip.local") && (
+                            <div>{invite.email}</div>
+                          )}
+                          <div>HCP {invite.startingHandicap}</div>
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3">
-                        <span>{invite.email}</span>
-                        <span>HCP {invite.startingHandicap}</span>
-                      </div>
+                      {/* Actions dropdown — always top-right */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="shrink-0 w-8 h-8 p-0">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-card border-border">
+                          <DropdownMenuItem onClick={() => openEdit(invite)}>
+                            Edit Details
+                          </DropdownMenuItem>
+                          {invite.status !== "revoked" && (
+                            <DropdownMenuItem
+                              onClick={() => regenerateMutation.mutate({ id: invite.id, origin: window.location.origin })}
+                            >
+                              <RefreshCw className="w-3 h-3 mr-2" />
+                              Regenerate Link
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          {invite.status === "pending" && (
+                            <DropdownMenuItem
+                              className="text-amber-500"
+                              onClick={() => revokeMutation.mutate({ id: invite.id })}
+                            >
+                              <XCircle className="w-3 h-3 mr-2" />
+                              Revoke Invite
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className="text-red-500"
+                            onClick={() => deleteMutation.mutate({ id: invite.id })}
+                          >
+                            <Trash2 className="w-3 h-3 mr-2" />
+                            Remove from Roster
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
-                    {/* Copy invite link + Send Email buttons */}
+                    {/* Row 2: Copy link + Email buttons */}
                     {invite.status !== "revoked" && (
-                      <div className="flex gap-1 shrink-0">
+                      <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-xs"
+                          className="text-xs flex-1"
                           onClick={() => copyToClipboard(getInviteUrl(invite.token), invite.id)}
-                          title="Copy invite link"
                         >
                           {copiedId === invite.id ? (
                             <><Check className="w-3 h-3 mr-1 text-emerald-400" />Copied</>
                           ) : (
-                            <><Copy className="w-3 h-3 mr-1" />Copy</>
+                            <><Copy className="w-3 h-3 mr-1" />Copy Link</>
                           )}
                         </Button>
                         {invite.email && !invite.email.endsWith(".noemail@golftrip.local") && (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-xs text-emerald-400 border-emerald-600 hover:bg-emerald-900"
+                            className="text-xs flex-1 text-emerald-400 border-emerald-600 hover:bg-emerald-900"
                             onClick={() => sendEmailMutation.mutate({ inviteId: invite.id, origin: window.location.origin })}
                             disabled={sendEmailMutation.isPending}
-                            title="Send invite email"
                           >
                             <Mail className="w-3 h-3 mr-1" />
-                            {sendEmailMutation.isPending ? "Sending..." : "Email"}
+                            {sendEmailMutation.isPending ? "Sending..." : "Send Email"}
                           </Button>
                         )}
                       </div>
                     )}
-
-                    {/* Actions dropdown */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm" variant="ghost" className="shrink-0 w-8 h-8 p-0">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-card border-border">
-                        <DropdownMenuItem onClick={() => openEdit(invite)}>
-                          Edit Details
-                        </DropdownMenuItem>
-                        {invite.status !== "revoked" && (
-                          <DropdownMenuItem
-                            onClick={() => regenerateMutation.mutate({ id: invite.id, origin: window.location.origin })}
-                          >
-                            <RefreshCw className="w-3 h-3 mr-2" />
-                            Regenerate Link
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        {invite.status === "pending" && (
-                          <DropdownMenuItem
-                            className="text-amber-500"
-                            onClick={() => revokeMutation.mutate({ id: invite.id })}
-                          >
-                            <XCircle className="w-3 h-3 mr-2" />
-                            Revoke Invite
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          className="text-red-500"
-                          onClick={() => deleteMutation.mutate({ id: invite.id })}
-                        >
-                          <Trash2 className="w-3 h-3 mr-2" />
-                          Remove from Roster
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                   </div>
                 ))}
               </div>

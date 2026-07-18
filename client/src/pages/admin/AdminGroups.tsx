@@ -14,7 +14,7 @@ export default function AdminGroups() {
   const rId = Number(roundId);
 
   const { data: roundData } = trpc.rounds.get.useQuery({ id: rId });
-  const { data: groups, refetch } = trpc.groups.list.useQuery({ roundId: rId });
+  const { data: groups, refetch } = trpc.groups.list.useQuery({ roundId: rId, tripId: tId });
   const { data: players } = trpc.players.tripPlayers.useQuery({ tripId: tId });
 
   const [groupOpen, setGroupOpen] = useState(false);
@@ -86,7 +86,7 @@ export default function AdminGroups() {
                 <div className="flex flex-wrap gap-2">
                   {group.players.map((p) => (
                     <div key={p.userId} className="bg-muted rounded-full px-3 py-1 text-xs text-foreground flex items-center gap-1">
-                      {p.user?.name ?? `User ${p.userId}`}
+                      {p.nickname ?? p.user?.name ?? `User ${p.userId}`}
                       {p.partnerId && <span className="text-muted-foreground">+ partner</span>}
                     </div>
                   ))}
@@ -129,7 +129,7 @@ export default function AdminGroups() {
                 <SelectContent>
                   {players?.map((p) => (
                     <SelectItem key={p.userId} value={p.userId.toString()}>
-                      {p.user?.name ?? `User ${p.userId}`} (HCP {p.currentHandicap})
+                      {p.nickname ?? p.user?.name ?? `User ${p.userId}`} (HCP {p.currentHandicap})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -143,7 +143,7 @@ export default function AdminGroups() {
                   <SelectItem value="none">No partner</SelectItem>
                   {players?.filter((p) => p.userId.toString() !== addUserId).map((p) => (
                     <SelectItem key={p.userId} value={p.userId.toString()}>
-                      {p.user?.name ?? `User ${p.userId}`}
+                      {p.nickname ?? p.user?.name ?? `User ${p.userId}`}
                     </SelectItem>
                   ))}
                 </SelectContent>

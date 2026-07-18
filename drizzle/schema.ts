@@ -74,6 +74,8 @@ export const tripPlayers = mysqlTable("trip_players", {
   userId: int("userId").notNull(),
   startingHandicap: float("startingHandicap").default(0).notNull(),
   currentHandicap: float("currentHandicap").default(0).notNull(),
+  // Player-settable preferred display name (set after accepting invite)
+  nickname: varchar("nickname", { length: 64 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

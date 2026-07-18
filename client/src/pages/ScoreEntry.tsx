@@ -98,7 +98,7 @@ export default function ScoreEntry() {
           par: hole.par,
           grossScore,
           userId: selectedUserId,
-          playerName: selectedPlayer.user?.name ?? "Player",
+          playerName: selectedPlayer.nickname ?? selectedPlayer.user?.name ?? "Player",
         });
       } else {
         toast.success(`Hole ${hole.holeNumber} saved — Net: ${result.netScore}, Pts: ${result.stablefordPoints}`);
@@ -177,7 +177,7 @@ export default function ScoreEntry() {
             <SelectContent>
               {players?.map((p) => (
                 <SelectItem key={p.userId} value={p.userId.toString()}>
-                  {p.user?.name ?? `Player ${p.userId}`} (HCP {p.currentHandicap})
+                  {p.nickname ?? p.user?.name ?? `Player ${p.userId}`} (HCP {p.currentHandicap})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -189,7 +189,7 @@ export default function ScoreEntry() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-foreground">
-                {selectedPlayer.user?.name} — HCP {selectedPlayer.currentHandicap}
+                {selectedPlayer.nickname ?? selectedPlayer.user?.name} — HCP {selectedPlayer.currentHandicap}
               </h2>
               <div className="flex gap-2">
                 {round.strokePlayEnabled && <Badge variant="secondary">Stroke Play</Badge>}

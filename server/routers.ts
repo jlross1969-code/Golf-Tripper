@@ -45,6 +45,7 @@ import {
   updateSideMatchStatus,
   updateTrip,
   upsertScore,
+  setPlayerNickname,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -228,6 +229,19 @@ export const appRouter = router({
     handicapHistory: publicProcedure
       .input(z.object({ tripId: z.number(), userId: z.number().optional() }))
       .query(({ input }) => getHandicapHistory(input.tripId, input.userId)),
+
+    setNickname: protectedProcedure
+      .input(z.object({
+        tripId: z.number(),
+        nickname: z.string().max(64).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        // Verify the user is a member of this trip
+        const tp = await getTripPlayer(input.tripId, ctx.user.id);
+        if (!tp) throw new TRPCError({ code: "FORBIDDEN", message: "You are not a member of this trip" });
+        await setPlayerNickname(input.tripId, ctx.user.id, input.nickname ?? null);
+        return { success: true };
+      }),
   }),
 
   // ─── Rounds ───────────────────────────────────────────────────────────────
@@ -293,13 +307,13 @@ export const appRouter = router({
 
   groups: router({
     list: publicProcedure
-      .input(z.object({ roundId: z.number() }))
+      .input(z.object({ roundId: z.number(), tripId: z.number().optional() }))
       .query(async ({ input }) => {
         const groupList = await getGroupsByRound(input.roundId);
         const withPlayers = await Promise.all(
           groupList.map(async (g) => ({
             ...g,
-            players: await getGroupPlayers(g.id),
+            players: await getGroupPlayers(g.id, input.tripId),
           }))
         );
         return withPlayers;

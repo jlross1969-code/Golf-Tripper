@@ -81,35 +81,44 @@ export default function AdminPlayers() {
         ) : (
           <div className="space-y-3">
             {players.map((p) => (
-              <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4">
-                <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
-                  {p.user?.name?.charAt(0)?.toUpperCase() ?? "?"}
+              <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 space-y-2">
+                {/* Row 1: Avatar + name + action buttons */}
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
+                    {(p.nickname ?? p.user?.name)?.charAt(0)?.toUpperCase() ?? "?"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground">{p.nickname ?? p.user?.name ?? `User ${p.userId}`}</p>
+                    {p.nickname && p.user?.name && p.nickname !== p.user.name && (
+                      <p className="text-xs text-muted-foreground">{p.user.name}</p>
+                    )}
+                    {p.user?.email && (
+                      <p className="text-xs text-muted-foreground">{p.user.email}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => { setEditUserId(p.userId); setEditHandicap(p.currentHandicap.toString()); setEditReason(""); setEditOpen(true); }}
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => removePlayer.mutate({ tripId: id, userId: p.userId })}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground truncate">{p.user?.name ?? `User ${p.userId}`}</p>
-                  <p className="text-xs text-muted-foreground">{p.user?.email}</p>
-                </div>
-                <div className="text-right mr-2">
-                  <p className="text-lg font-bold text-primary">{p.currentHandicap}</p>
-                  <p className="text-xs text-muted-foreground">Current HCP</p>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => { setEditUserId(p.userId); setEditHandicap(p.currentHandicap.toString()); setEditReason(""); setEditOpen(true); }}
-                  >
-                    <Edit2 className="w-3 h-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => removePlayer.mutate({ tripId: id, userId: p.userId })}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                {/* Row 2: HCP badge */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Current HCP</span>
+                  <span className="text-sm font-bold text-primary">{p.currentHandicap}</span>
                 </div>
               </div>
             ))}

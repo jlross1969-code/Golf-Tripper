@@ -301,7 +301,7 @@ export async function addPlayerToGroup(groupId: number, userId: number, partnerI
     .onDuplicateKeyUpdate({ set: { partnerId: partnerId ?? null } });
 }
 
-export async function getGroupPlayers(groupId: number): Promise<(GroupPlayer & { user: User | undefined })[]> {
+export async function getGroupPlayers(groupId: number, tripId?: number): Promise<(GroupPlayer & { user: User | undefined; nickname?: string | null })[]> {
   const db = await getDb();
   if (!db) return [];
   const players = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
@@ -309,7 +309,15 @@ export async function getGroupPlayers(groupId: number): Promise<(GroupPlayer & {
   if (userIds.length === 0) return [];
   const userList = await db.select().from(users).where(inArray(users.id, userIds));
   const userMap = new Map(userList.map((u) => [u.id, u]));
-  return players.map((p) => ({ ...p, user: userMap.get(p.userId) }));
+  // Also fetch nicknames from trip_players if tripId is provided
+  let nicknameMap = new Map<number, string | null>();
+  if (tripId) {
+    const tpList = await db.select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname })
+      .from(tripPlayers)
+      .where(and(eq(tripPlayers.tripId, tripId), inArray(tripPlayers.userId, userIds)));
+    nicknameMap = new Map(tpList.map((tp) => [tp.userId, tp.nickname ?? null]));
+  }
+  return players.map((p) => ({ ...p, user: userMap.get(p.userId), nickname: nicknameMap.get(p.userId) ?? null }));
 }
 
 export async function deleteGroup(groupId: number): Promise<void> {
@@ -558,7 +566,7 @@ export async function getRoundScorecard(roundId: number): Promise<
     const playerScores = grouped.get(tp.userId) ?? [];
     return {
       userId: tp.userId,
-      userName: tp.user?.name ?? null,
+      userName: tp.nickname ?? tp.user?.name ?? null,
       handicap: tp.currentHandicap,
       scores: playerScores,
       totalGross: playerScores.reduce((sum, s) => sum + s.grossScore, 0),
@@ -603,7 +611,7 @@ export async function getTripLeaderboard(tripId: number): Promise<
       );
       return {
         userId: tp.userId,
-        userName: tp.user?.name ?? null,
+        userName: tp.nickname ?? tp.user?.name ?? null,
         rounds: roundBreakdown,
         cumulativeGross: roundBreakdown.reduce((s, r) => s + r.totalGross, 0),
         cumulativeNet: roundBreakdown.reduce((s, r) => s + r.totalNet, 0),
@@ -691,9 +699,11 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
       message: tripMessages.message,
       createdAt: tripMessages.createdAt,
       userName: users.name,
+      userNickname: tripPlayers.nickname,
     })
     .from(tripMessages)
     .leftJoin(users, eq(tripMessages.userId, users.id))
+    .leftJoin(tripPlayers, and(eq(tripPlayers.userId, tripMessages.userId), eq(tripPlayers.tripId, tripMessages.tripId)))
     .where(
       beforeId
         ? and(eq(tripMessages.tripId, tripId), lt(tripMessages.id, beforeId))
@@ -701,7 +711,7 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     )
     .orderBy(desc(tripMessages.id))
     .limit(limit);
-  return rows.map((r) => ({ ...r, userName: r.userName ?? null }));
+  return rows.map((r) => ({ ...r, userName: r.userNickname ?? r.userName ?? null }));
 }
 
 // ─── Trip Invites ─────────────────────────────────────────────────────────────
@@ -713,10 +723,25 @@ export async function createInvite(data: InsertTripInvite): Promise<number> {
   return (result[0] as any).insertId as number;
 }
 
-export async function getInvitesByTrip(tripId: number): Promise<TripInvite[]> {
+export async function getInvitesByTrip(tripId: number): Promise<(TripInvite & { nickname?: string | null })[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(tripInvites).where(eq(tripInvites.tripId, tripId)).orderBy(tripInvites.createdAt);
+  const inviteList = await db.select().from(tripInvites).where(eq(tripInvites.tripId, tripId)).orderBy(tripInvites.createdAt);
+  // Enrich accepted invites with the player's chosen nickname from trip_players
+  const acceptedUserIds = inviteList
+    .filter((i) => i.acceptedByUserId !== null)
+    .map((i) => i.acceptedByUserId as number);
+  let nicknameMap = new Map<number, string | null>();
+  if (acceptedUserIds.length > 0) {
+    const tpList = await db.select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname })
+      .from(tripPlayers)
+      .where(and(eq(tripPlayers.tripId, tripId), inArray(tripPlayers.userId, acceptedUserIds)));
+    nicknameMap = new Map(tpList.map((tp) => [tp.userId, tp.nickname ?? null]));
+  }
+  return inviteList.map((inv) => ({
+    ...inv,
+    nickname: inv.acceptedByUserId ? (nicknameMap.get(inv.acceptedByUserId) ?? null) : null,
+  }));
 }
 
 export async function getInviteByToken(token: string): Promise<TripInvite | undefined> {
@@ -750,4 +775,15 @@ export async function deleteInvite(id: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.delete(tripInvites).where(eq(tripInvites.id, id));
+}
+
+// ─── Nickname ─────────────────────────────────────────────────────────────────
+
+export async function setPlayerNickname(tripId: number, userId: number, nickname: string | null): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(tripPlayers)
+    .set({ nickname: nickname || null })
+    .where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, userId)));
 }
