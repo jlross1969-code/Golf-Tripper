@@ -85,7 +85,7 @@ export default function JoinTrip() {
             </p>
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => navigate(`/trips/${joinedTripId}`)}
+              onClick={() => navigate(`/trip/${joinedTripId}`)}
             >
               Go to Trip Dashboard
             </Button>
