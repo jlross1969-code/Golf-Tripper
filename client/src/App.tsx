@@ -23,6 +23,7 @@ import TripChat from "./pages/TripChat";
 import MatchPlay from "./pages/MatchPlay";
 import JoinTrip from "./pages/JoinTrip";
 import AdminRoster from "./pages/admin/AdminRoster";
+import AdminNTP from "./pages/admin/AdminNTP";
 import TripPlayers from "./pages/TripPlayers";
 import MyHandicap from "./pages/MyHandicap";
 
@@ -46,6 +47,7 @@ function Router() {
       <Route path="/admin/trips/:tripId/players" component={AdminPlayers} />
       <Route path="/admin/trips/:tripId/rounds" component={AdminRounds} />
       <Route path="/admin/trips/:tripId/rounds/:roundId/groups" component={AdminGroups} />
+      <Route path="/admin/trips/:tripId/rounds/:roundId/ntp" component={AdminNTP} />
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />

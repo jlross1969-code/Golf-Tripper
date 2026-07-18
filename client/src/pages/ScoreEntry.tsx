@@ -6,11 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Flag, CheckCircle, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Flag, CheckCircle, AlertTriangle, Target } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { toast } from "sonner";
 import { detectAchievement, formatAchievementType } from "../../../shared/scoring";
+import AchievementAlert from "@/components/AchievementAlert";
 
 type PendingAchievement = {
   type: "hole_in_one" | "eagle" | "birdie";
@@ -46,10 +47,15 @@ export default function ScoreEntry() {
   const [holeScores, setHoleScores] = useState<Record<number, string>>({});
   const [pendingAchievement, setPendingAchievement] = useState<PendingAchievement | null>(null);
   const [pendingAchievementId, setPendingAchievementId] = useState<number | null>(null);
+  const [ntpInputs, setNtpInputs] = useState<Record<number, string>>({}); // ntpId → cm value
 
   const submitScore = trpc.scores.submit.useMutation();
   const createAchievement = trpc.achievements.create.useMutation();
   const confirmAchievement = trpc.achievements.confirm.useMutation();
+  const submitNtp = trpc.ntp.submitEntry.useMutation({
+    onSuccess: () => { toast.success("NTP distance saved!"); utils.ntp.getByRound.invalidate({ roundId: id }); },
+    onError: (e) => toast.error(e.message),
+  });
   const utils = trpc.useUtils();
 
   const selectedPlayer = players?.find((p) => p.userId === selectedUserId);
@@ -134,6 +140,9 @@ export default function ScoreEntry() {
   };
 
   const { data: scorecard } = trpc.scores.getScorecard.useQuery({ roundId: id });
+  const { data: ntpList } = trpc.ntp.getByRound.useQuery({ roundId: id });
+  // Map holeId → ntp record
+  const ntpByHole = new Map((ntpList ?? []).map((n) => [n.holeId, n]));
 
   if (isLoading) {
     return (
@@ -152,6 +161,7 @@ export default function ScoreEntry() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AchievementAlert tripId={round.tripId} />
       <header className="border-b border-border px-6 py-4 flex items-center gap-3">
         <Link href={`/trip/${round.tripId}`}>
           <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
@@ -264,6 +274,41 @@ export default function ScoreEntry() {
                             <CheckCircle className="w-4 h-4 text-primary mx-auto" />
                           )}
                         </td>
+                        {/* NTP column — only shown for NTP-enabled holes */}
+                        {ntpByHole.has(hole.id) && (() => {
+                          const ntp = ntpByHole.get(hole.id)!;
+                          const myEntry = ntp.entries.find((e) => e.userId === user?.id);
+                          const ntpVal = ntpInputs[ntp.id] ?? "";
+                          return (
+                            <td className="py-2 px-3">
+                              <div className="flex items-center gap-1">
+                                <Target className="w-3 h-3 text-primary flex-shrink-0" />
+                                {myEntry ? (
+                                  <span className="text-xs text-primary font-semibold">{myEntry.distanceCm} cm</span>
+                                ) : (
+                                  <>
+                                    <Input
+                                      type="number"
+                                      min="0.1"
+                                      step="0.1"
+                                      value={ntpVal}
+                                      onChange={(e) => setNtpInputs((prev) => ({ ...prev, [ntp.id]: e.target.value }))}
+                                      className="w-16 h-7 text-xs text-center"
+                                      placeholder="cm"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs px-2"
+                                      disabled={!ntpVal || submitNtp.isPending}
+                                      onClick={() => submitNtp.mutate({ ntpId: ntp.id, distanceCm: Number(ntpVal) })}
+                                    >Go</Button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })()}
                       </tr>
                     );
                   })}

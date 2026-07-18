@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -113,6 +113,11 @@ export default function AdminRounds() {
                   <Link href={`/admin/trips/${id}/rounds/${round.id}/groups`}>
                     <Button size="sm" variant="outline" className="gap-1 text-xs">
                       <Users className="w-3 h-3" /> Groups
+                    </Button>
+                  </Link>
+                  <Link href={`/admin/trips/${id}/rounds/${round.id}/ntp`}>
+                    <Button size="sm" variant="outline" className="gap-1 text-xs">
+                      <Target className="w-3 h-3" /> NTP
                     </Button>
                   </Link>
                 </div>

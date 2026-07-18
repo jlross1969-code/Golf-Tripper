@@ -125,13 +125,32 @@
 
 ## Session - Handicap Enhancements
 
-- [ ] Show active baseline on Handicap History tab
-- [ ] Add validation note for existing trips with unconfigured baseline
-- [ ] DB: add dailyAdjustment (float, default 0) column to rounds table
-- [ ] Apply DB migration for dailyAdjustment
-- [ ] Backend: rounds.update accepts dailyAdjustment field
-- [ ] Backend: handicap recalculation chains from previous round's handicap (not initial)
-- [ ] Backend: dailyAdjustment applied before formula (shifts effective baseline)
-- [ ] Admin UI: per-round daily adjustment input on AdminHandicap settings tab
-- [ ] Player UI: /trip/:tripId/my-handicap page — initial HCP + per-round dynamic HCP journey
-- [ ] Link to my-handicap page from TripDashboard or Players page
+- [x] Show active baseline on Handicap History tab
+- [x] Add validation note for existing trips with unconfigured baseline
+- [x] DB: add dailyAdjustment (float, default 0) column to rounds table
+- [x] Apply DB migration for dailyAdjustment
+- [x] Backend: rounds.update accepts dailyAdjustment field
+- [x] Backend: handicap recalculation chains from previous round's handicap (not initial)
+- [x] Backend: dailyAdjustment applied before formula (shifts effective baseline)
+- [x] Admin UI: per-round daily adjustment input on AdminHandicap settings tab
+- [x] Player UI: /trip/:tripId/my-handicap page — initial HCP + per-round dynamic HCP journey
+- [x] Link to my-handicap page from TripDashboard or Players page
+
+## Session - Alerts, NTP & UX Improvements
+
+- [ ] Add My Handicap Journey shortcut card on Trip Dashboard
+- [ ] Show effective baseline on Daily Leaderboard header
+- [ ] Add Edit Nickname button on My Handicap Journey page
+- [ ] DB: nearest_to_pin table (id, roundId, holeId, holeNumber, enabled, winnerId, distanceCm, createdAt)
+- [ ] DB: ntp_entries table (id, ntpId, userId, distanceCm, submittedAt)
+- [ ] Apply DB migration for NTP tables
+- [ ] Backend: ntp.setHoles (admin) — enable/disable NTP per hole for a round
+- [ ] Backend: ntp.submitEntry (player) — submit distance in cm
+- [ ] Backend: ntp.getByRound — list all NTP holes + current leader per hole
+- [ ] Backend: ntp.setWinner (admin) — confirm winner for a hole
+- [ ] Admin UI: NTP hole selector on AdminGroups or AdminRounds (toggle per hole, set winner)
+- [ ] Player UI: NTP entry form on ScoreEntry or dedicated NTP page
+- [ ] Player UI: NTP results view (leaderboard per hole)
+- [ ] Eagle/Birdie/HIO: verify detection + broadcast notification already works
+- [ ] Eagle/Birdie/HIO: add real-time alert banner visible to all players in the trip (polling-based)
+- [ ] Eagle/Birdie/HIO: show achievement feed on Trip Dashboard / Notification Feed

@@ -278,3 +278,30 @@ export const tripInvites = mysqlTable("trip_invites", {
 
 export type TripInvite = typeof tripInvites.$inferSelect;
 export type InsertTripInvite = typeof tripInvites.$inferInsert;
+
+// ─── Nearest to Pin ───────────────────────────────────────────────────────────
+// Admin enables NTP competition for specific holes in a round.
+// Players submit their distance in cm; admin confirms the winner.
+
+export const nearestToPin = mysqlTable("nearest_to_pin", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  holeId: int("holeId").notNull(),
+  holeNumber: int("holeNumber").notNull(),
+  // Admin-confirmed winner
+  winnerId: int("winnerId"),
+  winnerDistanceCm: float("winnerDistanceCm"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type NearestToPin = typeof nearestToPin.$inferSelect;
+
+export const ntpEntries = mysqlTable("ntp_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  ntpId: int("ntpId").notNull(),
+  userId: int("userId").notNull(),
+  distanceCm: float("distanceCm").notNull(),
+  submittedAt: timestamp("submittedAt").defaultNow().notNull(),
+});
+
+export type NtpEntry = typeof ntpEntries.$inferSelect;

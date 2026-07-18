@@ -1,10 +1,13 @@
 import { trpc } from "@/lib/trpc";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, TrendingDown, TrendingUp, Minus, BarChart2 } from "lucide-react";
+import { ArrowLeft, TrendingDown, TrendingUp, Minus, BarChart2, Pencil, Check, X } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { toast } from "sonner";
 
 export default function MyHandicap() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -23,6 +26,18 @@ export default function MyHandicap() {
 
   const me = players?.find((p) => p.userId === user?.id);
   const displayName = me ? (me.nickname ?? me.user?.name ?? "You") : "You";
+
+  const [editingNickname, setEditingNickname] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState("");
+  const utils = trpc.useUtils();
+  const setNickname = trpc.players.setNickname.useMutation({
+    onSuccess: () => {
+      utils.players.tripPlayers.invalidate();
+      setEditingNickname(false);
+      toast.success("Nickname updated!");
+    },
+    onError: () => toast.error("Failed to update nickname"),
+  });
 
   // Build a roundId → round name map
   const roundMap = new Map<number, { name: string; date: Date }>();
@@ -94,7 +109,43 @@ export default function MyHandicap() {
             <div>
               <p className="text-sm text-muted-foreground">Current Trip Handicap</p>
               <p className="text-4xl font-black text-primary mt-1">{currentHandicap}</p>
-              <p className="text-xs text-muted-foreground mt-1">{displayName}</p>
+              <div className="flex items-center gap-2 mt-1">
+              {editingNickname ? (
+                <>
+                  <Input
+                    value={nicknameInput}
+                    onChange={(e) => setNicknameInput(e.target.value)}
+                    placeholder="Enter nickname..."
+                    className="h-7 text-xs w-36"
+                    maxLength={64}
+                    autoFocus
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-primary"
+                    onClick={() => setNickname.mutate({ tripId: id, nickname: nicknameInput.trim() || undefined })}
+                    disabled={setNickname.isPending}
+                  ><Check className="w-3 h-3" /></Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-muted-foreground"
+                    onClick={() => setEditingNickname(false)}
+                  ><X className="w-3 h-3" /></Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">{displayName}</p>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-5 w-5 text-muted-foreground hover:text-primary"
+                    onClick={() => { setNicknameInput(me?.nickname ?? ""); setEditingNickname(true); }}
+                  ><Pencil className="w-3 h-3" /></Button>
+                </>
+              )}
+            </div>
             </div>
             <div className="text-right">
               <p className="text-sm text-muted-foreground">Started at</p>

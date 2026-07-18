@@ -49,6 +49,20 @@ export default function DailyLeaderboard() {
         </div>
       </header>
 
+      {/* Effective Baseline Info Bar */}
+      {data?.trip && (
+        <div className="border-b border-border bg-muted/30 px-6 py-2 flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+          <span>Mode: <span className="text-foreground font-medium">{data.trip.handicapMode === "stableford" ? "Stableford" : "Net Stroke"}</span></span>
+          <span>Effective Baseline: <span className="text-primary font-semibold">{data.effectiveBaseline}</span></span>
+          {(data.round as any).dailyAdjustment !== 0 && (
+            <span className="text-amber-400">
+              (trip {data.trip.handicapBaseline === 0 ? (data.trip.handicapMode === "stableford" ? 34 : 70) : data.trip.handicapBaseline}
+              {" "}{(data.round as any).dailyAdjustment > 0 ? "+" : ""}{(data.round as any).dailyAdjustment} daily adj)
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="max-w-3xl mx-auto px-6 py-8">
         {isLoading ? (
           <div className="space-y-3">

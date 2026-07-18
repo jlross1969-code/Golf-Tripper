@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
 import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import AchievementAlert from "@/components/AchievementAlert";
 
 export default function TripDashboard() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -35,6 +36,7 @@ export default function TripDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AchievementAlert tripId={id} />
       {/* Header */}
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -91,6 +93,20 @@ export default function TripDashboard() {
             </Link>
           ))}
         </div>
+
+        {/* My Handicap Journey shortcut */}
+        <Link href={`/trip/${id}/my-handicap`}>
+          <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-primary/15 transition-colors active:scale-[0.97]">
+            <div className="flex items-center gap-3">
+              <BarChart2 className="w-5 h-5 text-primary" />
+              <div>
+                <p className="font-semibold text-foreground text-sm">My Handicap Journey</p>
+                <p className="text-xs text-muted-foreground">View your initial and dynamic handicap per round</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-primary" />
+          </div>
+        </Link>
 
         {/* Active Round */}
         {activeRound && (

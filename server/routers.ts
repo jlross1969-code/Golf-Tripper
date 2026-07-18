@@ -46,6 +46,11 @@ import {
   updateTrip,
   upsertScore,
   setPlayerNickname,
+  getNtpByRound,
+  enableNtp,
+  disableNtp,
+  submitNtpEntry,
+  setNtpWinner,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -547,8 +552,15 @@ export const appRouter = router({
         const round = await getRound(input.roundId);
         if (!round) throw new TRPCError({ code: "NOT_FOUND" });
 
+        const trip = await getTrip(round.tripId);
         const scorecard = await getRoundScorecard(input.roundId);
         const courseHoles = await getHolesByCourse(round.courseId);
+
+        // Effective baseline = trip baseline + round daily adjustment
+        const tripBaseline = trip?.handicapBaseline ?? 0;
+        const effectiveBaseline = tripBaseline === 0
+          ? (trip?.handicapMode === "stableford" ? 34 : 70)
+          : tripBaseline + (round.dailyAdjustment ?? 0);
 
         // Stroke Play leaderboard — sorted by net score ascending
         const strokePlay = [...scorecard]
@@ -630,7 +642,7 @@ export const appRouter = router({
           skinsResults.sort((a, b) => b.skinsWon - a.skinsWon);
         }
 
-        return { round, strokePlay, fourBBB: fourBBBResults, skins: skinsResults };
+        return { round, trip, strokePlay, fourBBB: fourBBBResults, skins: skinsResults, effectiveBaseline };
       }),
 
     trip: publicProcedure
@@ -954,6 +966,44 @@ export const appRouter = router({
           await import("./db").then(m => m.addPlayerToTrip(invite.tripId, ctx.user!.id, invite.startingHandicap));
         }
         return { success: true, tripId: invite.tripId, alreadyJoined: false };
+      }),
+  }),
+  // ─── Nearest to Pin ─────────────────────────────────────────────────────────
+  ntp: router({
+    // Public: get all NTP holes for a round with entries and current leader
+    getByRound: publicProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(({ input }) => getNtpByRound(input.roundId)),
+
+    // Admin: toggle NTP on/off for a specific hole in a round
+    enableHole: adminProcedure
+      .input(z.object({ roundId: z.number(), holeId: z.number(), holeNumber: z.number() }))
+      .mutation(async ({ input }) => {
+        const id = await enableNtp(input.roundId, input.holeId, input.holeNumber);
+        return { id };
+      }),
+
+    disableHole: adminProcedure
+      .input(z.object({ roundId: z.number(), holeId: z.number() }))
+      .mutation(async ({ input }) => {
+        await disableNtp(input.roundId, input.holeId);
+        return { success: true };
+      }),
+
+    // Player: submit distance in cm for a NTP hole
+    submitEntry: protectedProcedure
+      .input(z.object({ ntpId: z.number(), distanceCm: z.number().min(0.1).max(10000) }))
+      .mutation(async ({ ctx, input }) => {
+        await submitNtpEntry(input.ntpId, ctx.user.id, input.distanceCm);
+        return { success: true };
+      }),
+
+    // Admin: confirm winner for a NTP hole
+    setWinner: adminProcedure
+      .input(z.object({ ntpId: z.number(), winnerId: z.number(), winnerDistanceCm: z.number() }))
+      .mutation(async ({ input }) => {
+        await setNtpWinner(input.ntpId, input.winnerId, input.winnerDistanceCm);
+        return { success: true };
       }),
   }),
 });

@@ -398,18 +398,21 @@ export async function markAchievementBroadcast(id: number): Promise<void> {
   await db.update(achievements).set({ broadcastSent: true }).where(eq(achievements.id, id));
 }
 
-export async function getAchievementsByTrip(tripId: number): Promise<Achievement[]> {
+export async function getAchievementsByTrip(tripId: number): Promise<(Achievement & { playerName: string | null })[]> {
   const db = await getDb();
   if (!db) return [];
   // Join through rounds to filter by tripId
   const roundList = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.tripId, tripId));
   const roundIds = roundList.map((r) => r.id);
   if (roundIds.length === 0) return [];
-  return db
-    .select()
+  const rows = await db
+    .select({ ach: achievements, userName: users.name, userNickname: tripPlayers.nickname })
     .from(achievements)
+    .leftJoin(users, eq(achievements.userId, users.id))
+    .leftJoin(tripPlayers, and(eq(tripPlayers.userId, achievements.userId), eq(tripPlayers.tripId, tripId)))
     .where(and(inArray(achievements.roundId, roundIds), eq(achievements.confirmed, true)))
     .orderBy(desc(achievements.createdAt));
+  return rows.map((r) => ({ ...r.ach, playerName: r.userNickname ?? r.userName ?? null }));
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -786,4 +789,80 @@ export async function setPlayerNickname(tripId: number, userId: number, nickname
     .update(tripPlayers)
     .set({ nickname: nickname || null })
     .where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, userId)));
+}
+
+// ─── Nearest to Pin ───────────────────────────────────────────────────────────
+
+import { NearestToPin, NtpEntry, nearestToPin, ntpEntries } from "../drizzle/schema";
+
+export async function getNtpByRound(roundId: number): Promise<(NearestToPin & {
+  entries: (NtpEntry & { userName: string | null })[];
+  winnerName: string | null;
+})[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const ntps = await db.select().from(nearestToPin).where(eq(nearestToPin.roundId, roundId)).orderBy(nearestToPin.holeNumber);
+  const result = [];
+  for (const ntp of ntps) {
+    const rawEntries = await db
+      .select({ entry: ntpEntries, userName: users.name, userNickname: tripPlayers.nickname })
+      .from(ntpEntries)
+      .leftJoin(users, eq(ntpEntries.userId, users.id))
+      // We need the tripId — get it from the round
+      .leftJoin(rounds, eq(rounds.id, ntp.roundId))
+      .leftJoin(tripPlayers, and(eq(tripPlayers.userId, ntpEntries.userId), eq(tripPlayers.tripId, rounds.tripId)))
+      .where(eq(ntpEntries.ntpId, ntp.id))
+      .orderBy(ntpEntries.distanceCm);
+    const entries = rawEntries.map((r) => ({
+      ...r.entry,
+      userName: r.userNickname ?? r.userName ?? null,
+    }));
+    let winnerName: string | null = null;
+    if (ntp.winnerId) {
+      const wRow = rawEntries.find((r) => r.entry.userId === ntp.winnerId);
+      winnerName = wRow ? (wRow.userNickname ?? wRow.userName ?? null) : null;
+    }
+    result.push({ ...ntp, entries, winnerName });
+  }
+  return result;
+}
+
+export async function enableNtp(roundId: number, holeId: number, holeNumber: number): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Upsert — only one NTP record per hole per round
+  const existing = await db.select().from(nearestToPin)
+    .where(and(eq(nearestToPin.roundId, roundId), eq(nearestToPin.holeId, holeId))).limit(1);
+  if (existing[0]) return existing[0].id;
+  const result = await db.insert(nearestToPin).values({ roundId, holeId, holeNumber });
+  return (result[0] as any).insertId as number;
+}
+
+export async function disableNtp(roundId: number, holeId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const ntp = await db.select().from(nearestToPin)
+    .where(and(eq(nearestToPin.roundId, roundId), eq(nearestToPin.holeId, holeId))).limit(1);
+  if (!ntp[0]) return;
+  await db.delete(ntpEntries).where(eq(ntpEntries.ntpId, ntp[0].id));
+  await db.delete(nearestToPin).where(eq(nearestToPin.id, ntp[0].id));
+}
+
+export async function submitNtpEntry(ntpId: number, userId: number, distanceCm: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Upsert — one entry per user per NTP hole
+  const existing = await db.select().from(ntpEntries)
+    .where(and(eq(ntpEntries.ntpId, ntpId), eq(ntpEntries.userId, userId))).limit(1);
+  if (existing[0]) {
+    await db.update(ntpEntries).set({ distanceCm }).where(eq(ntpEntries.id, existing[0].id));
+  } else {
+    await db.insert(ntpEntries).values({ ntpId, userId, distanceCm });
+  }
+}
+
+export async function setNtpWinner(ntpId: number, winnerId: number, winnerDistanceCm: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(nearestToPin).set({ winnerId, winnerDistanceCm }).where(eq(nearestToPin.id, ntpId));
 }
