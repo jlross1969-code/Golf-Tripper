@@ -77,16 +77,18 @@ export default function TripDashboard() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Players", value: players?.length ?? 0, icon: Users },
-            { label: "Rounds", value: rounds?.length ?? 0, icon: Calendar },
-            { label: "Completed", value: completedRounds.length, icon: Trophy },
-            { label: "Notifications", value: notifications?.length ?? 0, icon: Bell },
-          ].map(({ label, value, icon: Icon }) => (
-            <div key={label} className="bg-card border border-border rounded-xl p-4 text-center">
-              <Icon className="w-5 h-5 text-primary mx-auto mb-2" />
-              <div className="text-2xl font-bold text-foreground">{value}</div>
-              <div className="text-xs text-muted-foreground">{label}</div>
-            </div>
+            { label: "Players", value: players?.length ?? 0, icon: Users, href: `/trip/${id}/players` },
+            { label: "Rounds", value: rounds?.length ?? 0, icon: Calendar, href: `#rounds` },
+            { label: "Completed", value: completedRounds.length, icon: Trophy, href: `/trip/${id}/leaderboard` },
+            { label: "Notifications", value: notifications?.length ?? 0, icon: Bell, href: `/trip/${id}/notifications` },
+          ].map(({ label, value, icon: Icon, href }) => (
+            <Link key={label} href={href}>
+              <div className="bg-card border border-border rounded-xl p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors active:scale-[0.97] transition-transform">
+                <Icon className="w-5 h-5 text-primary mx-auto mb-2" />
+                <div className="text-2xl font-bold text-foreground">{value}</div>
+                <div className="text-xs text-muted-foreground">{label}</div>
+              </div>
+            </Link>
           ))}
         </div>
 
@@ -116,7 +118,7 @@ export default function TripDashboard() {
         )}
 
         {/* All Rounds */}
-        <div>
+        <div id="rounds">
           <h2 className="text-lg font-bold text-foreground mb-4">Rounds</h2>
           {!rounds || rounds.length === 0 ? (
             <div className="text-center py-8 bg-card border border-border rounded-xl text-muted-foreground">
