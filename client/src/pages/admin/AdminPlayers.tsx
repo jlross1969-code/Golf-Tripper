@@ -1,11 +1,9 @@
-import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Trash2, Users, Edit2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Users, Edit2, Mail } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -14,19 +12,27 @@ export default function AdminPlayers() {
   const id = Number(tripId);
 
   const { data: trip } = trpc.trips.get.useQuery({ id });
-  const { data: allUsers } = trpc.players.allUsers.useQuery();
   const { data: players, refetch } = trpc.players.tripPlayers.useQuery({ tripId: id });
+  const { data: invites, refetch: refetchInvites } = trpc.invites.list.useQuery({ tripId: id });
 
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [handicap, setHandicap] = useState("");
   const [editUserId, setEditUserId] = useState<number | null>(null);
   const [editHandicap, setEditHandicap] = useState("");
   const [editReason, setEditReason] = useState("");
 
-  const addPlayer = trpc.players.add.useMutation({
-    onSuccess: () => { toast.success("Player added"); setAddOpen(false); refetch(); setSelectedUserId(""); setHandicap(""); },
+  const addInvite = trpc.invites.create.useMutation({
+    onSuccess: () => {
+      toast.success("Player added — invite link ready");
+      setAddOpen(false);
+      refetch();
+      setNewName("");
+      setNewEmail("");
+      setHandicap("");
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -40,8 +46,7 @@ export default function AdminPlayers() {
     onError: (e) => toast.error(e.message),
   });
 
-  const existingUserIds = new Set(players?.map((p) => p.userId) ?? []);
-  const availableUsers = allUsers?.filter((u) => !existingUserIds.has(u.id)) ?? [];
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -54,9 +59,16 @@ export default function AdminPlayers() {
             <p className="text-xs text-muted-foreground">{trip?.name}</p>
           </div>
         </div>
-        <Button size="sm" className="gap-2" onClick={() => setAddOpen(true)}>
-          <Plus className="w-4 h-4" /> Add Player
-        </Button>
+        <div className="flex gap-2">
+          <Link href={`/admin/trips/${id}/roster`}>
+            <Button size="sm" variant="outline" className="gap-2">
+              <Mail className="w-4 h-4" /> Invite via Link
+            </Button>
+          </Link>
+          <Button size="sm" className="gap-2" onClick={() => setAddOpen(true)}>
+            <Plus className="w-4 h-4" /> Add Player
+          </Button>
+        </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
@@ -105,36 +117,58 @@ export default function AdminPlayers() {
         )}
       </div>
 
-      {/* Add Player Dialog */}
+      {/* Add Player Dialog — free-text entry, creates invite record */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Add Player to Trip</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-2">Enter the player's details. An invite link will be generated that you can share with them via WhatsApp or SMS.</p>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">Player</label>
-              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select player..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableUsers.map((u) => (
-                    <SelectItem key={u.id} value={u.id.toString()}>{u.name ?? u.email ?? `User ${u.id}`}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium text-foreground mb-1 block">Full Name</label>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. John Smith"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Email (optional)</label>
+              <Input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="e.g. john@example.com"
+                autoComplete="off"
+              />
             </div>
             <div>
               <label className="text-sm font-medium text-foreground mb-1 block">Starting Handicap</label>
-              <Input type="number" min={0} max={54} value={handicap} onChange={(e) => setHandicap(e.target.value)} placeholder="e.g. 18" />
+              <Input
+                type="number"
+                min={0}
+                max={54}
+                value={handicap}
+                onChange={(e) => setHandicap(e.target.value)}
+                placeholder="e.g. 18"
+              />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button
-              disabled={!selectedUserId || !handicap || addPlayer.isPending}
-              onClick={() => addPlayer.mutate({ tripId: id, userId: Number(selectedUserId), startingHandicap: Number(handicap) })}
+              disabled={!newName.trim() || !handicap || addInvite.isPending}
+              onClick={() =>
+                addInvite.mutate({
+                  tripId: id,
+                  name: newName.trim(),
+                  email: newEmail.trim() || `${newName.trim().toLowerCase().replace(/\s+/g, '.')}.noemail@golftrip.local`,
+                  startingHandicap: Number(handicap),
+                  origin: window.location.origin,
+                })
+              }
             >
-              Add Player
+              {addInvite.isPending ? "Adding..." : "Add Player"}
             </Button>
           </DialogFooter>
         </DialogContent>

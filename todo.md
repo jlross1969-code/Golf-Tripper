@@ -99,16 +99,16 @@
 
 ## Phase 10 — Player Invite System
 
-- [ ] Extend DB schema: trip_invites table (id, tripId, email, name, token, status, expiresAt, createdAt)
-- [ ] Backend: generate unique invite token per player per trip
-- [ ] Backend: trip-level shareable link (single token for whole trip, no email required)
-- [ ] Backend: email invite dispatch using built-in notification/email API
-- [ ] Backend: join-via-token handler — validates token, creates/links user account, adds to trip_players
-- [ ] Backend: tRPC procedures — createInvite, listInvites, resendInvite, revokeInvite, joinViaToken
-- [ ] Admin UI: Roster page — add players by name + email, view invite status (pending/accepted/revoked)
-- [ ] Admin UI: Copy shareable trip link button
-- [ ] Admin UI: Send invite email button per player, resend and revoke actions
-- [ ] Player UI: /join/:token landing page — shows trip name, player name, Login to Join CTA
-- [ ] Player UI: Auto-join trip after OAuth login when token is in session
-- [ ] Player UI: Welcome confirmation screen after joining
-- [ ] Tests and checkpoint
+- [x] Extend DB schema: trip_invites table (id, tripId, email, name, token, status, expiresAt, createdAt)
+- [x] Backend: generate unique invite token per player per trip
+- [x] Backend: trip-level shareable link (single token for whole trip, no email required)
+- [x] Backend: email invite dispatch using built-in notification/email API
+- [x] Backend: join-via-token handler — validates token, creates/links user account, adds to trip_players
+- [x] Backend: tRPC procedures — createInvite, listInvites, resendInvite, revokeInvite, joinViaToken
+- [x] Admin UI: Roster page — add players by name + email, view invite status (pending/accepted/revoked)
+- [x] Admin UI: Copy shareable trip link button
+- [x] Admin UI: Send invite email button per player, resend and revoke actions
+- [x] Player UI: /join/:token landing page — shows trip name, player name, Login to Join CTA
+- [x] Player UI: Auto-join trip after OAuth login when token is in session
+- [x] Player UI: Welcome confirmation screen after joining
+- [x] Tests and checkpoint
