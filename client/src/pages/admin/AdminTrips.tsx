@@ -67,26 +67,31 @@ export default function AdminTrips() {
                 <p className="text-xs text-muted-foreground mb-4">
                   {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
                 </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Link href={`/admin/trips/${trip.id}/players`}>
-                    <Button variant="outline" size="sm" className="w-full gap-1 text-xs">
-                      <Users className="w-3 h-3" /> Players
-                    </Button>
-                  </Link>
-                  <Link href={`/admin/trips/${trip.id}/rounds`}>
-                    <Button variant="outline" size="sm" className="w-full gap-1 text-xs">
-                      <Calendar className="w-3 h-3" /> Rounds
-                    </Button>
-                  </Link>
-                  <Link href={`/admin/trips/${trip.id}/handicap`}>
-                    <Button variant="outline" size="sm" className="w-full gap-1 text-xs">
-                      <BarChart2 className="w-3 h-3" /> Handicap
-                    </Button>
-                  </Link>
+                <div className="grid grid-cols-1 gap-2 mt-4">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Link href={`/admin/trips/${trip.id}/players`}>
+                      <button className="w-full flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-lg bg-emerald-900/40 border border-emerald-700/50 hover:bg-emerald-800/50 active:scale-95 transition-all text-emerald-300">
+                        <Users className="w-5 h-5" />
+                        <span className="text-xs font-semibold">Players</span>
+                      </button>
+                    </Link>
+                    <Link href={`/admin/trips/${trip.id}/rounds`}>
+                      <button className="w-full flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-lg bg-emerald-900/40 border border-emerald-700/50 hover:bg-emerald-800/50 active:scale-95 transition-all text-emerald-300">
+                        <Calendar className="w-5 h-5" />
+                        <span className="text-xs font-semibold">Rounds</span>
+                      </button>
+                    </Link>
+                    <Link href={`/admin/trips/${trip.id}/handicap`}>
+                      <button className="w-full flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-lg bg-emerald-900/40 border border-emerald-700/50 hover:bg-emerald-800/50 active:scale-95 transition-all text-emerald-300">
+                        <BarChart2 className="w-5 h-5" />
+                        <span className="text-xs font-semibold">Handicap</span>
+                      </button>
+                    </Link>
+                  </div>
                   <Link href={`/trip/${trip.id}`}>
-                    <Button size="sm" className="w-full gap-1 text-xs">
-                      <ChevronRight className="w-3 h-3" /> View Trip
-                    </Button>
+                    <button className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all text-white font-semibold text-sm">
+                      View Trip <ChevronRight className="w-4 h-4" />
+                    </button>
                   </Link>
                 </div>
               </div>
