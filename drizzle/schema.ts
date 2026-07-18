@@ -56,7 +56,7 @@ export const trips = mysqlTable("trips", {
   endDate: timestamp("endDate").notNull(),
   // Handicap adjustment config
   handicapMode: mysqlEnum("handicapMode", ["stableford", "net_stroke"]).default("stableford").notNull(),
-  handicapBaseline: float("handicapBaseline").default(32).notNull(),
+  handicapBaseline: float("handicapBaseline").default(0).notNull(),
   handicapFactor: float("handicapFactor").default(0.25).notNull(),
   handicapAutoAdjust: boolean("handicapAutoAdjust").default(true).notNull(),
   createdBy: int("createdBy").notNull(),

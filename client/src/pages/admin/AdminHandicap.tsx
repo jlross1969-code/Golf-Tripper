@@ -23,14 +23,32 @@ export default function AdminHandicap() {
   const [autoAdjust, setAutoAdjust] = useState(true);
   const [mode, setMode] = useState<"stableford" | "net_stroke">("stableford");
 
+  // Sensible defaults per mode
+  const DEFAULT_BASELINE: Record<"stableford" | "net_stroke", number> = { stableford: 34, net_stroke: 70 };
+
   useEffect(() => {
     if (trip) {
-      setBaseline(trip.handicapBaseline.toString());
+      // If the stored baseline is still 0 (never configured), apply the mode-appropriate default
+      const storedBaseline = trip.handicapBaseline;
+      const storedMode = trip.handicapMode as "stableford" | "net_stroke";
+      const effectiveBaseline = storedBaseline === 0 ? DEFAULT_BASELINE[storedMode] : storedBaseline;
+      setBaseline(effectiveBaseline.toString());
       setFactor(trip.handicapFactor.toString());
       setAutoAdjust(trip.handicapAutoAdjust);
-      setMode(trip.handicapMode as "stableford" | "net_stroke");
+      setMode(storedMode);
     }
   }, [trip]);
+
+  // When the admin switches scoring mode, reset baseline to the new mode's default
+  // only if the current value matches the OTHER mode's default (i.e. hasn't been customised)
+  const handleModeChange = (newMode: "stableford" | "net_stroke") => {
+    const currentBaseline = parseFloat(baseline);
+    const oldDefault = DEFAULT_BASELINE[mode];
+    if (isNaN(currentBaseline) || currentBaseline === oldDefault) {
+      setBaseline(DEFAULT_BASELINE[newMode].toString());
+    }
+    setMode(newMode);
+  };
 
   const updateTrip = trpc.trips.update.useMutation({
     onSuccess: () => { toast.success("Handicap settings saved"); refetchTrip(); },
@@ -86,7 +104,7 @@ export default function AdminHandicap() {
                   {(["stableford", "net_stroke"] as const).map((m) => (
                     <button
                       key={m}
-                      onClick={() => setMode(m)}
+                      onClick={() => handleModeChange(m)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                         mode === m ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border hover:border-primary/50"
                       }`}
@@ -103,7 +121,12 @@ export default function AdminHandicap() {
                     Baseline Score
                     <span className="text-muted-foreground font-normal ml-1">({mode === "stableford" ? "points" : "strokes"})</span>
                   </label>
-                  <Input type="number" value={baseline} onChange={(e) => setBaseline(e.target.value)} placeholder="e.g. 32" />
+                  <Input
+                    type="number"
+                    value={baseline}
+                    onChange={(e) => setBaseline(e.target.value)}
+                    placeholder={mode === "stableford" ? "e.g. 34" : "e.g. 70"}
+                  />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1 block">Adjustment Factor</label>
