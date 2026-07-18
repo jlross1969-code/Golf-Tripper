@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download } from "lucide-react";
+import { ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download, Target } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import AchievementAlert from "@/components/AchievementAlert";
 
 function positionBadge(pos: number) {
   if (pos === 1) return <span className="text-yellow-400 font-bold text-lg">🥇</span>;
@@ -24,6 +25,7 @@ export default function DailyLeaderboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      {data && <AchievementAlert tripId={data.round.tripId} />}
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()}>
@@ -36,6 +38,12 @@ export default function DailyLeaderboard() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Link href={`/round/${id}/ntp`}>
+            <Button variant="outline" size="sm" className="gap-2">
+              <Target className="w-3 h-3" />
+              NTP
+            </Button>
+          </Link>
           <a href={`/api/pdf/scorecard/${id}`} target="_blank" rel="noopener noreferrer">
             <Button variant="outline" size="sm" className="gap-2">
               <Download className="w-3 h-3" />

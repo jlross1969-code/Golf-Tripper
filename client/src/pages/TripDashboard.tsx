@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -16,6 +16,7 @@ export default function TripDashboard() {
   const { data: rounds, isLoading: roundsLoading } = trpc.rounds.list.useQuery({ tripId: id });
   const { data: players } = trpc.players.tripPlayers.useQuery({ tripId: id });
   const { data: notifications } = trpc.notifications.list.useQuery({ tripId: id, limit: 5 });
+  const { data: achievements } = trpc.achievements.listByTrip.useQuery({ tripId: id });
 
   if (tripLoading) {
     return (
@@ -174,6 +175,11 @@ export default function TripDashboard() {
                                 <Flag className="w-3 h-3" /> Score
                               </Button>
                             </Link>
+                            <Link href={`/round/${round.id}/ntp`}>
+                              <Button size="sm" variant="outline" className="gap-1">
+                                <Target className="w-3 h-3" /> NTP
+                              </Button>
+                            </Link>
                             {(round as any).matchPlayEnabled && (
                               <Link href={`/round/${round.id}/match-play`}>
                                 <Button size="sm" variant="outline" className="gap-1">
@@ -198,6 +204,34 @@ export default function TripDashboard() {
             </div>
           )}
         </div>
+
+        {/* Achievements Feed */}
+        {achievements && achievements.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-primary" /> Achievements
+              </h2>
+            </div>
+            <div className="space-y-2">
+              {achievements.slice(0, 5).map((a) => {
+                const cfg = a.type === "hole_in_one" ? { label: "Hole in One!", color: "text-yellow-400" } :
+                  a.type === "eagle" ? { label: "Eagle", color: "text-purple-400" } :
+                  { label: "Birdie", color: "text-red-400" };
+                return (
+                  <div key={a.id} className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
+                    <Trophy className={`w-4 h-4 flex-shrink-0 ${cfg.color}`} />
+                    <div className="flex-1 min-w-0">
+                      <span className={`font-semibold text-sm ${cfg.color}`}>{cfg.label}</span>
+                      <span className="text-sm text-foreground ml-2">{a.playerName ?? "A player"}</span>
+                      <span className="text-xs text-muted-foreground ml-2">Hole {a.holeNumber}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Recent Notifications */}
         {notifications && notifications.length > 0 && (

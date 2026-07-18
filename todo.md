@@ -138,19 +138,19 @@
 
 ## Session - Alerts, NTP & UX Improvements
 
-- [ ] Add My Handicap Journey shortcut card on Trip Dashboard
-- [ ] Show effective baseline on Daily Leaderboard header
-- [ ] Add Edit Nickname button on My Handicap Journey page
-- [ ] DB: nearest_to_pin table (id, roundId, holeId, holeNumber, enabled, winnerId, distanceCm, createdAt)
-- [ ] DB: ntp_entries table (id, ntpId, userId, distanceCm, submittedAt)
-- [ ] Apply DB migration for NTP tables
-- [ ] Backend: ntp.setHoles (admin) — enable/disable NTP per hole for a round
-- [ ] Backend: ntp.submitEntry (player) — submit distance in cm
-- [ ] Backend: ntp.getByRound — list all NTP holes + current leader per hole
-- [ ] Backend: ntp.setWinner (admin) — confirm winner for a hole
-- [ ] Admin UI: NTP hole selector on AdminGroups or AdminRounds (toggle per hole, set winner)
-- [ ] Player UI: NTP entry form on ScoreEntry or dedicated NTP page
-- [ ] Player UI: NTP results view (leaderboard per hole)
-- [ ] Eagle/Birdie/HIO: verify detection + broadcast notification already works
-- [ ] Eagle/Birdie/HIO: add real-time alert banner visible to all players in the trip (polling-based)
-- [ ] Eagle/Birdie/HIO: show achievement feed on Trip Dashboard / Notification Feed
+- [x] Add My Handicap Journey shortcut card on Trip Dashboard
+- [x] Show effective baseline on Daily Leaderboard header
+- [x] Add Edit Nickname button on My Handicap Journey page
+- [x] DB: nearest_to_pin table (id, roundId, holeId, holeNumber, enabled, winnerId, distanceCm, createdAt)
+- [x] DB: ntp_entries table (id, ntpId, userId, distanceCm, submittedAt)
+- [x] Apply DB migration for NTP tables
+- [x] Backend: ntp.setHoles (admin) — enable/disable NTP per hole for a round
+- [x] Backend: ntp.submitEntry (player) — submit distance in cm
+- [x] Backend: ntp.getByRound — list all NTP holes + current leader per hole
+- [x] Backend: ntp.setWinner (admin) — confirm winner for a hole
+- [x] Admin UI: NTP hole selector on AdminGroups or AdminRounds (toggle per hole, set winner)
+- [x] Player UI: NTP entry form on ScoreEntry (cm input appears inline for NTP-enabled holes)
+- [x] Player UI: NTP results view (entries sorted by distance, current leader highlighted)
+- [x] Eagle/Birdie/HIO: verify detection + broadcast notification already works
+- [x] Eagle/Birdie/HIO: add real-time alert banner visible to all players in the trip (polling-based)
+- [x] Eagle/Birdie/HIO: show achievement feed on Trip Dashboard / Notification Feed

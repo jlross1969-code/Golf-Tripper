@@ -26,6 +26,7 @@ import AdminRoster from "./pages/admin/AdminRoster";
 import AdminNTP from "./pages/admin/AdminNTP";
 import TripPlayers from "./pages/TripPlayers";
 import MyHandicap from "./pages/MyHandicap";
+import NTPResults from "./pages/NTPResults";
 
 function Router() {
   return (
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/trip/:tripId/chat" component={TripChat} />
       <Route path="/trip/:tripId/players" component={TripPlayers} />
       <Route path="/trip/:tripId/my-handicap" component={MyHandicap} />
+      <Route path="/round/:roundId/ntp" component={NTPResults} />
       <Route path="/admin" component={AdminTrips} />
       <Route path="/admin/trips" component={AdminTrips} />
       <Route path="/admin/trips/:id" component={AdminTripDetail} />
