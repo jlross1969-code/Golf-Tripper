@@ -55,6 +55,7 @@ import {
   setPair,
   selfPair,
   lockGroupPairs,
+  unlockGroupPairs,
   getMyGroupForRound,
   recalcGroupMatch,
   removePlayerFromGroup,
@@ -157,6 +158,8 @@ export const appRouter = router({
           handicapBaseline: z.number().default(0),
           handicapFactor: z.number().default(0.25),
           handicapAutoAdjust: z.boolean().default(true),
+          location: z.string().optional(),
+          description: z.string().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -169,6 +172,8 @@ export const appRouter = router({
           handicapBaseline: input.handicapBaseline,
           handicapFactor: input.handicapFactor,
           handicapAutoAdjust: input.handicapAutoAdjust,
+          location: input.location,
+          description: input.description,
         });
         return { tripId };
       }),
@@ -184,6 +189,8 @@ export const appRouter = router({
           handicapBaseline: z.number().optional(),
           handicapFactor: z.number().optional(),
           handicapAutoAdjust: z.boolean().optional(),
+          location: z.string().optional(),
+          description: z.string().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -437,6 +444,14 @@ export const appRouter = router({
         const result = await lockGroupPairs(input.groupId, input.roundId);
         if (!result.matchId && result.error) throw new TRPCError({ code: "BAD_REQUEST", message: result.error });
         return { matchId: result.matchId };
+      }),
+
+    // Admin: unlock pairs so they can be reassigned
+    unlockPairs: adminProcedure
+      .input(z.object({ groupId: z.number() }))
+      .mutation(async ({ input }) => {
+        await unlockGroupPairs(input.groupId);
+        return { success: true };
       }),
 
     // Admin: remove a player from a group (frees them for other groups)
@@ -1123,6 +1138,46 @@ export const appRouter = router({
           await import("./db").then(m => m.addPlayerToTrip(invite.tripId, ctx.user!.id, invite.startingHandicap));
         }
         return { success: true, tripId: invite.tripId, alreadyJoined: false };
+      }),
+    // Admin: get or create a trip-level shareable link (open invite token on the trip row)
+    getShareLink: adminProcedure
+      .input(z.object({ tripId: z.number(), origin: z.string().url() }))
+      .mutation(async ({ input }) => {
+        const db = await import("./db");
+        const drizzleDb = await db.getDb();
+        if (!drizzleDb) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { trips } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const rows = await drizzleDb.select().from(trips).where(eq(trips.id, input.tripId)).limit(1);
+        const trip = rows[0];
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        let token = trip.shareToken;
+        if (!token) {
+          const { nanoid } = await import("nanoid");
+          token = nanoid(32);
+          await drizzleDb.update(trips).set({ shareToken: token }).where(eq(trips.id, input.tripId));
+        }
+        return { shareUrl: `${input.origin}/join-trip/${input.tripId}?t=${token}` };
+      }),
+    // Public: accept a trip-level share link (no pre-registered invite needed)
+    acceptShareLink: protectedProcedure
+      .input(z.object({ tripId: z.number(), token: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const db = await import("./db");
+        const drizzleDb = await db.getDb();
+        if (!drizzleDb) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { trips } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const rows = await drizzleDb.select().from(trips).where(eq(trips.id, input.tripId)).limit(1);
+        const trip = rows[0];
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        if (trip.shareToken !== input.token) throw new TRPCError({ code: "FORBIDDEN", message: "Invalid share token" });
+        const existing = await db.getTripPlayer(input.tripId, ctx.user.id);
+        if (!existing) {
+          await db.addPlayerToTrip(input.tripId, ctx.user.id, 0);
+        }
+        return { success: true, tripId: input.tripId, alreadyJoined: !!existing };
       }),
   }),
   // ─── Nearest to Pin ─────────────────────────────────────────────────────────

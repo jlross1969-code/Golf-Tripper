@@ -186,13 +186,25 @@
 
 ## Session - Trip/Round Management & Test Data
 
-- [ ] Backend: trips.delete procedure (only if status is upcoming or completed, cascade delete rounds/groups/players)
-- [ ] Backend: trips.update procedure (edit name, dates, description, location)
-- [ ] Backend: rounds.update procedure (edit name, date, course, format, scoring type, status)
-- [ ] Admin UI: Delete Trip button on AdminTrip with typed confirmation dialog (type trip name to confirm)
-- [ ] Admin UI: Edit Trip dialog on AdminTrip (name, dates, location, description)
-- [ ] Admin UI: Edit Round dialog on AdminRounds (all round fields editable at any time)
-- [ ] Admin UI: Remove player from group mid-round (already exists, verify it works)
-- [ ] Admin UI: Unlock pairs button in AdminGroups (allow re-pairing after lock)
-- [ ] Seed: 2 new test trips with 16 randomised players each
-- [ ] Tests and checkpoint
+- [x] Backend: trips.delete procedure (only if status is upcoming or completed, cascade delete rounds/groups/players)
+- [x] Backend: trips.update procedure (edit name, dates, description, location)
+- [x] Backend: rounds.update procedure (edit name, date, course, format, scoring type, status)
+- [x] Admin UI: Delete Trip button on AdminTrip with typed confirmation dialog (type DELETE to confirm)
+- [x] Admin UI: Edit Trip dialog on AdminTrip (name, dates)
+- [x] Admin UI: Edit Round dialog on AdminRounds (all round fields editable at any time)
+- [x] Admin UI: Remove player from group mid-round (already exists, verify it works)
+- [x] Admin UI: Unlock pairs button in AdminGroups (allow re-pairing after lock)
+- [x] Seed: 2 new test trips with 16 randomised players each (Sunshine Coast Classic + Hunter Valley Open)
+- [x] Tests and checkpoint
+
+## Session - Unlock Pairs, Trip Location/Description, Copy Invite Link
+
+- [x] DB: add location (varchar 255, nullable) and description (text, nullable) to trips table
+- [x] Apply DB migration for trips location/description
+- [x] Backend: groups.unlockPairs procedure (admin only, clears pairsLocked flag)
+- [x] Backend: trips.create and trips.update accept location and description fields
+- [x] Admin UI: Unlock Pairs button in AdminGroups (visible when pairs are locked)
+- [x] Admin UI: location and description fields in Create Trip and Edit Trip dialogs
+- [x] Admin UI: Copy Invite Link button on each trip card in AdminTrips
+- [x] Home: Copy Invite Link shortcut on trip cards for admin users
+- [x] Tests and checkpoint

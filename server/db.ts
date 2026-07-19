@@ -153,6 +153,8 @@ export async function createTrip(data: {
   handicapBaseline?: number;
   handicapFactor?: number;
   handicapAutoAdjust?: boolean;
+  location?: string;
+  description?: string;
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -165,6 +167,8 @@ export async function createTrip(data: {
     handicapBaseline: data.handicapBaseline ?? 0,
     handicapFactor: data.handicapFactor ?? 0.25,
     handicapAutoAdjust: data.handicapAutoAdjust ?? true,
+    ...(data.location !== undefined ? { location: data.location } : {}),
+    ...(data.description !== undefined ? { description: data.description } : {}),
   });
   return (result[0] as any).insertId;
 }
@@ -1277,4 +1281,14 @@ export async function autoGroupRound(
   }
 
   return { groupIds, totalPlayers: paired.length };
+}
+
+/**
+ * Unlock pairs for a group — clears pairsLocked flag so pairs can be reassigned.
+ * Does NOT delete the existing matchplay record (keeps history), but marks it as voided.
+ */
+export async function unlockGroupPairs(groupId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(groups).set({ pairsLocked: false }).where(eq(groups.id, groupId));
 }

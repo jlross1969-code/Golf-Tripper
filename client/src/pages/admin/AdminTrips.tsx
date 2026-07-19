@@ -2,10 +2,11 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "wouter";
-import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle, Copy, MapPin } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -14,6 +15,8 @@ type Trip = {
   name: string;
   startDate: Date;
   endDate: Date;
+  location?: string | null;
+  description?: string | null;
   status?: string;
   activeRoundName?: string | null;
 };
@@ -28,6 +31,8 @@ export default function AdminTrips() {
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [location, setLocation] = useState("");
+  const [description, setDescription] = useState("");
 
   // Edit
   const [editOpen, setEditOpen] = useState(false);
@@ -35,6 +40,8 @@ export default function AdminTrips() {
   const [editName, setEditName] = useState("");
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [editDescription, setEditDescription] = useState("");
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -46,7 +53,7 @@ export default function AdminTrips() {
       toast.success("Trip created");
       setCreateOpen(false);
       refetch();
-      setName(""); setStartDate(""); setEndDate("");
+      setName(""); setStartDate(""); setEndDate(""); setLocation(""); setDescription("");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -71,11 +78,14 @@ export default function AdminTrips() {
     onError: (e) => toast.error(e.message),
   });
 
+
   function openEdit(trip: Trip) {
     setEditTrip(trip);
     setEditName(trip.name);
     setEditStart(new Date(trip.startDate).toISOString().split("T")[0]);
     setEditEnd(new Date(trip.endDate).toISOString().split("T")[0]);
+    setEditLocation(trip.location ?? "");
+    setEditDescription(trip.description ?? "");
     setEditOpen(true);
   }
 
@@ -88,6 +98,22 @@ export default function AdminTrips() {
   function canDelete(trip: Trip) {
     const status = trip.status;
     return status === "upcoming" || status === "completed";
+  }
+
+  const getShareLinkMutation = trpc.invites.getShareLink.useMutation({
+    onSuccess: async (data) => {
+      try {
+        await navigator.clipboard.writeText(data.shareUrl);
+        toast.success("Invite link copied to clipboard!");
+      } catch {
+        toast.error("Could not copy to clipboard");
+      }
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function copyInviteLink(tripId: number) {
+    getShareLinkMutation.mutate({ tripId, origin: window.location.origin });
   }
 
   const statusColor: Record<string, string> = {
@@ -138,6 +164,7 @@ export default function AdminTrips() {
             {trips.map((trip) => {
               const status = (trip as any).status as string | undefined;
               const activeRound = (trip as any).activeRoundName as string | null | undefined;
+              const tripLocation = (trip as any).location as string | null | undefined;
               return (
                 <div key={trip.id} className="bg-card border border-border rounded-xl p-5">
                   <div className="flex items-start justify-between mb-2">
@@ -146,6 +173,11 @@ export default function AdminTrips() {
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
                       </p>
+                      {tripLocation && (
+                        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                          <MapPin className="w-3 h-3 shrink-0" />{tripLocation}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
                       {status && (
@@ -163,10 +195,15 @@ export default function AdminTrips() {
                     </p>
                   )}
 
-                  {/* Edit & Delete row */}
-                  <div className="flex gap-2 mb-3">
+                  {/* Edit, Delete & Copy Invite row */}
+                  <div className="flex gap-2 mb-3 flex-wrap">
                     <Button size="sm" variant="outline" className="gap-1 text-xs flex-1" onClick={() => openEdit(trip as Trip)}>
-                      <Pencil className="w-3 h-3" /> Edit Trip
+                      <Pencil className="w-3 h-3" /> Edit
+                    </Button>
+                    <Button size="sm" variant="outline" className="gap-1 text-xs flex-1 text-primary border-primary/30 hover:bg-primary/10"
+                      disabled={getShareLinkMutation.isPending}
+                      onClick={() => copyInviteLink(trip.id)}>
+                      <Copy className="w-3 h-3" /> Copy Invite
                     </Button>
                     {canDelete(trip as Trip) ? (
                       <Button size="sm" variant="outline" className="gap-1 text-xs text-red-400 border-red-800 hover:bg-red-900/30" onClick={() => openDelete(trip as Trip)}>
@@ -215,29 +252,37 @@ export default function AdminTrips() {
 
       {/* Create Trip Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Create New Trip</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">Trip Name</label>
+              <label className="text-sm font-medium text-foreground mb-1 block">Trip Name *</label>
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Scotland 2025" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium text-foreground mb-1 block">Start Date</label>
+                <label className="text-sm font-medium text-foreground mb-1 block">Start Date *</label>
                 <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
               </div>
               <div>
-                <label className="text-sm font-medium text-foreground mb-1 block">End Date</label>
+                <label className="text-sm font-medium text-foreground mb-1 block">End Date *</label>
                 <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
               </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Location</label>
+              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. St Andrews, Scotland" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Description</label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional trip notes or details..." rows={3} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
               disabled={!name || !startDate || !endDate || createTrip.isPending}
-              onClick={() => createTrip.mutate({ name, startDate, endDate })}
+              onClick={() => createTrip.mutate({ name, startDate, endDate, location: location || undefined, description: description || undefined })}
             >
               Create Trip
             </Button>
@@ -247,29 +292,44 @@ export default function AdminTrips() {
 
       {/* Edit Trip Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Edit Trip</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">Trip Name</label>
+              <label className="text-sm font-medium text-foreground mb-1 block">Trip Name *</label>
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Trip name" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium text-foreground mb-1 block">Start Date</label>
+                <label className="text-sm font-medium text-foreground mb-1 block">Start Date *</label>
                 <Input type="date" value={editStart} onChange={(e) => setEditStart(e.target.value)} />
               </div>
               <div>
-                <label className="text-sm font-medium text-foreground mb-1 block">End Date</label>
+                <label className="text-sm font-medium text-foreground mb-1 block">End Date *</label>
                 <Input type="date" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} />
               </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Location</label>
+              <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="e.g. St Andrews, Scotland" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Description</label>
+              <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Optional trip notes or details..." rows={3} />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button
               disabled={!editName || !editStart || !editEnd || updateTrip.isPending}
-              onClick={() => editTrip && updateTrip.mutate({ id: editTrip.id, name: editName, startDate: editStart, endDate: editEnd })}
+              onClick={() => editTrip && updateTrip.mutate({
+                id: editTrip.id,
+                name: editName,
+                startDate: editStart,
+                endDate: editEnd,
+                location: editLocation || undefined,
+                description: editDescription || undefined,
+              })}
             >
               Save Changes
             </Button>

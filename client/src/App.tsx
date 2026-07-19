@@ -22,6 +22,7 @@ import TripDashboard from "./pages/TripDashboard";
 import TripChat from "./pages/TripChat";
 import MatchPlay from "./pages/MatchPlay";
 import JoinTrip from "./pages/JoinTrip";
+import JoinTripShare from "./pages/JoinTripShare";
 import AdminRoster from "./pages/admin/AdminRoster";
 import AdminNTP from "./pages/admin/AdminNTP";
 import TripPlayers from "./pages/TripPlayers";
@@ -56,6 +57,7 @@ function Router() {
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />
       <Route path="/join/:token" component={JoinTrip} />
+      <Route path="/join-trip/:tripId" component={JoinTripShare} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

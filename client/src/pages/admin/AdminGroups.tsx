@@ -89,6 +89,11 @@ export default function AdminGroups() {
     onError: (e) => toast.error(e.message),
   });
 
+  const unlockPairs = trpc.groups.unlockPairs.useMutation({
+    onSuccess: () => { toast.success("Pairs unlocked — you can now reassign players"); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+
   const autoGroup = trpc.groups.autoGroup.useMutation({
     onSuccess: (data) => {
       toast.success(`Auto-grouped ${data.totalPlayers} players into ${data.groupIds.length} groups with pairs assigned`);
@@ -247,6 +252,13 @@ export default function AdminGroups() {
                       disabled={lockPairs.isPending}
                       onClick={() => lockPairs.mutate({ groupId: group.id, roundId: rId })}>
                       <Lock className="w-3 h-3" /> Lock
+                    </Button>
+                  )}
+                  {group.pairsLocked && (
+                    <Button size="sm" variant="outline" className="gap-1 text-xs text-amber-400 border-amber-500/40 hover:bg-amber-500/10"
+                      disabled={unlockPairs.isPending}
+                      onClick={() => unlockPairs.mutate({ groupId: group.id })}>
+                      <Lock className="w-3 h-3" /> Unlock
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive h-8 w-8 p-0"
