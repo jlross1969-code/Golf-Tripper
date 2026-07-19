@@ -3,7 +3,8 @@ import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
-import { Trophy, Flag, Users, BarChart2, Bell, ChevronRight, LogIn } from "lucide-react";
+import { Trophy, Flag, Users, BarChart2, Bell, ChevronRight, LogIn, Radio } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export default function Home() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -51,22 +52,40 @@ export default function Home() {
             </div>
           ) : trips.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {trips.map((trip) => (
-                <Link key={trip.id} href={`/trip/${trip.id}`}>
-                  <div className="bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:bg-accent transition-colors cursor-pointer group active:scale-[0.97]">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
-                        <Flag className="w-5 h-5 text-primary" />
+              {trips.map((trip) => {
+                const statusConfig: Record<string, { label: string; className: string }> = {
+                  active: { label: "Live", className: "bg-primary text-primary-foreground" },
+                  "in-progress": { label: "In Progress", className: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
+                  completed: { label: "Completed", className: "bg-muted text-muted-foreground" },
+                  upcoming: { label: "Upcoming", className: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
+                };
+                const sc = statusConfig[(trip as any).status] ?? statusConfig.upcoming;
+                return (
+                  <Link key={trip.id} href={`/trip/${trip.id}`}>
+                    <div className="bg-card border border-border rounded-xl p-5 hover:border-primary/50 hover:bg-accent transition-colors cursor-pointer group active:scale-[0.97]">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
+                            <Flag className="w-5 h-5 text-primary" />
+                          </div>
+                          <Badge className={`text-xs border ${sc.className}`}>{sc.label}</Badge>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                       </div>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <h3 className="font-semibold text-foreground mb-1">{trip.name}</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
+                      </p>
+                      {(trip as any).activeRoundName && (
+                        <div className="flex items-center gap-1.5 mt-2 text-xs text-primary font-medium">
+                          <Radio className="w-3 h-3" />
+                          {(trip as any).activeRoundName} — Live
+                        </div>
+                      )}
                     </div>
-                    <h3 className="font-semibold text-foreground mb-1">{trip.name}</h3>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-10 bg-card border border-border rounded-xl">
@@ -82,45 +101,45 @@ export default function Home() {
         </section>
       )}
 
-      {/* Hero — shown to everyone, but compact when logged in */}
-      <section className={`px-6 text-center max-w-3xl mx-auto ${isAuthenticated ? "py-8" : "py-16"}`}>
-        <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-sm font-medium mb-6">
-          <Trophy className="w-4 h-4" />
-          Competitive Golf Trip Management
-        </div>
-        <h1 className={`font-extrabold text-foreground mb-4 leading-tight ${isAuthenticated ? "text-3xl" : "text-5xl"}`}>
-          Run Your Golf Trip<br />
-          <span className="text-primary">Like a Pro</span>
-        </h1>
-        <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
-          Live leaderboards, automatic handicap adjustment, Stroke Play, 4BBB and Skins scoring — all in one place for your group.
-        </p>
-        {!isAuthenticated && (
-          <Button size="lg" onClick={() => { window.location.href = getLoginUrl(); }} className="gap-2 text-base px-8">
-            Get Started <ChevronRight className="w-5 h-5" />
-          </Button>
-        )}
-      </section>
-
-      {/* Feature cards */}
-      <section className="px-6 pb-16 max-w-5xl mx-auto w-full">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { icon: BarChart2, title: "Live Leaderboards", desc: "Daily & trip-wide standings updated hole by hole" },
-            { icon: Flag, title: "Multi-Format Scoring", desc: "Stroke Play, 4BBB and Skins running concurrently" },
-            { icon: Users, title: "Handicap Engine", desc: "Auto-adjusts handicaps after every round" },
-            { icon: Bell, title: "Achievement Alerts", desc: "Instant notifications for Eagles, Birdies & HIO" },
-          ].map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-card border border-border rounded-xl p-5">
-              <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center mb-3">
-                <Icon className="w-5 h-5 text-primary" />
-              </div>
-              <h3 className="font-semibold text-foreground mb-1">{title}</h3>
-              <p className="text-sm text-muted-foreground">{desc}</p>
+      {/* Hero + feature cards — only shown to non-logged-in visitors */}
+      {!isAuthenticated && (
+        <>
+          <section className="px-6 py-16 text-center max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-sm font-medium mb-6">
+              <Trophy className="w-4 h-4" />
+              Competitive Golf Trip Management
             </div>
-          ))}
-        </div>
-      </section>
+            <h1 className="text-5xl font-extrabold text-foreground mb-4 leading-tight">
+              Run Your Golf Trip<br />
+              <span className="text-primary">Like a Pro</span>
+            </h1>
+            <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
+              Live leaderboards, automatic handicap adjustment, Stroke Play, 4BBB and Skins scoring — all in one place for your group.
+            </p>
+            <Button size="lg" onClick={() => { window.location.href = getLoginUrl(); }} className="gap-2 text-base px-8">
+              Get Started <ChevronRight className="w-5 h-5" />
+            </Button>
+          </section>
+          <section className="px-6 pb-16 max-w-5xl mx-auto w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { icon: BarChart2, title: "Live Leaderboards", desc: "Daily & trip-wide standings updated hole by hole" },
+                { icon: Flag, title: "Multi-Format Scoring", desc: "Stroke Play, 4BBB and Skins running concurrently" },
+                { icon: Users, title: "Handicap Engine", desc: "Auto-adjusts handicaps after every round" },
+                { icon: Bell, title: "Achievement Alerts", desc: "Instant notifications for Eagles, Birdies & HIO" },
+              ].map(({ icon: Icon, title, desc }) => (
+                <div key={title} className="bg-card border border-border rounded-xl p-5">
+                  <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center mb-3">
+                    <Icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <h3 className="font-semibold text-foreground mb-1">{title}</h3>
+                  <p className="text-sm text-muted-foreground">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

@@ -172,10 +172,25 @@ export async function getTrip(id: number): Promise<Trip | undefined> {
   return result[0];
 }
 
-export async function getAllTrips(): Promise<Trip[]> {
+export async function getAllTrips(): Promise<(Trip & { status: string; activeRoundName: string | null })[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(trips).orderBy(desc(trips.startDate));
+  const allTrips = await db.select().from(trips).orderBy(desc(trips.startDate));
+  const allRounds = await db.select().from(rounds);
+  const now = Date.now();
+  return allTrips.map((trip) => {
+    const tripRounds = allRounds.filter((r) => r.tripId === trip.id);
+    const activeRound = tripRounds.find((r) => r.status === "active");
+    let status = "upcoming";
+    if (activeRound) {
+      status = "active";
+    } else if (trip.endDate.getTime() < now) {
+      status = "completed";
+    } else if (trip.startDate.getTime() <= now) {
+      status = "in-progress";
+    }
+    return { ...trip, status, activeRoundName: activeRound?.name ?? null };
+  });
 }
 
 export async function updateTrip(id: number, data: Partial<Trip>): Promise<void> {
