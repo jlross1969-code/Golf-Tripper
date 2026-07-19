@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -95,19 +95,52 @@ export default function TripDashboard() {
           ))}
         </div>
 
-        {/* My Handicap Journey shortcut */}
-        <Link href={`/trip/${id}/my-handicap`}>
-          <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-primary/15 transition-colors active:scale-[0.97]">
-            <div className="flex items-center gap-3">
-              <BarChart2 className="w-5 h-5 text-primary" />
-              <div>
-                <p className="font-semibold text-foreground text-sm">My Handicap Journey</p>
-                <p className="text-xs text-muted-foreground">View your initial and dynamic handicap per round</p>
+        {/* Quick-access shortcut links */}
+        <div className="space-y-2">
+          {/* Trip Leaderboard */}
+          <Link href={`/trip/${id}/leaderboard`}>
+            <div className="flex items-center justify-between bg-card border border-border rounded-xl px-4 py-3 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors active:scale-[0.97]">
+              <div className="flex items-center gap-3">
+                <Trophy className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Trip Leaderboard</p>
+                  <p className="text-xs text-muted-foreground">Cumulative standings across all rounds</p>
+                </div>
               </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
-            <ChevronRight className="w-4 h-4 text-primary" />
-          </div>
-        </Link>
+          </Link>
+
+          {/* My Handicap Journey */}
+          <Link href={`/trip/${id}/my-handicap`}>
+            <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-primary/15 transition-colors active:scale-[0.97]">
+              <div className="flex items-center gap-3">
+                <BarChart2 className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-semibold text-foreground text-sm">My Handicap Journey</p>
+                  <p className="text-xs text-muted-foreground">View your initial and dynamic handicap per round</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-primary" />
+            </div>
+          </Link>
+
+          {/* Admin Settings — only visible to admins */}
+          {user?.role === "admin" && (
+            <Link href={`/admin/trips/${id}`}>
+              <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-amber-500/15 transition-colors active:scale-[0.97]">
+                <div className="flex items-center gap-3">
+                  <Settings className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <p className="font-semibold text-foreground text-sm">Admin Settings</p>
+                    <p className="text-xs text-muted-foreground">Manage rounds, players, handicaps &amp; more</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-amber-400" />
+              </div>
+            </Link>
+          )}
+        </div>
 
         {/* Active Round */}
         {activeRound && (
