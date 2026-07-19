@@ -183,3 +183,16 @@
 - [x] Frontend: AdminGroups remove player button per player row (frees them back to available pool)
 - [x] Frontend: AdminGroups Auto-Group button with group count input and confirm dialog
 - [x] Tests and checkpoint
+
+## Session - Trip/Round Management & Test Data
+
+- [ ] Backend: trips.delete procedure (only if status is upcoming or completed, cascade delete rounds/groups/players)
+- [ ] Backend: trips.update procedure (edit name, dates, description, location)
+- [ ] Backend: rounds.update procedure (edit name, date, course, format, scoring type, status)
+- [ ] Admin UI: Delete Trip button on AdminTrip with typed confirmation dialog (type trip name to confirm)
+- [ ] Admin UI: Edit Trip dialog on AdminTrip (name, dates, location, description)
+- [ ] Admin UI: Edit Round dialog on AdminRounds (all round fields editable at any time)
+- [ ] Admin UI: Remove player from group mid-round (already exists, verify it works)
+- [ ] Admin UI: Unlock pairs button in AdminGroups (allow re-pairing after lock)
+- [ ] Seed: 2 new test trips with 16 randomised players each
+- [ ] Tests and checkpoint

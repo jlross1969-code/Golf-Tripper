@@ -43,6 +43,7 @@ import {
   updatePlayerHandicap,
   updateRound,
   updateSideMatchStatus,
+  deleteTrip,
   updateTrip,
   upsertScore,
   setPlayerNickname,
@@ -176,7 +177,9 @@ export const appRouter = router({
       .input(
         z.object({
           id: z.number(),
-          name: z.string().optional(),
+          name: z.string().min(1).optional(),
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
           handicapMode: z.enum(["stableford", "net_stroke"]).optional(),
           handicapBaseline: z.number().optional(),
           handicapFactor: z.number().optional(),
@@ -184,8 +187,22 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
-        const { id, ...data } = input;
-        await updateTrip(id, data as any);
+        const { id, startDate, endDate, ...rest } = input;
+        await updateTrip(id, {
+          ...rest,
+          ...(startDate ? { startDate: new Date(startDate) } : {}),
+          ...(endDate ? { endDate: new Date(endDate) } : {}),
+        } as any);
+        return { success: true };
+      }),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const result = await deleteTrip(input.id);
+        if (!result.allowed) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: result.reason ?? "Cannot delete this trip." });
+        }
         return { success: true };
       }),
   }),
@@ -299,7 +316,9 @@ export const appRouter = router({
       .input(
         z.object({
           id: z.number(),
-          name: z.string().optional(),
+          name: z.string().min(1).optional(),
+          roundDate: z.string().optional(),
+          courseId: z.number().optional(),
           status: z.enum(["scheduled", "active", "completed"]).optional(),
           strokePlayEnabled: z.boolean().optional(),
           fourBBBEnabled: z.boolean().optional(),
@@ -310,8 +329,43 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
-        const { id, ...data } = input;
-        await updateRound(id, data as any);
+        const { id, roundDate, ...rest } = input;
+        await updateRound(id, {
+          ...rest,
+          ...(roundDate ? { roundDate: new Date(roundDate) } : {}),
+        } as any);
+        return { success: true };
+      }),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const db = await import("../drizzle/schema").then(() => null); // just for type reference
+        // Delete all child records then the round
+        const { getDb } = await import("./db");
+        const database = await getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { groupPlayers: gp, groups: g, scores: sc, achievements: ach,
+          nearestToPin: ntp, ntpEntries: ntpe, sideMatchPlayers: smp,
+          sideMatches: sm, matchPlayResults: mpr } = await import("../drizzle/schema");
+        const { eq, inArray } = await import("drizzle-orm");
+        const tripGroups = await database.select({ id: g.id }).from(g).where(eq(g.roundId, input.id));
+        const groupIds = tripGroups.map((gr: { id: number }) => gr.id);
+        if (groupIds.length > 0) {
+          await database.delete(gp).where(inArray(gp.groupId, groupIds));
+          const smRows = await database.select({ id: sm.id }).from(sm).where(inArray(sm.groupId, groupIds));
+          if (smRows.length > 0) await database.delete(smp).where(inArray(smp.sideMatchId, smRows.map((s: { id: number }) => s.id)));
+          await database.delete(sm).where(inArray(sm.groupId, groupIds));
+          await database.delete(mpr).where(inArray(mpr.groupId, groupIds));
+          await database.delete(g).where(inArray(g.id, groupIds));
+        }
+        await database.delete(sc).where(eq(sc.roundId, input.id));
+        await database.delete(ach).where(eq(ach.roundId, input.id));
+        const ntpRows = await database.select({ id: ntp.id }).from(ntp).where(eq(ntp.roundId, input.id));
+        if (ntpRows.length > 0) await database.delete(ntpe).where(inArray(ntpe.ntpId, ntpRows.map((n: { id: number }) => n.id)));
+        await database.delete(ntp).where(eq(ntp.roundId, input.id));
+        const { rounds: r } = await import("../drizzle/schema");
+        await database.delete(r).where(eq(r.id, input.id));
         return { success: true };
       }),
   }),

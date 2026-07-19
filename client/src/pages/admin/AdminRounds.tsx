@@ -6,9 +6,22 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
+type Round = {
+  id: number;
+  name: string;
+  status: string;
+  roundDate?: Date | null;
+  courseId?: number | null;
+  strokePlayEnabled: boolean;
+  fourBBBEnabled: boolean;
+  skinsEnabled: boolean;
+  matchPlayEnabled?: boolean;
+  alternateShotEnabled?: boolean;
+};
 
 export default function AdminRounds() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -18,6 +31,7 @@ export default function AdminRounds() {
   const { data: courses } = trpc.courses.list.useQuery();
   const { data: rounds, refetch } = trpc.rounds.list.useQuery({ tripId: id });
 
+  // Create
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [courseId, setCourseId] = useState("");
@@ -28,13 +42,35 @@ export default function AdminRounds() {
   const [matchPlay, setMatchPlay] = useState(false);
   const [alternateShot, setAlternateShot] = useState(false);
 
+  // Edit
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRound, setEditRound] = useState<Round | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCourseId, setEditCourseId] = useState("");
+  const [editRoundDate, setEditRoundDate] = useState("");
+  const [editStroke, setEditStroke] = useState(true);
+  const [editFourBBB, setEditFourBBB] = useState(false);
+  const [editSkins, setEditSkins] = useState(false);
+  const [editMatchPlay, setEditMatchPlay] = useState(false);
+  const [editAltShot, setEditAltShot] = useState(false);
+
+  // Delete
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteRound, setDeleteRoundState] = useState<Round | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+
   const createRound = trpc.rounds.create.useMutation({
     onSuccess: () => { toast.success("Round created"); setOpen(false); refetch(); setName(""); setCourseId(""); setRoundDate(""); },
     onError: (e) => toast.error(e.message),
   });
 
   const updateRound = trpc.rounds.update.useMutation({
-    onSuccess: () => { toast.success("Round updated"); refetch(); },
+    onSuccess: () => { toast.success("Round updated"); setEditOpen(false); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteRoundMutation = trpc.rounds.delete.useMutation({
+    onSuccess: () => { toast.success("Round deleted"); setDeleteOpen(false); setDeleteRoundState(null); setDeleteConfirm(""); refetch(); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -42,6 +78,25 @@ export default function AdminRounds() {
     onSuccess: (d) => toast.success(`Handicaps recalculated — ${d.updated} players updated`),
     onError: (e) => toast.error(e.message),
   });
+
+  function openEdit(round: Round) {
+    setEditRound(round);
+    setEditName(round.name);
+    setEditCourseId(round.courseId?.toString() ?? "");
+    setEditRoundDate(round.roundDate ? new Date(round.roundDate).toISOString().split("T")[0] : "");
+    setEditStroke(round.strokePlayEnabled);
+    setEditFourBBB(round.fourBBBEnabled);
+    setEditSkins(round.skinsEnabled);
+    setEditMatchPlay(round.matchPlayEnabled ?? false);
+    setEditAltShot(round.alternateShotEnabled ?? false);
+    setEditOpen(true);
+  }
+
+  function openDelete(round: Round) {
+    setDeleteRoundState(round);
+    setDeleteConfirm("");
+    setDeleteOpen(true);
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -69,14 +124,19 @@ export default function AdminRounds() {
         ) : (
           rounds.map((round) => (
             <div key={round.id} className="bg-card border border-border rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="font-semibold text-foreground">{round.name}</span>
                     <Badge variant={round.status === "active" ? "default" : round.status === "completed" ? "secondary" : "outline"}>
                       {round.status}
                     </Badge>
                   </div>
+                  {(round as any).roundDate && (
+                    <p className="text-xs text-muted-foreground mb-1">
+                      {new Date((round as any).roundDate).toLocaleDateString()}
+                    </p>
+                  )}
                   <div className="flex gap-2 flex-wrap">
                     {round.strokePlayEnabled && <Badge variant="outline" className="text-xs">Stroke Play</Badge>}
                     {round.fourBBBEnabled && <Badge variant="outline" className="text-xs">4BBB</Badge>}
@@ -85,48 +145,61 @@ export default function AdminRounds() {
                     {(round as any).alternateShotEnabled && <Badge variant="outline" className="text-xs">Alt Shot</Badge>}
                   </div>
                 </div>
-                <div className="flex gap-2 flex-wrap justify-end">
-                  {round.status === "scheduled" && (
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-2 flex-wrap">
+                {round.status === "scheduled" && (
+                  <Button size="sm" variant="outline" className="gap-1 text-xs"
+                    onClick={() => updateRound.mutate({ id: round.id, status: "active" })}>
+                    <PlayCircle className="w-3 h-3" /> Start
+                  </Button>
+                )}
+                {round.status === "active" && (
+                  <>
                     <Button size="sm" variant="outline" className="gap-1 text-xs"
-                      onClick={() => updateRound.mutate({ id: round.id, status: "active" })}>
-                      <PlayCircle className="w-3 h-3" /> Start
+                      onClick={() => updateRound.mutate({ id: round.id, status: "completed" })}>
+                      <CheckCircle className="w-3 h-3" /> Complete
                     </Button>
-                  )}
-                  {round.status === "active" && (
-                    <>
-                      <Button size="sm" variant="outline" className="gap-1 text-xs"
-                        onClick={() => updateRound.mutate({ id: round.id, status: "completed" })}>
-                        <CheckCircle className="w-3 h-3" /> Complete
-                      </Button>
-                      <Button size="sm" variant="outline" className="gap-1 text-xs"
-                        onClick={() => recalcHandicap.mutate({ roundId: round.id, tripId: id })}>
-                        Recalc HCP
-                      </Button>
-                    </>
-                  )}
-                  {round.status === "completed" && (
                     <Button size="sm" variant="outline" className="gap-1 text-xs"
                       onClick={() => recalcHandicap.mutate({ roundId: round.id, tripId: id })}>
                       Recalc HCP
                     </Button>
-                  )}
-                  <Link href={`/admin/trips/${id}/rounds/${round.id}/groups`}>
-                    <Button size="sm" variant="outline" className="gap-1 text-xs">
-                      <Users className="w-3 h-3" /> Groups
-                    </Button>
-                  </Link>
-                  <Link href={`/admin/trips/${id}/rounds/${round.id}/ntp`}>
-                    <Button size="sm" variant="outline" className="gap-1 text-xs">
-                      <Target className="w-3 h-3" /> NTP
-                    </Button>
-                  </Link>
-                </div>
+                  </>
+                )}
+                {round.status === "completed" && (
+                  <Button size="sm" variant="outline" className="gap-1 text-xs"
+                    onClick={() => recalcHandicap.mutate({ roundId: round.id, tripId: id })}>
+                    Recalc HCP
+                  </Button>
+                )}
+                <Link href={`/admin/trips/${id}/rounds/${round.id}/groups`}>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs">
+                    <Users className="w-3 h-3" /> Groups
+                  </Button>
+                </Link>
+                <Link href={`/admin/trips/${id}/rounds/${round.id}/ntp`}>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs">
+                    <Target className="w-3 h-3" /> NTP
+                  </Button>
+                </Link>
+                <Button size="sm" variant="outline" className="gap-1 text-xs"
+                  onClick={() => openEdit(round as Round)}>
+                  <Pencil className="w-3 h-3" /> Edit
+                </Button>
+                {round.status !== "active" && (
+                  <Button size="sm" variant="outline" className="gap-1 text-xs text-red-400 border-red-800 hover:bg-red-900/30"
+                    onClick={() => openDelete(round as Round)}>
+                    <Trash2 className="w-3 h-3" /> Delete
+                  </Button>
+                )}
               </div>
             </div>
           ))
         )}
       </div>
 
+      {/* Create Round Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Create Round</DialogTitle></DialogHeader>
@@ -138,13 +211,9 @@ export default function AdminRounds() {
             <div>
               <label className="text-sm font-medium text-foreground mb-1 block">Course</label>
               <Select value={courseId} onValueChange={setCourseId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select course..." />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select course..." /></SelectTrigger>
                 <SelectContent>
-                  {courses?.map((c) => (
-                    <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>
-                  ))}
+                  {courses?.map((c) => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -179,6 +248,103 @@ export default function AdminRounds() {
               })}
             >
               Create Round
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Round Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Round</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Round Name</label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Round name" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Course</label>
+              <Select value={editCourseId} onValueChange={setEditCourseId}>
+                <SelectTrigger><SelectValue placeholder="Select course..." /></SelectTrigger>
+                <SelectContent>
+                  {courses?.map((c) => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Date</label>
+              <Input type="date" value={editRoundDate} onChange={(e) => setEditRoundDate(e.target.value)} />
+            </div>
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-foreground block">Formats</label>
+              {[
+                { label: "Stroke Play", value: editStroke, set: setEditStroke },
+                { label: "4BBB", value: editFourBBB, set: setEditFourBBB },
+                { label: "Skins", value: editSkins, set: setEditSkins },
+                { label: "Match Play", value: editMatchPlay, set: setEditMatchPlay },
+                { label: "Alternate Shot", value: editAltShot, set: setEditAltShot },
+              ].map(({ label, value, set }) => (
+                <div key={label} className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">{label}</span>
+                  <Switch checked={value} onCheckedChange={set} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!editName || updateRound.isPending}
+              onClick={() => editRound && updateRound.mutate({
+                id: editRound.id,
+                name: editName,
+                ...(editCourseId ? { courseId: Number(editCourseId) } : {}),
+                ...(editRoundDate ? { roundDate: editRoundDate } : {}),
+                strokePlayEnabled: editStroke,
+                fourBBBEnabled: editFourBBB,
+                skinsEnabled: editSkins,
+                matchPlayEnabled: editMatchPlay,
+                alternateShotEnabled: editAltShot,
+              })}
+            >
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Round Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={(o) => { setDeleteOpen(o); if (!o) setDeleteConfirm(""); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <AlertTriangle className="w-5 h-5" /> Delete Round
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              This will permanently delete <strong className="text-foreground">{deleteRound?.name}</strong> and all its scores, groups, and NTP data. This cannot be undone.
+            </p>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">
+                Type <span className="font-mono text-red-400">DELETE</span> to confirm
+              </label>
+              <Input
+                value={deleteConfirm}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+                placeholder="DELETE"
+                className="border-red-800 focus-visible:ring-red-600"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteOpen(false); setDeleteConfirm(""); }}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteConfirm !== "DELETE" || deleteRoundMutation.isPending}
+              onClick={() => deleteRound && deleteRoundMutation.mutate({ id: deleteRound.id })}
+            >
+              {deleteRoundMutation.isPending ? "Deleting..." : "Delete Round"}
             </Button>
           </DialogFooter>
         </DialogContent>

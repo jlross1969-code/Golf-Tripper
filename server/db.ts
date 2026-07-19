@@ -24,12 +24,16 @@ import {
   groups,
   handicapHistory,
   holes,
+  matchPlayResults,
+  nearestToPin,
   notifications,
+  ntpEntries,
   rounds,
   scores,
   sideMatchPlayers,
   sideMatches,
   tripInvites,
+  tripMessages,
   tripPlayers,
   trips,
   users,
@@ -197,6 +201,70 @@ export async function updateTrip(id: number, data: Partial<Trip>): Promise<void>
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(trips).set(data).where(eq(trips.id, id));
+}
+
+/**
+ * Hard-delete a trip and all its child records.
+ * Only allowed when the trip has no active rounds (status must be upcoming or completed).
+ */
+export async function deleteTrip(id: number): Promise<{ allowed: boolean; reason?: string }> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  // Check for any active rounds
+  const activeRounds = await db.select().from(rounds)
+    .where(and(eq(rounds.tripId, id), eq(rounds.status, "active")));
+  if (activeRounds.length > 0) {
+    return { allowed: false, reason: "Trip has an active round in progress. Complete or cancel the round first." };
+  }
+
+  // Cascade delete in dependency order
+  // 1. Get all round IDs for this trip
+  const tripRounds = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.tripId, id));
+  const roundIds = tripRounds.map((r) => r.id);
+
+  if (roundIds.length > 0) {
+    // 2. Get all group IDs for these rounds
+    const tripGroups = await db.select({ id: groups.id }).from(groups)
+      .where(inArray(groups.roundId, roundIds));
+    const groupIds = tripGroups.map((g) => g.id);
+
+    if (groupIds.length > 0) {
+      // 3. Delete group-level records
+      await db.delete(groupPlayers).where(inArray(groupPlayers.groupId, groupIds));
+      await db.delete(sideMatchPlayers).where(
+        inArray(sideMatchPlayers.sideMatchId,
+          (await db.select({ id: sideMatches.id }).from(sideMatches)
+            .where(inArray(sideMatches.groupId, groupIds))).map((s) => s.id)
+        )
+      );
+      await db.delete(sideMatches).where(inArray(sideMatches.groupId, groupIds));
+      await db.delete(matchPlayResults).where(inArray(matchPlayResults.groupId, groupIds));
+      await db.delete(groups).where(inArray(groups.id, groupIds));
+    }
+
+    // 4. Delete round-level records
+    await db.delete(scores).where(inArray(scores.roundId, roundIds));
+    await db.delete(achievements).where(inArray(achievements.roundId, roundIds));
+    await db.delete(nearestToPin).where(inArray(nearestToPin.roundId, roundIds));
+    await db.delete(ntpEntries).where(
+      inArray(ntpEntries.ntpId,
+        (await db.select({ id: nearestToPin.id }).from(nearestToPin)
+          .where(inArray(nearestToPin.roundId, roundIds))).map((n) => n.id)
+      )
+    );
+    await db.delete(rounds).where(inArray(rounds.id, roundIds));
+  }
+
+  // 5. Delete trip-level records
+  await db.delete(tripPlayers).where(eq(tripPlayers.tripId, id));
+  await db.delete(tripInvites).where(eq(tripInvites.tripId, id));
+  await db.delete(tripMessages).where(eq(tripMessages.tripId, id));
+  await db.delete(handicapHistory).where(eq(handicapHistory.tripId, id));
+  await db.delete(notifications).where(eq(notifications.tripId, id));
+  await db.delete(trips).where(eq(trips.id, id));
+
+  return { allowed: true };
 }
 
 // ─── Trip Players ─────────────────────────────────────────────────────────────
@@ -677,7 +745,7 @@ export async function getTripLeaderboard(tripId: number): Promise<
 
 // ─── Match Play ───────────────────────────────────────────────────────────────
 
-import { matchPlayResults, tripMessages, MatchPlayResult, TripMessage } from "../drizzle/schema";
+import { MatchPlayResult, TripMessage } from "../drizzle/schema";
 
 export async function createMatchPlayResult(data: {
   roundId: number;
@@ -842,7 +910,7 @@ export async function setPlayerNickname(tripId: number, userId: number, nickname
 
 // ─── Nearest to Pin ───────────────────────────────────────────────────────────
 
-import { NearestToPin, NtpEntry, nearestToPin, ntpEntries } from "../drizzle/schema";
+import { NearestToPin, NtpEntry } from "../drizzle/schema";
 
 export async function getNtpByRound(roundId: number): Promise<(NearestToPin & {
   entries: (NtpEntry & { userName: string | null })[];
