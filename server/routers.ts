@@ -56,6 +56,8 @@ import {
   lockGroupPairs,
   getMyGroupForRound,
   recalcGroupMatch,
+  removePlayerFromGroup,
+  autoGroupRound,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -381,6 +383,26 @@ export const appRouter = router({
         const result = await lockGroupPairs(input.groupId, input.roundId);
         if (!result.matchId && result.error) throw new TRPCError({ code: "BAD_REQUEST", message: result.error });
         return { matchId: result.matchId };
+      }),
+
+    // Admin: remove a player from a group (frees them for other groups)
+    removePlayer: adminProcedure
+      .input(z.object({ groupId: z.number(), userId: z.number() }))
+      .mutation(async ({ input }) => {
+        await removePlayerFromGroup(input.groupId, input.userId);
+        return { success: true };
+      }),
+
+    // Admin: auto-create groups + pairs with handicap-biased snake pairing
+    autoGroup: adminProcedure
+      .input(z.object({
+        roundId: z.number(),
+        tripId: z.number(),
+        groupCount: z.number().min(1).max(20).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await autoGroupRound(input.roundId, input.tripId, input.groupCount);
+        return result;
       }),
 
     // Player/Public: get the current user's group info for a round (partner, opponents)

@@ -2,10 +2,10 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -42,6 +42,15 @@ export default function AdminGroups() {
   const [pairPlayer2, setPairPlayer2] = useState("");
   const [pairId, setPairId] = useState<"1" | "2">("1");
 
+  // Auto-group state
+  const [autoGroupOpen, setAutoGroupOpen] = useState(false);
+  const [autoGroupCount, setAutoGroupCount] = useState("");
+
+  // Compute set of userIds already assigned to any group in this round
+  const assignedUserIds = new Set<number>(
+    (groups ?? []).flatMap((g) => g.players.map((p) => p.userId))
+  );
+
   const createGroup = trpc.groups.create.useMutation({
     onSuccess: () => { toast.success("Group created"); setGroupOpen(false); refetch(); setGroupName(""); },
     onError: (e) => toast.error(e.message),
@@ -49,6 +58,11 @@ export default function AdminGroups() {
 
   const addPlayer = trpc.groups.addPlayer.useMutation({
     onSuccess: () => { toast.success("Player added to group"); setPlayerOpen(false); refetch(); setAddUserId(""); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const removePlayer = trpc.groups.removePlayer.useMutation({
+    onSuccess: () => { toast.success("Player removed from group"); refetch(); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -75,52 +89,73 @@ export default function AdminGroups() {
     onError: (e) => toast.error(e.message),
   });
 
+  const autoGroup = trpc.groups.autoGroup.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Auto-grouped ${data.totalPlayers} players into ${data.groupIds.length} groups with pairs assigned`);
+      setAutoGroupOpen(false);
+      setAutoGroupCount("");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   function playerName(p: GroupPlayer) {
     return p.nickname ?? p.user?.name ?? `User ${p.userId}`;
   }
+
+  // Players not yet assigned to any group (available for selection)
+  const availablePlayers = (players ?? []).filter((p) => !assignedUserIds.has(p.userId));
 
   function renderGroupPlayers(group: { id: number; name: string; pairsLocked: boolean; players: GroupPlayer[] }) {
     const pairA = group.players.filter((p) => p.pairId === 1);
     const pairB = group.players.filter((p) => p.pairId === 2);
     const unpaired = group.players.filter((p) => !p.pairId);
 
+    function PlayerChip({ p, color }: { p: GroupPlayer; color: string }) {
+      return (
+        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs ${color}`}>
+          {playerName(p)}
+          {!group.pairsLocked && (
+            <button
+              className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
+              title="Remove from group"
+              onClick={() => removePlayer.mutate({ groupId: group.id, userId: p.userId })}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </span>
+      );
+    }
+
     return (
       <div className="space-y-3">
-        {/* Pair A */}
         {pairA.length > 0 && (
           <div className="flex items-center gap-2">
             <Badge className="text-xs bg-blue-600 text-white shrink-0">Pair A</Badge>
             <div className="flex flex-wrap gap-1">
               {pairA.map((p) => (
-                <span key={p.userId} className="bg-blue-600/20 text-blue-300 border border-blue-600/30 rounded-full px-3 py-0.5 text-xs">
-                  {playerName(p)}
-                </span>
+                <PlayerChip key={p.userId} p={p} color="bg-blue-600/20 text-blue-300 border border-blue-600/30" />
               ))}
             </div>
           </div>
         )}
-        {/* Pair B */}
         {pairB.length > 0 && (
           <div className="flex items-center gap-2">
             <Badge className="text-xs bg-orange-600 text-white shrink-0">Pair B</Badge>
             <div className="flex flex-wrap gap-1">
               {pairB.map((p) => (
-                <span key={p.userId} className="bg-orange-600/20 text-orange-300 border border-orange-600/30 rounded-full px-3 py-0.5 text-xs">
-                  {playerName(p)}
-                </span>
+                <PlayerChip key={p.userId} p={p} color="bg-orange-600/20 text-orange-300 border border-orange-600/30" />
               ))}
             </div>
           </div>
         )}
-        {/* Unpaired */}
         {unpaired.length > 0 && (
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="text-xs shrink-0">Unpaired</Badge>
             <div className="flex flex-wrap gap-1">
               {unpaired.map((p) => (
-                <span key={p.userId} className="bg-muted rounded-full px-3 py-0.5 text-xs text-muted-foreground">
-                  {playerName(p)}
-                </span>
+                <PlayerChip key={p.userId} p={p} color="bg-muted text-muted-foreground" />
               ))}
             </div>
           </div>
@@ -145,17 +180,41 @@ export default function AdminGroups() {
             <p className="text-xs text-muted-foreground">{roundData?.round.name}</p>
           </div>
         </div>
-        <Button size="sm" className="gap-2" onClick={() => setGroupOpen(true)}>
-          <Plus className="w-4 h-4" /> New Group
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="gap-2" onClick={() => setAutoGroupOpen(true)}>
+            <Shuffle className="w-4 h-4" /> Auto-Group
+          </Button>
+          <Button size="sm" className="gap-2" onClick={() => setGroupOpen(true)}>
+            <Plus className="w-4 h-4" /> New Group
+          </Button>
+        </div>
       </header>
+
+      {/* Unassigned players banner */}
+      {availablePlayers.length > 0 && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-amber-400 font-medium shrink-0">{availablePlayers.length} unassigned:</span>
+          {availablePlayers.map((p) => (
+            <span key={p.userId} className="text-xs text-amber-300 bg-amber-500/10 rounded-full px-2 py-0.5">
+              {p.nickname ?? p.user?.name ?? `Player ${p.userId}`} (HCP {p.currentHandicap})
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-4">
         {!groups || groups.length === 0 ? (
           <div className="text-center py-16 bg-card border border-border rounded-xl">
             <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground mb-4">No groups yet.</p>
-            <Button onClick={() => setGroupOpen(true)} className="gap-2"><Plus className="w-4 h-4" />Create Group</Button>
+            <div className="flex gap-3 justify-center">
+              <Button variant="outline" onClick={() => setAutoGroupOpen(true)} className="gap-2">
+                <Shuffle className="w-4 h-4" /> Auto-Group All
+              </Button>
+              <Button onClick={() => setGroupOpen(true)} className="gap-2">
+                <Plus className="w-4 h-4" /> Create Group
+              </Button>
+            </div>
           </div>
         ) : (
           groups.map((group) => (
@@ -168,23 +227,26 @@ export default function AdminGroups() {
                       <Lock className="w-3 h-3" /> Pairs Locked
                     </Badge>
                   )}
+                  <span className="text-xs text-muted-foreground">{group.players.length} players</span>
                 </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="gap-1 text-xs"
-                    onClick={() => { setSelectedGroup(group.id); setPlayerOpen(true); }}>
-                    <UserPlus className="w-3 h-3" /> Add Player
-                  </Button>
+                <div className="flex gap-2 flex-wrap justify-end">
+                  {!group.pairsLocked && (
+                    <Button size="sm" variant="outline" className="gap-1 text-xs"
+                      onClick={() => { setSelectedGroup(group.id); setAddUserId(""); setPlayerOpen(true); }}>
+                      <UserPlus className="w-3 h-3" /> Add
+                    </Button>
+                  )}
                   {group.players.length >= 2 && !group.pairsLocked && (
                     <Button size="sm" variant="outline" className="gap-1 text-xs"
                       onClick={() => { setPairGroupId(group.id); setPairOpen(true); }}>
                       <Swords className="w-3 h-3" /> Set Pair
                     </Button>
                   )}
-                  {group.players.length === 4 && !group.pairsLocked && (
+                  {group.players.length >= 2 && !group.pairsLocked && (
                     <Button size="sm" variant="default" className="gap-1 text-xs bg-primary"
                       disabled={lockPairs.isPending}
                       onClick={() => lockPairs.mutate({ groupId: group.id, roundId: rId })}>
-                      <Lock className="w-3 h-3" /> Lock Pairs
+                      <Lock className="w-3 h-3" /> Lock
                     </Button>
                   )}
                   <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive h-8 w-8 p-0"
@@ -219,27 +281,36 @@ export default function AdminGroups() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Player to Group Dialog */}
+      {/* Add Player to Group Dialog — only shows unassigned players */}
       <Dialog open={playerOpen} onOpenChange={setPlayerOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Player to Group</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Add Player to Group</DialogTitle>
+            <DialogDescription>
+              Only players not yet assigned to a group are shown.
+            </DialogDescription>
+          </DialogHeader>
           <div className="py-2">
             <label className="text-sm font-medium text-foreground mb-1 block">Player</label>
             <Select value={addUserId} onValueChange={setAddUserId}>
               <SelectTrigger><SelectValue placeholder="Select player..." /></SelectTrigger>
               <SelectContent>
-                {players?.map((p) => (
-                  <SelectItem key={p.userId} value={p.userId.toString()}>
-                    {p.nickname ?? p.user?.name ?? `User ${p.userId}`} (HCP {p.currentHandicap})
-                  </SelectItem>
-                ))}
+                {availablePlayers.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">All players are already assigned.</div>
+                ) : (
+                  availablePlayers.map((p) => (
+                    <SelectItem key={p.userId} value={p.userId.toString()}>
+                      {p.nickname ?? p.user?.name ?? `User ${p.userId}`} (HCP {p.currentHandicap})
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPlayerOpen(false)}>Cancel</Button>
             <Button
-              disabled={!addUserId || !selectedGroup || addPlayer.isPending}
+              disabled={!addUserId || !selectedGroup || addPlayer.isPending || availablePlayers.length === 0}
               onClick={() => addPlayer.mutate({ groupId: selectedGroup!, userId: Number(addUserId) })}
             >
               Add Player
@@ -314,6 +385,55 @@ export default function AdminGroups() {
               })}
             >
               Assign Pair
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Auto-Group Dialog */}
+      <Dialog open={autoGroupOpen} onOpenChange={setAutoGroupOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shuffle className="w-4 h-4 text-primary" />
+              Auto-Group Players
+            </DialogTitle>
+            <DialogDescription>
+              Automatically creates groups and pairs all {players?.length ?? 0} trip players. Pairs are formed by matching lowest handicaps with highest (snake draft), so each group has a balanced match.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300">
+              ⚠️ This will delete all existing groups for this round and recreate them.
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">
+                Number of Groups <span className="text-muted-foreground font-normal">(optional — default: auto)</span>
+              </label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={autoGroupCount}
+                onChange={(e) => setAutoGroupCount(e.target.value)}
+                placeholder={`Auto (${Math.ceil((players?.length ?? 0) / 4)} groups)`}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Leave blank to auto-calculate based on {players?.length ?? 0} players (4 per group).
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAutoGroupOpen(false)}>Cancel</Button>
+            <Button
+              disabled={autoGroup.isPending}
+              onClick={() => autoGroup.mutate({
+                roundId: rId,
+                tripId: tId,
+                groupCount: autoGroupCount ? Number(autoGroupCount) : undefined,
+              })}
+            >
+              {autoGroup.isPending ? "Grouping..." : "Auto-Group Now"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -310,10 +310,44 @@ export async function getGroupsByRound(roundId: number): Promise<Group[]> {
 export async function addPlayerToGroup(groupId: number, userId: number, partnerId?: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
+  // Check if player is already in another group for the same round
+  const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (group.length > 0) {
+    const roundGroups = await db.select().from(groups).where(eq(groups.roundId, group[0].roundId));
+    const roundGroupIds = roundGroups.map((g) => g.id);
+    if (roundGroupIds.length > 0) {
+      const existing = await db.select().from(groupPlayers)
+        .where(and(eq(groupPlayers.userId, userId), inArray(groupPlayers.groupId, roundGroupIds)));
+      if (existing.length > 0 && existing[0].groupId !== groupId) {
+        throw new Error("Player is already assigned to another group in this round.");
+      }
+    }
+  }
   await db
     .insert(groupPlayers)
     .values({ groupId, userId, partnerId: partnerId ?? null })
     .onDuplicateKeyUpdate({ set: { partnerId: partnerId ?? null } });
+}
+
+export async function removePlayerFromGroup(groupId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Find the player's current partner (if any) and clear their pairing references
+  const playerRow = await db.select().from(groupPlayers)
+    .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, userId))).limit(1);
+  if (playerRow[0]?.partnerId) {
+    // Clear the partner's partnerId, pairId, and scorerId since their pair is now broken
+    await db.update(groupPlayers)
+      .set({ partnerId: null, pairId: null, scorerId: null })
+      .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, playerRow[0].partnerId)));
+  }
+  // Also clear any player who had this user as their scorer
+  await db.update(groupPlayers)
+    .set({ scorerId: null })
+    .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.scorerId, userId)));
+  // Remove the player
+  await db.delete(groupPlayers)
+    .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, userId)));
 }
 
 export async function getGroupPlayers(groupId: number, tripId?: number): Promise<(GroupPlayer & { user: User | undefined; nickname?: string | null })[]> {
@@ -1065,4 +1099,114 @@ export async function recalcGroupMatch(matchId: number): Promise<void> {
     matchStatus: status,
     winner,
   }).where(eq(matchPlayResults.id, matchId));
+}
+
+// ─── Auto-Group with Handicap-Biased Pairing ─────────────────────────────────
+
+/**
+ * Automatically creates groups and pairs players for a round.
+ * Pairing bias: sort players by handicap, then pair lowest with highest
+ * (snake draft: 1st with last, 2nd with 2nd-last, etc.) within each group.
+ * Groups are filled in round-robin order.
+ *
+ * @param roundId  The round to create groups for
+ * @param tripId   The trip (to fetch players + handicaps)
+ * @param groupCount  Number of groups to create (default: ceil(players / 4))
+ * @param groupNamePrefix  Prefix for group names (default: "Group")
+ */
+export async function autoGroupRound(
+  roundId: number,
+  tripId: number,
+  groupCount?: number,
+  groupNamePrefix = "Group"
+): Promise<{ groupIds: number[]; totalPlayers: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  // 1. Get all trip players sorted by currentHandicap ascending
+  const allPlayers = await getTripPlayers(tripId);
+  if (allPlayers.length === 0) throw new Error("No players in this trip.");
+
+  // Sort by handicap ascending, then add a small random jitter so equal-handicap
+  // players are shuffled relative to each other (true randomisation within tiers).
+  const sorted = [...allPlayers].sort((a, b) => {
+    const diff = (a.currentHandicap ?? 99) - (b.currentHandicap ?? 99);
+    return diff !== 0 ? diff : Math.random() - 0.5;
+  });
+  // Snake-pair: pair index 0 (lowest HCP) with last (highest HCP), etc.
+  // This biases each pair to have one low and one high handicap player.
+  const paired: typeof sorted = [];
+  let lo = 0, hi = sorted.length - 1;
+  while (lo <= hi) {
+    if (lo === hi) { paired.push(sorted[lo]); lo++; }
+    else { paired.push(sorted[lo], sorted[hi]); lo++; hi--; }
+  }
+  // Shuffle the resulting pairs (groups of 2) so group assignment is randomised
+  // while preserving the low+high pairing within each pair.
+  const pairCount = Math.floor(paired.length / 2);
+  const pairSlots: [typeof sorted[0], typeof sorted[0]][] = [];
+  for (let i = 0; i < pairCount; i++) pairSlots.push([paired[i * 2], paired[i * 2 + 1]]);
+  // Fisher-Yates shuffle on the pair slots
+  for (let i = pairSlots.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pairSlots[i], pairSlots[j]] = [pairSlots[j], pairSlots[i]];
+  }
+  // Flatten back, appending any odd player at the end
+  const shuffledPaired: typeof sorted = pairSlots.flat();
+  if (paired.length % 2 === 1) shuffledPaired.push(paired[paired.length - 1]);
+  // Replace paired with shuffled version for group assignment
+  paired.length = 0;
+  paired.push(...shuffledPaired);
+
+  // 2. Determine group count
+  const numGroups = groupCount ?? Math.ceil(paired.length / 4);
+  const clampedGroups = Math.max(1, Math.min(numGroups, Math.ceil(paired.length / 2)));
+
+  // 3. Delete existing groups for this round
+  const existingGroups = await getGroupsByRound(roundId);
+  for (const g of existingGroups) {
+    await db.delete(groupPlayers).where(eq(groupPlayers.groupId, g.id));
+    await db.delete(groups).where(eq(groups.id, g.id));
+  }
+
+  // 4. Create new groups
+  const groupIds: number[] = [];
+  for (let i = 0; i < clampedGroups; i++) {
+    const name = `${groupNamePrefix} ${String.fromCharCode(65 + i)}`; // Group A, B, C...
+    const id = await createGroup(roundId, tripId, name);
+    groupIds.push(id);
+  }
+
+  // 5. Assign players to groups in round-robin order
+  for (let i = 0; i < paired.length; i++) {
+    const groupId = groupIds[i % clampedGroups];
+    await db.insert(groupPlayers)
+      .values({ groupId, userId: paired[i].userId, partnerId: null })
+      .onDuplicateKeyUpdate({ set: { partnerId: null } });
+  }
+
+  // 6. Auto-assign pairs within each group (first two = Pair A, last two = Pair B)
+  for (const groupId of groupIds) {
+    const gPlayers = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+    if (gPlayers.length >= 2) {
+      // Pair A: first two players
+      await db.update(groupPlayers)
+        .set({ pairId: 1, partnerId: gPlayers[1].userId, scorerId: gPlayers[1].userId })
+        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[0].userId)));
+      await db.update(groupPlayers)
+        .set({ pairId: 1, partnerId: gPlayers[0].userId, scorerId: gPlayers[0].userId })
+        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[1].userId)));
+    }
+    if (gPlayers.length >= 4) {
+      // Pair B: third and fourth players
+      await db.update(groupPlayers)
+        .set({ pairId: 2, partnerId: gPlayers[3].userId, scorerId: gPlayers[3].userId })
+        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[2].userId)));
+      await db.update(groupPlayers)
+        .set({ pairId: 2, partnerId: gPlayers[2].userId, scorerId: gPlayers[2].userId })
+        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[3].userId)));
+    }
+  }
+
+  return { groupIds, totalPlayers: paired.length };
 }

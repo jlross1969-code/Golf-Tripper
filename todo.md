@@ -157,19 +157,29 @@
 
 ## Session - Pairing System & Group 4BBB Matchplay
 
-- [ ] DB: add pairId (nullable int) to group_players table
-- [ ] DB: add group_matches table (id, roundId, groupId, pairAPlayer1Id, pairAPlayer2Id, pairBPlayer1Id, pairBPlayer2Id, status, result, createdAt)
-- [ ] Apply DB migration for pairing tables
-- [ ] Backend: groups.setPair (admin) — assign pairId to two players in a group
-- [ ] Backend: groups.selfPair (player) — player selects their partner from same group
-- [ ] Backend: groups.lockPairs (admin) — lock pairs and auto-create group_match record
-- [ ] Backend: groups.getMyGroup — return current user's group, partner, and opponents in a round
-- [ ] Backend: groupMatch.getByRound — list all group matches with hole-by-hole 4BBB Stableford Matchplay status
-- [ ] Backend: groupMatch.calculate — compute running matchplay status from scores
-- [ ] ScoreEntry: show partner's scorecard (scorer enters partner's scores, not own)
-- [ ] ScoreEntry: show live group match status panel alongside partner card
-- [ ] Admin UI: pair assignment in AdminGroups — select pairs per group, lock pairs button
-- [ ] Player UI: self-pairing screen — player picks partner from group members
-- [ ] Side Matches UI: group match result card showing hole-by-hole 4BBB matchplay
-- [ ] Main leaderboard: 4BBB score = best Stableford of pair (not matchplay result)
-- [ ] Tests and checkpoint
+- [x] DB: add pairId (nullable int) to group_players table
+- [x] DB: add group_matches table (id, roundId, groupId, pairAPlayer1Id, pairAPlayer2Id, pairBPlayer1Id, pairBPlayer2Id, status, result, createdAt)
+- [x] Apply DB migration for pairing tables
+- [x] Backend: groups.setPair (admin) — assign pairId to two players in a group
+- [x] Backend: groups.selfPair (player) — player selects their partner from same group
+- [x] Backend: groups.lockPairs (admin) — lock pairs and auto-create group_match record
+- [x] Backend: groups.getMyGroup — return current user's group, partner, and opponents in a round
+- [x] Backend: groupMatch.getByRound — list all group matches with hole-by-hole 4BBB Stableford Matchplay status
+- [x] Backend: groupMatch.calculate — compute running matchplay status from scores
+- [x] ScoreEntry: show partner's scorecard (scorer enters partner's scores, not own)
+- [x] ScoreEntry: show live group match status panel alongside partner card
+- [x] Admin UI: pair assignment in AdminGroups — select pairs per group, lock pairs button
+- [x] Player UI: self-pairing screen — player picks partner from group members
+- [x] Side Matches UI: group match result card showing hole-by-hole 4BBB matchplay
+- [x] Main leaderboard: 4BBB score = best Stableford of pair (not matchplay result)
+- [x] Tests and checkpoint
+
+## Session - Group Management Improvements
+
+- [x] Backend: removePlayerFromGroup procedure (removes from group_players, frees them for other groups)
+- [x] Backend: addPlayerToGroup validates player not already in another group for same round
+- [x] Backend: autoGroup procedure — randomise groups + pairs with lowest/highest HCP bias
+- [x] Frontend: AdminGroups player selector filters out already-assigned players across all groups
+- [x] Frontend: AdminGroups remove player button per player row (frees them back to available pool)
+- [x] Frontend: AdminGroups Auto-Group button with group count input and confirm dialog
+- [x] Tests and checkpoint
