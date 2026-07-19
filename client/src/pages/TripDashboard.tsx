@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -52,6 +52,11 @@ export default function TripDashboard() {
             <p className="text-xs text-muted-foreground">
               {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
             </p>
+            {(trip as any).location && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                <MapPin className="w-3 h-3 shrink-0" />{(trip as any).location}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -72,6 +77,13 @@ export default function TripDashboard() {
       </header>
 
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        {/* Trip Description */}
+        {(trip as any).description && (
+          <div className="bg-card border border-border rounded-xl px-5 py-4 flex items-start gap-3">
+            <FileText className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+            <p className="text-sm text-muted-foreground leading-relaxed">{(trip as any).description}</p>
+          </div>
+        )}
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[

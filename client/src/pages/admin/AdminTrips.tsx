@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "wouter";
-import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle, Copy, MapPin } from "lucide-react";
+import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle, Copy, MapPin, Link2Off } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -108,6 +108,7 @@ export default function AdminTrips() {
       } catch {
         toast.error("Could not copy to clipboard");
       }
+      refetch();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -115,6 +116,14 @@ export default function AdminTrips() {
   function copyInviteLink(tripId: number) {
     getShareLinkMutation.mutate({ tripId, origin: window.location.origin });
   }
+
+  const revokeShareLinkMutation = trpc.invites.revokeShareLink.useMutation({
+    onSuccess: () => {
+      toast.success("Share link revoked. Old invite URLs will no longer work.");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const statusColor: Record<string, string> = {
     upcoming: "bg-blue-900/40 text-blue-300 border-blue-700/40",
@@ -205,6 +214,14 @@ export default function AdminTrips() {
                       onClick={() => copyInviteLink(trip.id)}>
                       <Copy className="w-3 h-3" /> Copy Invite
                     </Button>
+                    {(trip as any).shareToken && (
+                      <Button size="sm" variant="outline" className="gap-1 text-xs text-amber-400 border-amber-800 hover:bg-amber-900/30"
+                        disabled={revokeShareLinkMutation.isPending}
+                        title="Revoke share link — old invite URLs will stop working"
+                        onClick={() => revokeShareLinkMutation.mutate({ tripId: trip.id })}>
+                        <Link2Off className="w-3 h-3" /> Revoke
+                      </Button>
+                    )}
                     {canDelete(trip as Trip) ? (
                       <Button size="sm" variant="outline" className="gap-1 text-xs text-red-400 border-red-800 hover:bg-red-900/30" onClick={() => openDelete(trip as Trip)}>
                         <Trash2 className="w-3 h-3" /> Delete

@@ -208,3 +208,11 @@
 - [x] Admin UI: Copy Invite Link button on each trip card in AdminTrips
 - [x] Home: Copy Invite Link shortcut on trip cards for admin users
 - [x] Tests and checkpoint
+
+## Session - Share Link Revoke, Trip Description on Dashboard, Handicap on Join
+
+- [x] Backend: trips.revokeShareLink procedure (admin only, clears shareToken so old links stop working)
+- [x] Admin UI: Revoke/Regenerate Share Link button in AdminTrips (next to Copy Invite, shown after first copy)
+- [x] Player UI: Show trip description on TripDashboard (below trip name/dates if set)
+- [x] Player UI: Starting handicap input on JoinTripShare success screen (player sets own HCP, updates trip_players)
+- [x] Tests and checkpoint

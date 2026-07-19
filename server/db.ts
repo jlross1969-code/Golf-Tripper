@@ -1292,3 +1292,13 @@ export async function unlockGroupPairs(groupId: number): Promise<void> {
   if (!db) throw new Error("DB unavailable");
   await db.update(groups).set({ pairsLocked: false }).where(eq(groups.id, groupId));
 }
+
+/**
+ * Revoke the trip-level share link by clearing the shareToken.
+ * Any existing /join-trip URLs will stop working immediately.
+ */
+export async function revokeTripShareLink(tripId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(trips).set({ shareToken: null }).where(eq(trips.id, tripId));
+}

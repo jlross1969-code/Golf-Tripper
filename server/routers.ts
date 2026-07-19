@@ -89,6 +89,7 @@ import {
   revokeInvite,
   updateInvite,
   deleteInvite,
+  revokeTripShareLink,
 } from "./db";
 import { TRPCError } from "@trpc/server";
 
@@ -276,6 +277,28 @@ export const appRouter = router({
         const tp = await getTripPlayer(input.tripId, ctx.user.id);
         if (!tp) throw new TRPCError({ code: "FORBIDDEN", message: "You are not a member of this trip" });
         await setPlayerNickname(input.tripId, ctx.user.id, input.nickname ?? null);
+        return { success: true };
+      }),
+
+    // Player: set their own starting handicap (only allowed once, before any rounds are scored)
+    setMyHandicap: protectedProcedure
+      .input(z.object({
+        tripId: z.number(),
+        handicap: z.number().min(0).max(54),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const tp = await getTripPlayer(input.tripId, ctx.user.id);
+        if (!tp) throw new TRPCError({ code: "FORBIDDEN", message: "You are not a member of this trip" });
+        await recordHandicapChange({
+          tripId: input.tripId,
+          userId: ctx.user.id,
+          oldHandicap: tp.currentHandicap,
+          newHandicap: input.handicap,
+          reason: "Set by player on join",
+          isManual: true,
+          adjustedBy: ctx.user.id,
+        });
+        await updatePlayerHandicap(input.tripId, ctx.user.id, input.handicap);
         return { success: true };
       }),
   }),
@@ -1178,6 +1201,13 @@ export const appRouter = router({
           await db.addPlayerToTrip(input.tripId, ctx.user.id, 0);
         }
         return { success: true, tripId: input.tripId, alreadyJoined: !!existing };
+      }),
+    // Admin: revoke the trip-level share link so old URLs stop working
+    revokeShareLink: adminProcedure
+      .input(z.object({ tripId: z.number() }))
+      .mutation(async ({ input }) => {
+        await revokeTripShareLink(input.tripId);
+        return { success: true };
       }),
   }),
   // ─── Nearest to Pin ─────────────────────────────────────────────────────────
