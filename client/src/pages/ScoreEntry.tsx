@@ -1,17 +1,18 @@
-import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Flag, CheckCircle, AlertTriangle, Target } from "lucide-react";
+import { ArrowLeft, Flag, CheckCircle, AlertTriangle, Target, Users, Swords } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { detectAchievement, formatAchievementType } from "../../../shared/scoring";
 import AchievementAlert from "@/components/AchievementAlert";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 type PendingAchievement = {
   type: "hole_in_one" | "eagle" | "birdie";
@@ -32,6 +33,13 @@ function scoreClass(gross: number, par: number) {
   return "score-double";
 }
 
+function matchStatusLabel(status: number, holesPlayed: number) {
+  if (holesPlayed === 0) return "All Square";
+  const n = Math.abs(status);
+  const side = status > 0 ? "Pair A" : "Pair B";
+  return status === 0 ? "All Square" : `${side} ${n} UP`;
+}
+
 export default function ScoreEntry() {
   const { roundId } = useParams<{ roundId: string }>();
   const id = Number(roundId);
@@ -43,6 +51,18 @@ export default function ScoreEntry() {
     { enabled: !!roundData }
   );
 
+  // Fetch the current user's group/pair info for this round
+  const { data: myGroup } = trpc.groups.getMyGroup.useQuery(
+    { roundId: id },
+    { enabled: !!user }
+  );
+
+  // Fetch the group match (4BBB matchplay) for this round
+  const { data: groupMatches } = trpc.groupMatch.getByRound.useQuery(
+    { roundId: id },
+    { enabled: !!myGroup }
+  );
+
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [holeScores, setHoleScores] = useState<Record<number, string>>({});
   const [pendingAchievement, setPendingAchievement] = useState<PendingAchievement | null>(null);
@@ -52,13 +72,26 @@ export default function ScoreEntry() {
   const submitScore = trpc.scores.submit.useMutation();
   const createAchievement = trpc.achievements.create.useMutation();
   const confirmAchievement = trpc.achievements.confirm.useMutation();
+  const recalcMatch = trpc.groupMatch.recalc.useMutation();
   const submitNtp = trpc.ntp.submitEntry.useMutation({
     onSuccess: () => { toast.success("NTP distance saved!"); utils.ntp.getByRound.invalidate({ roundId: id }); },
     onError: (e) => toast.error(e.message),
   });
   const utils = trpc.useUtils();
 
+  // Auto-select partner when group info loads (scorer enters partner's scores)
+  useEffect(() => {
+    if (myGroup?.partner && selectedUserId === null) {
+      setSelectedUserId(myGroup.partner.userId);
+    }
+  }, [myGroup, selectedUserId]);
+
   const selectedPlayer = players?.find((p) => p.userId === selectedUserId);
+
+  // Find the group match for this user's group
+  const myGroupMatch = myGroup
+    ? groupMatches?.find((m) => m.groupId === myGroup.groupId)
+    : null;
 
   const handleScoreChange = (holeId: number, value: string) => {
     setHoleScores((prev) => ({ ...prev, [holeId]: value }));
@@ -85,6 +118,11 @@ export default function ScoreEntry() {
         handicap: selectedPlayer.currentHandicap,
       });
 
+      // Recalculate group match after each score
+      if (myGroupMatch) {
+        recalcMatch.mutate({ matchId: myGroupMatch.id });
+      }
+
       // Check for achievement
       if (result.achievementType) {
         const achResult = await createAchievement.mutateAsync({
@@ -109,6 +147,7 @@ export default function ScoreEntry() {
       } else {
         toast.success(`Hole ${hole.holeNumber} saved — Net: ${result.netScore}, Pts: ${result.stablefordPoints}`);
         utils.scores.getScorecard.invalidate({ roundId: id });
+        utils.groupMatch.getByRound.invalidate({ roundId: id });
       }
     } catch (e: any) {
       toast.error(e.message ?? "Failed to save score");
@@ -141,7 +180,6 @@ export default function ScoreEntry() {
 
   const { data: scorecard } = trpc.scores.getScorecard.useQuery({ roundId: id });
   const { data: ntpList } = trpc.ntp.getByRound.useQuery({ roundId: id });
-  // Map holeId → ntp record
   const ntpByHole = new Map((ntpList ?? []).map((n) => [n.holeId, n]));
 
   if (isLoading) {
@@ -158,6 +196,8 @@ export default function ScoreEntry() {
   if (!roundData) return <div className="p-8 text-muted-foreground">Round not found.</div>;
 
   const { round, holes } = roundData;
+  const isPaired = !!myGroup?.partner;
+  const isLocked = myGroup?.pairsLocked ?? false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -174,25 +214,77 @@ export default function ScoreEntry() {
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
-        {/* Player selector */}
-        <div>
-          <label className="text-sm font-medium text-foreground mb-2 block">Select Player</label>
-          <Select
-            value={selectedUserId?.toString() ?? ""}
-            onValueChange={(v) => setSelectedUserId(Number(v))}
-          >
-            <SelectTrigger className="w-full max-w-xs">
-              <SelectValue placeholder="Choose a player..." />
-            </SelectTrigger>
-            <SelectContent>
-              {players?.map((p) => (
-                <SelectItem key={p.userId} value={p.userId.toString()}>
-                  {p.nickname ?? p.user?.name ?? `Player ${p.userId}`} (HCP {p.currentHandicap})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+
+        {/* Group match status banner */}
+        {myGroupMatch && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm flex items-center gap-2 text-primary">
+                <Swords className="w-4 h-4" />
+                Group Match — 4BBB Stableford Matchplay
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-1">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-foreground font-medium">
+                  {myGroupMatch.pairANames.join(" & ")}
+                </span>
+                <Badge
+                  variant={myGroupMatch.winner === "pending" ? "secondary" : "default"}
+                  className="text-xs"
+                >
+                  {myGroupMatch.winner !== "pending"
+                    ? myGroupMatch.winner === "halved" ? "Halved" : `${myGroupMatch.winner === "player1" ? myGroupMatch.pairANames[0] : myGroupMatch.pairBNames[0]} wins`
+                    : matchStatusLabel(myGroupMatch.matchStatus, myGroupMatch.holeResultsParsed.length)}
+                </Badge>
+                <span className="text-foreground font-medium">
+                  {myGroupMatch.pairBNames.join(" & ")}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {myGroupMatch.holeResultsParsed.length} holes played
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Pairing info banner */}
+        {isPaired && (
+          <div className="flex items-center gap-2 px-4 py-3 bg-primary/10 rounded-xl border border-primary/20 text-sm">
+            <Users className="w-4 h-4 text-primary flex-shrink-0" />
+            <span className="text-foreground">
+              You are scoring for your partner:{" "}
+              <strong className="text-primary">
+                {myGroup.partner?.user?.name ?? `Player ${myGroup.partner?.userId}`}
+              </strong>
+              {isLocked && <span className="ml-2 text-xs text-muted-foreground">(pairs locked)</span>}
+            </span>
+          </div>
+        )}
+
+        {/* Player selector — shown when not paired or pairs not locked */}
+        {(!isPaired || !isLocked) && (
+          <div>
+            <label className="text-sm font-medium text-foreground mb-2 block">
+              {isPaired ? "Scoring for (override)" : "Select Player to Score"}
+            </label>
+            <Select
+              value={selectedUserId?.toString() ?? ""}
+              onValueChange={(v) => setSelectedUserId(Number(v))}
+            >
+              <SelectTrigger className="w-full max-w-xs">
+                <SelectValue placeholder="Choose a player..." />
+              </SelectTrigger>
+              <SelectContent>
+                {players?.map((p) => (
+                  <SelectItem key={p.userId} value={p.userId.toString()}>
+                    {p.nickname ?? p.user?.name ?? `Player ${p.userId}`} (HCP {p.currentHandicap})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Scorecard */}
         {selectedUserId && selectedPlayer && (
@@ -227,7 +319,6 @@ export default function ScoreEntry() {
                       ?.find((p) => p.userId === selectedUserId)
                       ?.scores.find((s) => s.holeId === hole.id);
                     const inputVal = holeScores[hole.id] ?? "";
-                    const previewGross = parseInt(inputVal);
 
                     return (
                       <tr key={hole.id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
@@ -316,6 +407,25 @@ export default function ScoreEntry() {
               </table>
             </div>
           </div>
+        )}
+
+        {/* Not paired yet — prompt to pair */}
+        {!isPaired && myGroup && (
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <CardContent className="px-4 py-4 flex items-center gap-3">
+              <Users className="w-5 h-5 text-amber-400 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-foreground">You haven't paired with a partner yet</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Go to the{" "}
+                  <Link href={`/trip/${round.tripId}/my-group/${id}`} className="text-primary underline">
+                    Group Pairing
+                  </Link>{" "}
+                  page to choose your partner before scoring.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 

@@ -51,6 +51,11 @@ import {
   disableNtp,
   submitNtpEntry,
   setNtpWinner,
+  setPair,
+  selfPair,
+  lockGroupPairs,
+  getMyGroupForRound,
+  recalcGroupMatch,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -343,6 +348,82 @@ export const appRouter = router({
       .input(z.object({ groupId: z.number() }))
       .mutation(async ({ input }) => {
         await deleteGroup(input.groupId);
+        return { success: true };
+      }),
+
+    // Admin: assign two players as a pair (pairId 1 = Pair A, 2 = Pair B)
+    setPair: adminProcedure
+      .input(z.object({
+        groupId: z.number(),
+        player1UserId: z.number(),
+        player2UserId: z.number(),
+        pairId: z.union([z.literal(1), z.literal(2)]),
+      }))
+      .mutation(async ({ input }) => {
+        await setPair(input.groupId, input.player1UserId, input.player2UserId, input.pairId);
+        return { success: true };
+      }),
+
+    // Player: self-pair with a chosen partner in the same group
+    selfPair: protectedProcedure
+      .input(z.object({ groupId: z.number(), chosenPartnerId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const result = await selfPair(input.groupId, ctx.user.id, input.chosenPartnerId);
+        if (!result.success) throw new TRPCError({ code: "BAD_REQUEST", message: result.error });
+        return { success: true };
+      }),
+
+    // Admin: lock pairs and auto-create the 4BBB matchplay record
+    lockPairs: adminProcedure
+      .input(z.object({ groupId: z.number(), roundId: z.number() }))
+      .mutation(async ({ input }) => {
+        const result = await lockGroupPairs(input.groupId, input.roundId);
+        if (!result.matchId && result.error) throw new TRPCError({ code: "BAD_REQUEST", message: result.error });
+        return { matchId: result.matchId };
+      }),
+
+    // Player/Public: get the current user's group info for a round (partner, opponents)
+    getMyGroup: protectedProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        return getMyGroupForRound(input.roundId, ctx.user.id);
+      }),
+  }),
+
+  // ─── Group Matches (4BBB Matchplay between pairs) ─────────────────────────
+  groupMatch: router({
+    // Get all group matches for a round with running status
+    getByRound: publicProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => {
+        const matches = await import("./db").then(db => db.getMatchPlayResultsByRound(input.roundId));
+        // Enrich with player names
+        const enriched = await Promise.all(matches.map(async (m) => {
+          const { users: usersTable, tripPlayers: tp } = await import("../drizzle/schema");
+          const { eq: eqOp, inArray: inArr } = await import("drizzle-orm");
+          const { getDb } = await import("./db");
+          const db = await getDb();
+          if (!db) return { ...m, pairANames: [], pairBNames: [], holeResultsParsed: JSON.parse(m.holeResults || "[]") };
+          const ids = [m.player1Id, m.player1PartnerId, m.player2Id, m.player2PartnerId].filter(Boolean) as number[];
+          const userRows = await db.select().from(usersTable).where(inArr(usersTable.id, ids));
+          const userMap = new Map(userRows.map(u => [u.id, u.name ?? `Player ${u.id}`]));
+          return {
+            ...m,
+            pairANames: [m.player1Id, m.player1PartnerId].filter(Boolean).map(id => userMap.get(id!) ?? `Player ${id}`),
+            pairBNames: [m.player2Id, m.player2PartnerId].filter(Boolean).map(id => userMap.get(id!) ?? `Player ${id}`),
+            holeResultsParsed: JSON.parse(m.holeResults || "[]"),
+          };
+        }));
+        return enriched;
+      }),
+
+    // Recalculate a group match from current scores (called after each score submission)
+    recalc: protectedProcedure
+      .input(z.object({ matchId: z.number() }))
+      .mutation(async ({ input }) => {
+        await recalcGroupMatch(input.matchId);
         return { success: true };
       }),
   }),

@@ -154,3 +154,22 @@
 - [x] Eagle/Birdie/HIO: verify detection + broadcast notification already works
 - [x] Eagle/Birdie/HIO: add real-time alert banner visible to all players in the trip (polling-based)
 - [x] Eagle/Birdie/HIO: show achievement feed on Trip Dashboard / Notification Feed
+
+## Session - Pairing System & Group 4BBB Matchplay
+
+- [ ] DB: add pairId (nullable int) to group_players table
+- [ ] DB: add group_matches table (id, roundId, groupId, pairAPlayer1Id, pairAPlayer2Id, pairBPlayer1Id, pairBPlayer2Id, status, result, createdAt)
+- [ ] Apply DB migration for pairing tables
+- [ ] Backend: groups.setPair (admin) — assign pairId to two players in a group
+- [ ] Backend: groups.selfPair (player) — player selects their partner from same group
+- [ ] Backend: groups.lockPairs (admin) — lock pairs and auto-create group_match record
+- [ ] Backend: groups.getMyGroup — return current user's group, partner, and opponents in a round
+- [ ] Backend: groupMatch.getByRound — list all group matches with hole-by-hole 4BBB Stableford Matchplay status
+- [ ] Backend: groupMatch.calculate — compute running matchplay status from scores
+- [ ] ScoreEntry: show partner's scorecard (scorer enters partner's scores, not own)
+- [ ] ScoreEntry: show live group match status panel alongside partner card
+- [ ] Admin UI: pair assignment in AdminGroups — select pairs per group, lock pairs button
+- [ ] Player UI: self-pairing screen — player picks partner from group members
+- [ ] Side Matches UI: group match result card showing hole-by-hole 4BBB matchplay
+- [ ] Main leaderboard: 4BBB score = best Stableford of pair (not matchplay result)
+- [ ] Tests and checkpoint

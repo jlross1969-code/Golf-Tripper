@@ -881,3 +881,188 @@ export async function setNtpWinner(ntpId: number, winnerId: number, winnerDistan
   if (!db) throw new Error("DB unavailable");
   await db.update(nearestToPin).set({ winnerId, winnerDistanceCm }).where(eq(nearestToPin.id, ntpId));
 }
+
+// ─── Pairing & Group Matchplay ────────────────────────────────────────────────
+
+/**
+ * Admin or player: assign two players in a group as a pair.
+ * pairId = 1 → Pair A, pairId = 2 → Pair B.
+ * Also sets each player's partnerId to the other and scorerId (cross-scoring).
+ */
+export async function setPair(
+  groupId: number,
+  player1UserId: number,
+  player2UserId: number,
+  pairId: 1 | 2
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Update player1: partner = player2, scorer = player2 (player2 scores for player1)
+  await db
+    .update(groupPlayers)
+    .set({ partnerId: player2UserId, pairId, scorerId: player2UserId })
+    .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, player1UserId)));
+  // Update player2: partner = player1, scorer = player1
+  await db
+    .update(groupPlayers)
+    .set({ partnerId: player1UserId, pairId, scorerId: player1UserId })
+    .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, player2UserId)));
+}
+
+/**
+ * Player self-pairs with a chosen partner in the same group.
+ * Only allowed when pairsLocked = false.
+ */
+export async function selfPair(
+  groupId: number,
+  requestingUserId: number,
+  chosenPartnerId: number
+): Promise<{ success: boolean; error?: string }> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Check group is not locked
+  const grp = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!grp[0]) return { success: false, error: "Group not found" };
+  if (grp[0].pairsLocked) return { success: false, error: "Pairs are locked for this group" };
+  // Both players must be in the group
+  const members = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+  const memberIds = members.map((m) => m.userId);
+  if (!memberIds.includes(requestingUserId) || !memberIds.includes(chosenPartnerId)) {
+    return { success: false, error: "Both players must be in the same group" };
+  }
+  // Determine pairId — assign 1 if no pairs yet, else 2
+  const existingPairs = members.filter((m) => m.pairId !== null);
+  const usedPairIds = Array.from(new Set(existingPairs.map((m) => m.pairId)));
+  const pairId = (usedPairIds.length === 0 || (usedPairIds.length === 1 && !usedPairIds.includes(1))) ? 1 : 2;
+  await setPair(groupId, requestingUserId, chosenPartnerId, pairId as 1 | 2);
+  return { success: true };
+}
+
+/**
+ * Admin: lock pairs for a group and auto-create the intra-group 4BBB matchplay record.
+ * Requires exactly 4 players with 2 complete pairs (pairId 1 and 2).
+ */
+export async function lockGroupPairs(groupId: number, roundId: number): Promise<{ matchId: number | null; error?: string }> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const members = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+  const pairA = members.filter((m) => m.pairId === 1);
+  const pairB = members.filter((m) => m.pairId === 2);
+  if (pairA.length !== 2 || pairB.length !== 2) {
+    return { matchId: null, error: "Need exactly 2 players in each pair before locking" };
+  }
+  // Lock the group
+  await db.update(groups).set({ pairsLocked: true }).where(eq(groups.id, groupId));
+  // Create the 4BBB matchplay record (Pair A vs Pair B)
+  const existing = await db
+    .select()
+    .from(matchPlayResults)
+    .where(and(eq(matchPlayResults.roundId, roundId), eq(matchPlayResults.groupId, groupId)))
+    .limit(1);
+  if (existing[0]) return { matchId: existing[0].id };
+  const [result] = await db.insert(matchPlayResults).values({
+    roundId,
+    groupId,
+    player1Id: pairA[0].userId,
+    player1PartnerId: pairA[1].userId,
+    player2Id: pairB[0].userId,
+    player2PartnerId: pairB[1].userId,
+    holeResults: "[]",
+    matchStatus: 0,
+    winner: "pending",
+  });
+  return { matchId: (result as any).insertId };
+}
+
+/**
+ * Get the group a player belongs to for a given round, including their partner and opponents.
+ */
+export async function getMyGroupForRound(roundId: number, userId: number): Promise<{
+  groupId: number;
+  groupName: string;
+  pairsLocked: boolean;
+  myEntry: GroupPlayer | null;
+  partner: (GroupPlayer & { user: User | undefined }) | null;
+  opponents: (GroupPlayer & { user: User | undefined })[];
+  allMembers: (GroupPlayer & { user: User | undefined })[];
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+  // Find the group this user is in for this round
+  const roundGroups = await db.select().from(groups).where(eq(groups.roundId, roundId));
+  for (const grp of roundGroups) {
+    const members = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, grp.id));
+    const myEntry = members.find((m) => m.userId === userId) ?? null;
+    if (!myEntry) continue;
+    const userIds = members.map((m) => m.userId);
+    const userList = await db.select().from(users).where(inArray(users.id, userIds));
+    const userMap = new Map(userList.map((u) => [u.id, u]));
+    const withUser = members.map((m) => ({ ...m, user: userMap.get(m.userId) }));
+    const partner = myEntry.partnerId
+      ? (withUser.find((m) => m.userId === myEntry.partnerId) ?? null)
+      : null;
+    const opponents = withUser.filter((m) => m.userId !== userId && m.userId !== myEntry.partnerId);
+    return {
+      groupId: grp.id,
+      groupName: grp.name,
+      pairsLocked: grp.pairsLocked,
+      myEntry,
+      partner,
+      opponents,
+      allMembers: withUser,
+    };
+  }
+  return null;
+}
+
+/**
+ * Recalculate the 4BBB matchplay status for a group match from current scores.
+ * Best Stableford of each pair per hole → compare → update matchplay_results.
+ */
+export async function recalcGroupMatch(matchId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const match = await db.select().from(matchPlayResults).where(eq(matchPlayResults.id, matchId)).limit(1);
+  if (!match[0]) return;
+  const m = match[0];
+  const pairAIds = [m.player1Id, m.player1PartnerId].filter(Boolean) as number[];
+  const pairBIds = [m.player2Id, m.player2PartnerId].filter(Boolean) as number[];
+  // Get all scores for this round for these players
+  const allScores = await db
+    .select()
+    .from(scores)
+    .where(and(eq(scores.roundId, m.roundId), inArray(scores.userId, [...pairAIds, ...pairBIds])));
+  // Get holes to know total
+  const round = await db.select().from(rounds).where(eq(rounds.id, m.roundId)).limit(1);
+  if (!round[0]) return;
+  const courseHoles = await db.select().from(holes).where(eq(holes.courseId, round[0].courseId)).orderBy(holes.holeNumber);
+  const holeResults: { holeNumber: number; result: "player1" | "player2" | "halved" }[] = [];
+  for (const hole of courseHoles) {
+    const pairAScores = allScores.filter((s) => pairAIds.includes(s.userId) && s.holeId === hole.id);
+    const pairBScores = allScores.filter((s) => pairBIds.includes(s.userId) && s.holeId === hole.id);
+    if (pairAScores.length === 0 || pairBScores.length === 0) continue; // hole not yet scored by both pairs
+    const bestA = Math.max(...pairAScores.map((s) => s.stablefordPoints));
+    const bestB = Math.max(...pairBScores.map((s) => s.stablefordPoints));
+    const result: "player1" | "player2" | "halved" = bestA > bestB ? "player1" : bestA < bestB ? "player2" : "halved";
+    holeResults.push({ holeNumber: hole.holeNumber, result });
+  }
+  // Calculate running status (positive = Pair A up, negative = Pair B up)
+  let status = 0;
+  for (const r of holeResults) {
+    if (r.result === "player1") status++;
+    else if (r.result === "player2") status--;
+  }
+  const holesPlayed = holeResults.length;
+  const holesRemaining = courseHoles.length - holesPlayed;
+  let winner: "player1" | "player2" | "halved" | "pending" = "pending";
+  if (holesPlayed === courseHoles.length) {
+    winner = status > 0 ? "player1" : status < 0 ? "player2" : "halved";
+  } else if (Math.abs(status) > holesRemaining) {
+    winner = status > 0 ? "player1" : "player2";
+  }
+  await db.update(matchPlayResults).set({
+    holeResults: JSON.stringify(holeResults),
+    matchStatus: status,
+    winner,
+  }).where(eq(matchPlayResults.id, matchId));
+}

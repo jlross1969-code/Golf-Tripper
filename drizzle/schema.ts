@@ -110,6 +110,8 @@ export const groups = mysqlTable("groups", {
   roundId: int("roundId").notNull(),
   tripId: int("tripId").notNull(),
   name: varchar("name", { length: 100 }).notNull(),
+  // Whether pairs have been locked (no more self-pairing allowed once true)
+  pairsLocked: boolean("pairsLocked").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -119,8 +121,12 @@ export const groupPlayers = mysqlTable("group_players", {
   id: int("id").autoincrement().primaryKey(),
   groupId: int("groupId").notNull(),
   userId: int("userId").notNull(),
-  // Partner for 4BBB — nullable if not playing 4BBB
+  // Partner for 4BBB / matchplay pairing — nullable until paired
   partnerId: int("partnerId"),
+  // pairId groups two players into Pair A (1) or Pair B (2) within the group
+  pairId: int("pairId"),
+  // The user who will enter scores for this player (cross-scoring)
+  scorerId: int("scorerId"),
 });
 
 export type GroupPlayer = typeof groupPlayers.$inferSelect;

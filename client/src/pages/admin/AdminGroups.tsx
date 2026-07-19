@@ -1,12 +1,24 @@
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Trash2, Users, UserPlus } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
+type GroupPlayer = {
+  id: number;
+  userId: number;
+  groupId: number;
+  partnerId: number | null;
+  pairId: number | null;
+  scorerId: number | null;
+  user?: { id: number; name: string | null } | undefined;
+  nickname?: string | null;
+};
 
 export default function AdminGroups() {
   const { tripId, roundId } = useParams<{ tripId: string; roundId: string }>();
@@ -22,7 +34,13 @@ export default function AdminGroups() {
   const [playerOpen, setPlayerOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<number | null>(null);
   const [addUserId, setAddUserId] = useState("");
-  const [addPartnerId, setAddPartnerId] = useState("");
+
+  // Pair assignment state
+  const [pairOpen, setPairOpen] = useState(false);
+  const [pairGroupId, setPairGroupId] = useState<number | null>(null);
+  const [pairPlayer1, setPairPlayer1] = useState("");
+  const [pairPlayer2, setPairPlayer2] = useState("");
+  const [pairId, setPairId] = useState<"1" | "2">("1");
 
   const createGroup = trpc.groups.create.useMutation({
     onSuccess: () => { toast.success("Group created"); setGroupOpen(false); refetch(); setGroupName(""); },
@@ -30,7 +48,7 @@ export default function AdminGroups() {
   });
 
   const addPlayer = trpc.groups.addPlayer.useMutation({
-    onSuccess: () => { toast.success("Player added to group"); setPlayerOpen(false); refetch(); setAddUserId(""); setAddPartnerId(""); },
+    onSuccess: () => { toast.success("Player added to group"); setPlayerOpen(false); refetch(); setAddUserId(""); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -38,6 +56,81 @@ export default function AdminGroups() {
     onSuccess: () => { toast.success("Group deleted"); refetch(); },
     onError: (e) => toast.error(e.message),
   });
+
+  const setPair = trpc.groups.setPair.useMutation({
+    onSuccess: () => {
+      toast.success("Pair assigned");
+      setPairOpen(false);
+      refetch();
+      setPairPlayer1(""); setPairPlayer2(""); setPairId("1");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const lockPairs = trpc.groups.lockPairs.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.matchId ? "Pairs locked — group match created!" : "Pairs locked");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function playerName(p: GroupPlayer) {
+    return p.nickname ?? p.user?.name ?? `User ${p.userId}`;
+  }
+
+  function renderGroupPlayers(group: { id: number; name: string; pairsLocked: boolean; players: GroupPlayer[] }) {
+    const pairA = group.players.filter((p) => p.pairId === 1);
+    const pairB = group.players.filter((p) => p.pairId === 2);
+    const unpaired = group.players.filter((p) => !p.pairId);
+
+    return (
+      <div className="space-y-3">
+        {/* Pair A */}
+        {pairA.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Badge className="text-xs bg-blue-600 text-white shrink-0">Pair A</Badge>
+            <div className="flex flex-wrap gap-1">
+              {pairA.map((p) => (
+                <span key={p.userId} className="bg-blue-600/20 text-blue-300 border border-blue-600/30 rounded-full px-3 py-0.5 text-xs">
+                  {playerName(p)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Pair B */}
+        {pairB.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Badge className="text-xs bg-orange-600 text-white shrink-0">Pair B</Badge>
+            <div className="flex flex-wrap gap-1">
+              {pairB.map((p) => (
+                <span key={p.userId} className="bg-orange-600/20 text-orange-300 border border-orange-600/30 rounded-full px-3 py-0.5 text-xs">
+                  {playerName(p)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Unpaired */}
+        {unpaired.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs shrink-0">Unpaired</Badge>
+            <div className="flex flex-wrap gap-1">
+              {unpaired.map((p) => (
+                <span key={p.userId} className="bg-muted rounded-full px-3 py-0.5 text-xs text-muted-foreground">
+                  {playerName(p)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {group.players.length === 0 && (
+          <p className="text-xs text-muted-foreground">No players in this group.</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -68,30 +161,39 @@ export default function AdminGroups() {
           groups.map((group) => (
             <div key={group.id} className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-foreground">{group.name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-foreground">{group.name}</h3>
+                  {group.pairsLocked && (
+                    <Badge variant="secondary" className="text-xs gap-1">
+                      <Lock className="w-3 h-3" /> Pairs Locked
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="gap-1 text-xs"
                     onClick={() => { setSelectedGroup(group.id); setPlayerOpen(true); }}>
                     <UserPlus className="w-3 h-3" /> Add Player
                   </Button>
+                  {group.players.length >= 2 && !group.pairsLocked && (
+                    <Button size="sm" variant="outline" className="gap-1 text-xs"
+                      onClick={() => { setPairGroupId(group.id); setPairOpen(true); }}>
+                      <Swords className="w-3 h-3" /> Set Pair
+                    </Button>
+                  )}
+                  {group.players.length === 4 && !group.pairsLocked && (
+                    <Button size="sm" variant="default" className="gap-1 text-xs bg-primary"
+                      disabled={lockPairs.isPending}
+                      onClick={() => lockPairs.mutate({ groupId: group.id, roundId: rId })}>
+                      <Lock className="w-3 h-3" /> Lock Pairs
+                    </Button>
+                  )}
                   <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive h-8 w-8 p-0"
                     onClick={() => deleteGroup.mutate({ groupId: group.id })}>
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
               </div>
-              {group.players.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No players in this group.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {group.players.map((p) => (
-                    <div key={p.userId} className="bg-muted rounded-full px-3 py-1 text-xs text-foreground flex items-center gap-1">
-                      {p.nickname ?? p.user?.name ?? `User ${p.userId}`}
-                      {p.partnerId && <span className="text-muted-foreground">+ partner</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {renderGroupPlayers(group as any)}
             </div>
           ))
         )}
@@ -121,46 +223,97 @@ export default function AdminGroups() {
       <Dialog open={playerOpen} onOpenChange={setPlayerOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Add Player to Group</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">Player</label>
-              <Select value={addUserId} onValueChange={setAddUserId}>
-                <SelectTrigger><SelectValue placeholder="Select player..." /></SelectTrigger>
-                <SelectContent>
-                  {players?.map((p) => (
-                    <SelectItem key={p.userId} value={p.userId.toString()}>
-                      {p.nickname ?? p.user?.name ?? `User ${p.userId}`} (HCP {p.currentHandicap})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">4BBB Partner (optional)</label>
-              <Select value={addPartnerId} onValueChange={setAddPartnerId}>
-                <SelectTrigger><SelectValue placeholder="Select partner..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No partner</SelectItem>
-                  {players?.filter((p) => p.userId.toString() !== addUserId).map((p) => (
-                    <SelectItem key={p.userId} value={p.userId.toString()}>
-                      {p.nickname ?? p.user?.name ?? `User ${p.userId}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="py-2">
+            <label className="text-sm font-medium text-foreground mb-1 block">Player</label>
+            <Select value={addUserId} onValueChange={setAddUserId}>
+              <SelectTrigger><SelectValue placeholder="Select player..." /></SelectTrigger>
+              <SelectContent>
+                {players?.map((p) => (
+                  <SelectItem key={p.userId} value={p.userId.toString()}>
+                    {p.nickname ?? p.user?.name ?? `User ${p.userId}`} (HCP {p.currentHandicap})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPlayerOpen(false)}>Cancel</Button>
             <Button
               disabled={!addUserId || !selectedGroup || addPlayer.isPending}
-              onClick={() => addPlayer.mutate({
-                groupId: selectedGroup!,
-                userId: Number(addUserId),
-                partnerId: addPartnerId && addPartnerId !== "none" ? Number(addPartnerId) : undefined,
-              })}
+              onClick={() => addPlayer.mutate({ groupId: selectedGroup!, userId: Number(addUserId) })}
             >
               Add Player
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Pair Dialog */}
+      <Dialog open={pairOpen} onOpenChange={setPairOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Swords className="w-4 h-4 text-primary" />
+              Assign Pair
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-muted-foreground">
+              Select two players and assign them as Pair A or Pair B. Pair A will play a 4BBB Stableford Matchplay against Pair B.
+            </p>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Pair</label>
+              <Select value={pairId} onValueChange={(v) => setPairId(v as "1" | "2")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Pair A (blue)</SelectItem>
+                  <SelectItem value="2">Pair B (orange)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Player 1</label>
+              <Select value={pairPlayer1} onValueChange={setPairPlayer1}>
+                <SelectTrigger><SelectValue placeholder="Select player..." /></SelectTrigger>
+                <SelectContent>
+                  {groups?.find((g) => g.id === pairGroupId)?.players
+                    .filter((p) => p.userId.toString() !== pairPlayer2)
+                    .map((p) => (
+                      <SelectItem key={p.userId} value={p.userId.toString()}>
+                        {p.nickname ?? p.user?.name ?? `User ${p.userId}`}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Player 2 (partner)</label>
+              <Select value={pairPlayer2} onValueChange={setPairPlayer2}>
+                <SelectTrigger><SelectValue placeholder="Select partner..." /></SelectTrigger>
+                <SelectContent>
+                  {groups?.find((g) => g.id === pairGroupId)?.players
+                    .filter((p) => p.userId.toString() !== pairPlayer1)
+                    .map((p) => (
+                      <SelectItem key={p.userId} value={p.userId.toString()}>
+                        {p.nickname ?? p.user?.name ?? `User ${p.userId}`}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPairOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!pairPlayer1 || !pairPlayer2 || !pairGroupId || setPair.isPending}
+              onClick={() => setPair.mutate({
+                groupId: pairGroupId!,
+                player1UserId: Number(pairPlayer1),
+                player2UserId: Number(pairPlayer2),
+                pairId: Number(pairId) as 1 | 2,
+              })}
+            >
+              Assign Pair
             </Button>
           </DialogFooter>
         </DialogContent>
