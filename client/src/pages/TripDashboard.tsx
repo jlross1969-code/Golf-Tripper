@@ -67,12 +67,7 @@ export default function TripDashboard() {
               Feed
             </Button>
           </Link>
-          <Link href={`/trip/${id}/leaderboard`}>
-            <Button size="sm" className="gap-2">
-              <Trophy className="w-4 h-4" />
-              Leaderboard
-            </Button>
-          </Link>
+
         </div>
       </header>
 
