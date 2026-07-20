@@ -165,28 +165,29 @@ export default function TripDashboard() {
 
         {/* Active Round */}
         {activeRound && (
-          <div className="bg-primary/10 border border-primary/30 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Badge className="bg-primary text-primary-foreground">LIVE</Badge>
-                <span className="font-semibold text-foreground">{activeRound.name}</span>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <Link href={`/round/${activeRound.id}/score`}>
-                  <Button size="sm">Enter Scores</Button>
-                </Link>
-                <Link href={`/round/${activeRound.id}/leaderboard`}>
-                  <Button size="sm" variant="outline">Leaderboard</Button>
-                </Link>
-                <Link href={`/trip/${id}/round/${activeRound.id}/teesheet`}>
-                  <Button size="sm" variant="outline">Tee Sheet</Button>
-                </Link>
-              </div>
+          <div className="bg-primary/10 border border-primary/30 rounded-xl p-5 space-y-3">
+            {/* Round name + LIVE badge */}
+            <div className="flex items-center gap-2">
+              <Badge className="bg-primary text-primary-foreground flex-shrink-0">LIVE</Badge>
+              <span className="font-semibold text-foreground truncate">{activeRound.name}</span>
             </div>
+            {/* Format badges */}
             <div className="flex gap-2 flex-wrap">
               {activeRound.strokePlayEnabled && <Badge variant="secondary">Stroke Play</Badge>}
               {activeRound.fourBBBEnabled && <Badge variant="secondary">4BBB</Badge>}
               {activeRound.skinsEnabled && <Badge variant="secondary">Skins</Badge>}
+            </div>
+            {/* Action buttons — full width on mobile */}
+            <div className="grid grid-cols-3 gap-2">
+              <Link href={`/round/${activeRound.id}/score`} className="col-span-3 sm:col-span-1">
+                <Button size="sm" className="w-full">Enter Scores</Button>
+              </Link>
+              <Link href={`/round/${activeRound.id}/leaderboard`} className="col-span-3 sm:col-span-1">
+                <Button size="sm" variant="outline" className="w-full">Leaderboard</Button>
+              </Link>
+              <Link href={`/trip/${id}/round/${activeRound.id}/teesheet`} className="col-span-3 sm:col-span-1">
+                <Button size="sm" variant="outline" className="w-full">Tee Sheet</Button>
+              </Link>
             </div>
           </div>
         )}
