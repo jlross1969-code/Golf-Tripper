@@ -81,11 +81,48 @@ function PlayerRow({ player, mode }: { player: any; mode: "stroke" | "stableford
   );
 }
 
+const POSITION_LABELS_TL: Record<string, string> = {
+  top1: "1st 🥇", top2: "2nd 🥈", top3: "3rd 🥉", top4: "4th", top5: "5th", last: "Last 🐢",
+};
+const POSITION_COLORS_TL: Record<string, string> = {
+  top1: "text-yellow-400 border-yellow-600/40 bg-yellow-900/20",
+  top2: "text-slate-300 border-slate-500/40 bg-slate-800/30",
+  top3: "text-amber-500 border-amber-700/40 bg-amber-900/20",
+  top4: "text-blue-400 border-blue-700/40 bg-blue-900/20",
+  top5: "text-blue-400 border-blue-700/40 bg-blue-900/20",
+  last: "text-rose-400 border-rose-700/40 bg-rose-900/20",
+};
+
+function TripAwardCard({ award }: { award: { id: number; name: string; description: string | null; prize: string | null; category: string; position: string; winner: { displayName: string | null } | null } }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 flex items-start gap-3">
+      <div className={`mt-0.5 px-2 py-1 rounded-lg border text-xs font-bold shrink-0 ${POSITION_COLORS_TL[award.position] ?? ""}`}>
+        {POSITION_LABELS_TL[award.position] ?? award.position}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-foreground">{award.name}</span>
+          <span className="text-xs text-muted-foreground border border-border rounded px-1.5 py-0.5">{award.category === "individual" ? "Individual" : "Team 4BBB"}</span>
+        </div>
+        {award.description && <p className="text-sm text-muted-foreground mt-0.5">{award.description}</p>}
+        {award.prize && <p className="text-xs text-primary mt-1">🏆 Prize: {award.prize}</p>}
+        {award.winner?.displayName ? (
+          <p className="text-xs text-emerald-400 mt-1 font-semibold">✓ Winner: {award.winner.displayName}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground mt-1 italic">Winner not yet assigned</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TripLeaderboard() {
   const { tripId } = useParams<{ tripId: string }>();
   const id = Number(tripId);
 
   const { data: trip } = trpc.trips.get.useQuery({ id });
+  const { data: awardsData } = trpc.awards.list.useQuery({ tripId: id }, { refetchInterval: 60000 });
+  const overallAwards = awardsData?.filter((a) => a.scope === "overall") ?? [];
   const { data, isLoading, refetch, isFetching } = trpc.leaderboard.trip.useQuery(
     { tripId: id },
     { refetchInterval: 30000 }
@@ -255,6 +292,20 @@ export default function TripLeaderboard() {
                   )}
                 </div>
               </div>
+
+                {/* Overall Trip Custom Awards */}
+                {overallAwards.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-yellow-400" /> Trip Awards
+                    </h3>
+                    <div className="space-y-2">
+                      {overallAwards.map((award) => (
+                        <TripAwardCard key={award.id} award={award as any} />
+                      ))}
+                    </div>
+                  </div>
+                )}
             </TabsContent>
 
           </Tabs>

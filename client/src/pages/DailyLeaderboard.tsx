@@ -33,6 +33,41 @@ function PlayerAvatar({ name, photoUrl }: { name: string | null; photoUrl?: stri
   );
 }
 
+const POSITION_LABELS: Record<string, string> = {
+  top1: "1st 🥇", top2: "2nd 🥈", top3: "3rd 🥉", top4: "4th", top5: "5th", last: "Last 🐢",
+};
+const POSITION_COLORS: Record<string, string> = {
+  top1: "text-yellow-400 border-yellow-600/40 bg-yellow-900/20",
+  top2: "text-slate-300 border-slate-500/40 bg-slate-800/30",
+  top3: "text-amber-500 border-amber-700/40 bg-amber-900/20",
+  top4: "text-blue-400 border-blue-700/40 bg-blue-900/20",
+  top5: "text-blue-400 border-blue-700/40 bg-blue-900/20",
+  last: "text-rose-400 border-rose-700/40 bg-rose-900/20",
+};
+
+function AwardDisplayCard({ award }: { award: { id: number; name: string; description: string | null; prize: string | null; category: string; position: string; scope: string; winner: { displayName: string | null } | null } }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 flex items-start gap-3">
+      <div className={`mt-0.5 px-2 py-1 rounded-lg border text-xs font-bold shrink-0 ${POSITION_COLORS[award.position] ?? ""}`}>
+        {POSITION_LABELS[award.position] ?? award.position}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-foreground">{award.name}</span>
+          <span className="text-xs text-muted-foreground border border-border rounded px-1.5 py-0.5">{award.category === "individual" ? "Individual" : "Team 4BBB"}</span>
+        </div>
+        {award.description && <p className="text-sm text-muted-foreground mt-0.5">{award.description}</p>}
+        {award.prize && <p className="text-xs text-primary mt-1">🏆 Prize: {award.prize}</p>}
+        {award.winner?.displayName ? (
+          <p className="text-xs text-emerald-400 mt-1 font-semibold">✓ Winner: {award.winner.displayName}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground mt-1 italic">Winner not yet assigned</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DailyLeaderboard() {
   const { roundId } = useParams<{ roundId: string }>();
   const id = Number(roundId);
@@ -41,6 +76,14 @@ export default function DailyLeaderboard() {
     { roundId: id },
     { refetchInterval: 15000 }
   );
+  const tripId = data?.round?.tripId ?? 0;
+  const { data: awardsData } = trpc.awards.list.useQuery(
+    { tripId },
+    { enabled: tripId > 0, refetchInterval: 30000 }
+  );
+  // Awards for this specific round (daily scope) or overall
+  const roundAwards = awardsData?.filter((a) => a.scope === "daily" && a.roundId === id) ?? [];
+  const overallAwards = awardsData?.filter((a) => a.scope === "overall") ?? [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -295,6 +338,34 @@ export default function DailyLeaderboard() {
                   <p className="text-xs text-muted-foreground text-center">
                     4BBB not enabled for this round.
                   </p>
+                )}
+
+                {/* Daily Custom Awards */}
+                {roundAwards.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-yellow-400" /> Round Awards
+                    </h3>
+                    <div className="space-y-2">
+                      {roundAwards.map((award) => (
+                        <AwardDisplayCard key={award.id} award={award as any} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Overall Trip Awards (shown on every daily leaderboard for reference) */}
+                {overallAwards.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-primary" /> Trip Awards
+                    </h3>
+                    <div className="space-y-2">
+                      {overallAwards.map((award) => (
+                        <AwardDisplayCard key={award.id} award={award as any} />
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             </TabsContent>

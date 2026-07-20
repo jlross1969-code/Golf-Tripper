@@ -1,6 +1,6 @@
 import { Link, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users, Calendar, BarChart2, Flag, Mail } from "lucide-react";
+import { ArrowLeft, Users, Calendar, BarChart2, Flag, Mail, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
 export default function AdminTripDetail() {
@@ -21,6 +21,7 @@ export default function AdminTripDetail() {
           { href: `/admin/trips/${tripId}/players`, icon: Users, label: "Manage Players" },
           { href: `/admin/trips/${tripId}/rounds`, icon: Calendar, label: "Manage Rounds" },
           { href: `/admin/trips/${tripId}/handicap`, icon: BarChart2, label: "Handicap Settings" },
+          { href: `/admin/trips/${tripId}/awards`, icon: Trophy, label: "Custom Awards" },
           { href: `/trip/${tripId}`, icon: Flag, label: "View Trip Dashboard" },
         ].map(({ href, icon: Icon, label }) => (
           <Link key={href} href={href}>

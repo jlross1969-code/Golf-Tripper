@@ -37,6 +37,13 @@ import {
   tripPlayers,
   trips,
   users,
+  InsertTripAward,
+  TripAward,
+  TripAwardWinner,
+  tripAwards,
+  tripAwardWinners,
+  LongDriveEntry,
+  longDriveEntries,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1888,4 +1895,144 @@ export async function previewReseedByIndividual(
         partnerId: null,
       })),
     }));
+}
+
+// ─── Custom Awards ────────────────────────────────────────────────────────────
+
+
+export async function getAwardsByTrip(tripId: number): Promise<(TripAward & { winner: TripAwardWinner | null })[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const awards = await db.select().from(tripAwards).where(eq(tripAwards.tripId, tripId));
+  const awardIds = awards.map((a) => a.id);
+  const winners: TripAwardWinner[] = awardIds.length
+    ? await db.select().from(tripAwardWinners).where(inArray(tripAwardWinners.awardId, awardIds))
+    : [];
+  const winnerMap = new Map(winners.map((w) => [w.awardId, w]));
+  return awards.map((a) => ({ ...a, winner: winnerMap.get(a.id) ?? null }));
+}
+
+export async function createAward(data: InsertTripAward): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripAwards).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function updateAward(id: number, data: Partial<InsertTripAward>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripAwards).set(data).where(eq(tripAwards.id, id));
+}
+
+export async function deleteAward(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripAwardWinners).where(eq(tripAwardWinners.awardId, id));
+  await db.delete(tripAwards).where(eq(tripAwards.id, id));
+}
+
+export async function assignAwardWinner(
+  awardId: number,
+  tripPlayerId: number | null,
+  groupPlayerId: number | null,
+  displayName: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Upsert: delete existing winner for this award then insert new one
+  await db.delete(tripAwardWinners).where(eq(tripAwardWinners.awardId, awardId));
+  if (tripPlayerId !== null || groupPlayerId !== null) {
+    await db.insert(tripAwardWinners).values({ awardId, tripPlayerId, groupPlayerId, displayName });
+  }
+}
+
+// ─── Long Drive ───────────────────────────────────────────────────────────────
+
+export async function getLongDriveLeaderboard(roundId: number): Promise<(LongDriveEntry & { playerName: string })[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const entries = await db
+    .select()
+    .from(longDriveEntries)
+    .where(eq(longDriveEntries.roundId, roundId))
+    .orderBy(desc(longDriveEntries.driveDistanceM));
+  if (entries.length === 0) return [];
+  const userIds = Array.from(new Set(entries.map((e) => e.userId)));
+  const players = await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds));
+  const tps = await db.select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname })
+    .from(tripPlayers)
+    .where(inArray(tripPlayers.userId, userIds));
+  const nicknameMap = new Map(tps.map((t) => [t.userId, t.nickname]));
+  const nameMap = new Map(players.map((p) => [p.id, p.name ?? `User ${p.id}`]));
+  return entries.map((e) => ({
+    ...e,
+    playerName: nicknameMap.get(e.userId) ?? nameMap.get(e.userId) ?? `User ${e.userId}`,
+  }));
+}
+
+export async function submitLongDriveEntry(
+  roundId: number,
+  userId: number,
+  tripPlayerId: number,
+  distanceToPinM: number,
+  holeDistanceM: number
+): Promise<{ driveDistanceM: number; isNewLeader: boolean; entryId: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const driveDistanceM = holeDistanceM - distanceToPinM;
+  if (driveDistanceM <= 0) throw new Error("Drive distance must be positive (distanceToPin must be less than hole distance)");
+
+  // Get current leader
+  const [currentLeader] = await db
+    .select()
+    .from(longDriveEntries)
+    .where(and(eq(longDriveEntries.roundId, roundId), eq(longDriveEntries.isLeader, true)))
+    .limit(1);
+
+  const isNewLeader = !currentLeader || driveDistanceM > currentLeader.driveDistanceM;
+
+  // Remove previous entry by this user for this round (one entry per player)
+  await db.delete(longDriveEntries).where(
+    and(eq(longDriveEntries.roundId, roundId), eq(longDriveEntries.userId, userId))
+  );
+
+  // If new leader, clear old leader flag
+  if (isNewLeader && currentLeader) {
+    await db.update(longDriveEntries).set({ isLeader: false }).where(eq(longDriveEntries.id, currentLeader.id));
+  }
+
+  const [result] = await db.insert(longDriveEntries).values({
+    roundId,
+    tripPlayerId,
+    userId,
+    distanceToPinM,
+    holeDistanceM,
+    driveDistanceM,
+    isLeader: isNewLeader,
+    broadcastSent: false,
+  });
+  const entryId = (result as any).insertId as number;
+  return { driveDistanceM, isNewLeader, entryId };
+}
+
+export async function markLongDriveBroadcast(entryId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(longDriveEntries).set({ broadcastSent: true }).where(eq(longDriveEntries.id, entryId));
+}
+
+export async function getLongDriveLeader(roundId: number): Promise<(LongDriveEntry & { playerName: string }) | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [entry] = await db
+    .select()
+    .from(longDriveEntries)
+    .where(and(eq(longDriveEntries.roundId, roundId), eq(longDriveEntries.isLeader, true)))
+    .limit(1);
+  if (!entry) return null;
+  const [player] = await db.select({ name: users.name }).from(users).where(eq(users.id, entry.userId)).limit(1);
+  const [tp] = await db.select({ nickname: tripPlayers.nickname }).from(tripPlayers).where(eq(tripPlayers.userId, entry.userId)).limit(1);
+  const playerName = tp?.nickname ?? player?.name ?? `User ${entry.userId}`;
+  return { ...entry, playerName };
 }

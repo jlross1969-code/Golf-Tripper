@@ -422,3 +422,33 @@
 - [x] Frontend: team mascot emoji in summary card — bounce animation when that team wins a hole
 - [x] Frontend: randomize button next to emoji picker — generates a fun random team name + matching emoji
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Custom Awards + Long Drive
+
+### Custom Awards
+- [x] DB: create `trip_awards` table (id, tripId, name, description, prize, scope: daily|overall, category: individual|team, position: top1|top2|top3|top4|top5|last, roundId nullable for daily)
+- [x] DB: create `trip_award_winners` table (id, awardId, tripPlayerId, pairGroupId nullable, roundId nullable, assignedAt)
+- [x] Apply DB migrations
+- [x] Backend: awards.list (by tripId), awards.create, awards.update, awards.delete (admin only)
+- [x] Backend: awards.assignWinner / awards.clearWinner (admin can manually assign or auto-suggest from leaderboard)
+- [x] Backend: awards.getWinnersForTrip (returns award + winner name for display)
+- [x] Frontend: Admin Awards page — list, create, edit, delete awards with name/prize/scope/category/position fields
+- [x] Frontend: Awards panel on daily leaderboard page — shows awards relevant to that round
+- [x] Frontend: Awards panel on overall/trip leaderboard — shows overall awards with winners
+- [x] Frontend: Admin can assign winner from leaderboard position (auto-suggest button)
+
+### Long Drive
+- [x] DB: add `longDriveHole` (int nullable) and `longDriveEnabled` (bool default false) to `rounds` table
+- [x] DB: create `long_drive_entries` table (id, roundId, tripPlayerId, holeDistance int meters, distanceToPin int meters, driveDistance computed/stored int, recordedAt timestamp)
+- [x] Apply DB migrations
+- [x] Backend: rounds.setLongDrive (admin sets hole + enables/disables)
+- [x] Backend: longDrive.submitEntry (player submits distanceToPin; system calculates driveDistance = holeDistance - distanceToPin; validates > 0)
+- [x] Backend: longDrive.getLeaderboard (returns sorted entries with player names, driveDistance, hole info)
+- [x] Backend: longDrive.getBestEntry (returns current leader for a round)
+- [x] Backend: broadcast achievement alert when a new long drive leader is set (same pattern as eagle/birdie alerts)
+- [x] Frontend: Admin round settings — toggle long drive on/off, set hole number
+- [x] Frontend: LongDriveResults player page — rangefinder entry (yards to pin), drive distance = hole length − distance to pin, live leaderboard (15s poll)
+- [x] Frontend: Long Drive leaderboard visible to all players with achievement popup on new leader
+- [x] Frontend: Long Drive button in TripDashboard active round actions (only when longDriveEnabled)
+- [x] Frontend: Long Drive link in AdminRounds round card actions
+- [x] TypeScript check, tests, checkpoint

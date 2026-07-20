@@ -105,6 +105,9 @@ export const rounds = mysqlTable("rounds", {
   status: mysqlEnum("status", ["scheduled", "active", "completed"]).default("scheduled").notNull(),
   // Per-round handicap adjustment applied before the formula (positive = harder course, negative = easier)
   dailyAdjustment: float("dailyAdjustment").default(0).notNull(),
+  // Long Drive competition settings
+  longDriveEnabled: boolean("longDriveEnabled").default(false).notNull(),
+  longDriveHole: int("longDriveHole"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -326,6 +329,68 @@ export const ntpEntries = mysqlTable("ntp_entries", {
 });
 
 export type NtpEntry = typeof ntpEntries.$inferSelect;
+
+// ─── Custom Awards ──────────────────────────────────────────────────────────────
+// Admin-defined named prizes for top/bottom finishes in individual or team scoring
+
+export const tripAwards = mysqlTable("trip_awards", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  // Optional: if set, award is for a specific round (daily); if null, it's overall
+  roundId: int("roundId"),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  prize: varchar("prize", { length: 255 }),
+  // individual or team (4BBB pair)
+  category: mysqlEnum("category", ["individual", "team"]).default("individual").notNull(),
+  // Which finishing position this award targets
+  position: mysqlEnum("position", ["top1", "top2", "top3", "top4", "top5", "last"]).notNull(),
+  // daily (round-specific) or overall (trip total)
+  scope: mysqlEnum("scope", ["daily", "overall"]).default("overall").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TripAward = typeof tripAwards.$inferSelect;
+export type InsertTripAward = typeof tripAwards.$inferInsert;
+
+export const tripAwardWinners = mysqlTable("trip_award_winners", {
+  id: int("id").autoincrement().primaryKey(),
+  awardId: int("awardId").notNull(),
+  // For individual awards
+  tripPlayerId: int("tripPlayerId"),
+  // For team awards (stores the groupPlayer id of one member of the pair)
+  groupPlayerId: int("groupPlayerId"),
+  // Denormalised for quick display
+  displayName: varchar("displayName", { length: 255 }),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+});
+
+export type TripAwardWinner = typeof tripAwardWinners.$inferSelect;
+
+// ─── Long Drive ───────────────────────────────────────────────────────────────
+// Admin enables long drive competition for a specific hole in a round.
+// Players enter their rangefinder distance-to-pin; drive distance = hole distance - distanceToPin.
+
+export const longDriveEntries = mysqlTable("long_drive_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  tripPlayerId: int("tripPlayerId").notNull(),
+  userId: int("userId").notNull(),
+  // Distance from ball to pin in metres (entered by player via rangefinder)
+  distanceToPinM: int("distanceToPinM").notNull(),
+  // Hole total distance in metres (from holes table at time of entry)
+  holeDistanceM: int("holeDistanceM").notNull(),
+  // Computed: holeDistanceM - distanceToPinM
+  driveDistanceM: int("driveDistanceM").notNull(),
+  // Whether this entry is the current leader
+  isLeader: boolean("isLeader").default(false).notNull(),
+  // Achievement broadcast sent for this entry becoming leader
+  broadcastSent: boolean("broadcastSent").default(false).notNull(),
+  submittedAt: timestamp("submittedAt").defaultNow().notNull(),
+});
+
+export type LongDriveEntry = typeof longDriveEntries.$inferSelect;
 
 // ─── Push Subscriptions ───────────────────────────────────────────────────────
 // Stores Web Push API subscriptions so the server can push achievement alerts.

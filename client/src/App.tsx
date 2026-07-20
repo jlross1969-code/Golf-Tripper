@@ -25,10 +25,13 @@ import JoinTrip from "./pages/JoinTrip";
 import JoinTripShare from "./pages/JoinTripShare";
 import AdminRoster from "./pages/admin/AdminRoster";
 import AdminNTP from "./pages/admin/AdminNTP";
+import AdminAwards from "./pages/admin/AdminAwards";
 import TripPlayers from "./pages/TripPlayers";
 import MyHandicap from "./pages/MyHandicap";
 import MyProfile from "./pages/MyProfile";
 import NTPResults from "./pages/NTPResults";
+import LongDriveResults from "./pages/LongDriveResults";
+import AdminLongDrive from "./pages/admin/AdminLongDrive";
 import GroupPairing from "./pages/GroupPairing";
 import TeeSheet from "./pages/TeeSheet";
 
@@ -48,6 +51,7 @@ function Router() {
       <Route path="/trip/:tripId/my-handicap" component={MyHandicap} />
       <Route path="/trip/:tripId/my-profile" component={MyProfile} />
       <Route path="/round/:roundId/ntp" component={NTPResults} />
+      <Route path="/round/:roundId/long-drive" component={LongDriveResults} />
       <Route path="/trip/:tripId/my-group/:roundId" component={GroupPairing} />
       <Route path="/trip/:tripId/round/:roundId/teesheet" component={TeeSheet} />
       <Route path="/admin" component={AdminTrips} />
@@ -57,6 +61,8 @@ function Router() {
       <Route path="/admin/trips/:tripId/rounds" component={AdminRounds} />
       <Route path="/admin/trips/:tripId/rounds/:roundId/groups" component={AdminGroups} />
       <Route path="/admin/trips/:tripId/rounds/:roundId/ntp" component={AdminNTP} />
+      <Route path="/admin/trips/:tripId/rounds/:roundId/long-drive" component={AdminLongDrive} />
+      <Route path="/admin/trips/:tripId/awards" component={AdminAwards} />
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />

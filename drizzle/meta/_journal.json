@@ -78,6 +78,13 @@
       "when": 1784538634944,
       "tag": "0010_outstanding_steel_serpent",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1784586201921,
+      "tag": "0011_material_loki",
+      "breakpoints": true
     }
   ]
 }

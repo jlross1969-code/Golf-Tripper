@@ -63,6 +63,14 @@ import {
   recalcGroupMatch,
   removePlayerFromGroup,
   autoGroupRound,
+  getAwardsByTrip,
+  createAward,
+  updateAward,
+  deleteAward,
+  assignAwardWinner,
+  getLongDriveLeaderboard,
+  submitLongDriveEntry,
+  markLongDriveBroadcast,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -1699,6 +1707,194 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await setNtpWinner(input.ntpId, input.winnerId, input.winnerDistanceCm);
         return { success: true };
+      }),
+  }),
+
+  // ─── Custom Awards ──────────────────────────────────────────────────────────────
+  awards: router({
+    // List all awards for a trip (with winner if assigned)
+    list: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input }) => {
+        return getAwardsByTrip(input.tripId);
+      }),
+
+    // Admin: create a new award
+    create: adminProcedure
+      .input(z.object({
+        tripId: z.number(),
+        roundId: z.number().nullable().optional(),
+        name: z.string().min(1).max(100),
+        description: z.string().optional(),
+        prize: z.string().optional(),
+        category: z.enum(["individual", "team"]),
+        position: z.enum(["top1", "top2", "top3", "top4", "top5", "last"]),
+        scope: z.enum(["daily", "overall"]),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createAward({
+          tripId: input.tripId,
+          roundId: input.roundId ?? null,
+          name: input.name,
+          description: input.description ?? null,
+          prize: input.prize ?? null,
+          category: input.category,
+          position: input.position,
+          scope: input.scope,
+        });
+        return { id };
+      }),
+
+    // Admin: update an award
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(100).optional(),
+        description: z.string().nullable().optional(),
+        prize: z.string().nullable().optional(),
+        category: z.enum(["individual", "team"]).optional(),
+        position: z.enum(["top1", "top2", "top3", "top4", "top5", "last"]).optional(),
+        scope: z.enum(["daily", "overall"]).optional(),
+        roundId: z.number().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await updateAward(id, data);
+        return { success: true };
+      }),
+
+    // Admin: delete an award (also removes winner)
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteAward(input.id);
+        return { success: true };
+      }),
+
+    // Admin: assign or clear the winner for an award
+    assignWinner: adminProcedure
+      .input(z.object({
+        awardId: z.number(),
+        tripPlayerId: z.number().nullable(),
+        groupPlayerId: z.number().nullable(),
+        displayName: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        await assignAwardWinner(input.awardId, input.tripPlayerId, input.groupPlayerId, input.displayName);
+        return { success: true };
+      }),
+  }),
+
+  // ─── Long Drive ────────────────────────────────────────────────────────────────────
+  longDrive: router({
+    // Admin: enable/disable long drive and set hole for a round
+    configure: adminProcedure
+      .input(z.object({
+        roundId: z.number(),
+        enabled: z.boolean(),
+        holeNumber: z.number().min(1).max(18).nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await (await import("./db")).getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { eq: eqOp } = await import("drizzle-orm");
+        const { rounds: roundsTable } = await import("../drizzle/schema");
+        await db.update(roundsTable)
+          .set({ longDriveEnabled: input.enabled, longDriveHole: input.holeNumber ?? null })
+          .where(eqOp(roundsTable.id, input.roundId));
+        return { success: true };
+      }),
+
+    // All players: get leaderboard for a round
+    getLeaderboard: protectedProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => {
+        return getLongDriveLeaderboard(input.roundId);
+      }),
+
+    // Player: submit distance-to-pin entry
+    submitEntry: protectedProcedure
+      .input(z.object({
+        roundId: z.number(),
+        distanceToPinM: z.number().int().min(1).max(600),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Get the round to find hole distance
+        const round = await getRound(input.roundId);
+        if (!round) throw new TRPCError({ code: "NOT_FOUND", message: "Round not found" });
+        if (!round.longDriveEnabled) throw new TRPCError({ code: "BAD_REQUEST", message: "Long drive is not enabled for this round" });
+        if (!round.longDriveHole) throw new TRPCError({ code: "BAD_REQUEST", message: "Long drive hole not configured" });
+
+        // Get hole distance for the long drive hole
+        const db = await (await import("./db")).getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { eq: eqOp } = await import("drizzle-orm");
+        const { holes: holesTable } = await import("../drizzle/schema");
+        const [hole] = await db.select()
+          .from(holesTable)
+          .where(eqOp(holesTable.courseId, round.courseId))
+          .then((rows) => rows.filter((h) => h.holeNumber === round.longDriveHole!));
+
+        if (!hole) throw new TRPCError({ code: "NOT_FOUND", message: `Hole ${round.longDriveHole} not found for this course` });
+
+        // Hole distance: use par as proxy if no distance stored, but we need actual distance.
+        // We'll use a standard distance based on par (par3=150m, par4=350m, par5=480m) if not stored.
+        // If the holes table has a distance field, use it; otherwise use par-based estimate.
+        const holeDistanceM = (hole as any).distanceM ?? (hole.par === 3 ? 150 : hole.par === 4 ? 350 : 480);
+
+        // Get tripPlayerId
+        const tripPlayer = await getTripPlayer(round.tripId, ctx.user.id);
+        if (!tripPlayer) throw new TRPCError({ code: "NOT_FOUND", message: "You are not a player in this trip" });
+
+        const { driveDistanceM, isNewLeader, entryId } = await submitLongDriveEntry(
+          input.roundId,
+          ctx.user.id,
+          tripPlayer.id,
+          input.distanceToPinM,
+          holeDistanceM
+        );
+
+        // Broadcast achievement if new leader
+        if (isNewLeader) {
+          const playerName = tripPlayer.nickname ?? ctx.user.name ?? "A player";
+          const msg = `💨 New Long Drive Leader! ${playerName} — ${driveDistanceM}m on Hole ${round.longDriveHole}`;
+          await createNotification({ tripId: round.tripId, message: msg, type: "achievement" });
+          await sendPushToTrip(round.tripId, {
+            title: "💨 New Long Drive Leader!",
+            body: `${playerName} — ${driveDistanceM}m on Hole ${round.longDriveHole}`,
+            tag: `long-drive-${round.id}`,
+          });
+          await markLongDriveBroadcast(entryId);
+        }
+
+        return { driveDistanceM, isNewLeader };
+      }),
+    // Admin: get all long drive entries grouped by hole for a round
+    getByRound: protectedProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => {
+        const db = await (await import("./db")).getDb();
+        if (!db) return [];
+        const { eq: eqOp, desc: descOp } = await import("drizzle-orm");
+        const { longDriveEntries: ldTable, tripPlayers: tpTable, users: usersTable } = await import("../drizzle/schema");
+        const entries = await db
+          .select()
+          .from(ldTable)
+          .where(eqOp(ldTable.roundId, input.roundId))
+          .orderBy(descOp(ldTable.driveDistanceM));
+        const enriched = await Promise.all(entries.map(async (e) => {
+          const [tp] = await db.select().from(tpTable).where(eqOp(tpTable.id, e.tripPlayerId));
+          const user = tp ? (await db.select().from(usersTable).where(eqOp(usersTable.id, tp.userId)))[0] : null;
+          const userName = tp?.nickname ?? user?.name ?? `Player ${e.userId}`;
+          return {
+            ...e,
+            userName,
+            driveDistanceYards: Math.round(e.driveDistanceM * 1.09361),
+            distanceToPin: Math.round(e.distanceToPinM * 1.09361),
+          };
+        }));
+        // Return all entries sorted by drive distance (no per-hole grouping since long drive is per-round)
+        return enriched;
       }),
   }),
 });

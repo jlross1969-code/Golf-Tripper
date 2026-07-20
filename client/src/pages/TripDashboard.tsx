@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -238,6 +238,13 @@ export default function TripDashboard() {
                                 <Target className="w-3 h-3" /> NTP
                               </Button>
                             </Link>
+                            {(round as any).longDriveEnabled && (
+                              <Link href={`/round/${round.id}/long-drive`}>
+                                <Button size="sm" variant="outline" className="gap-1">
+                                  <Zap className="w-3 h-3" /> Long Drive
+                                </Button>
+                              </Link>
+                            )}
                             {(round as any).matchPlayEnabled && (
                               <Link href={`/round/${round.id}/match-play`}>
                                 <Button size="sm" variant="outline" className="gap-1">
