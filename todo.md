@@ -391,3 +391,10 @@
 - [x] Frontend: SideMatches — inline team name edit (pencil icon next to team name, inline input with save/cancel, calls groups.setTeamName)
 - [x] Frontend: ScoreEntry scorecard comparison drawer — highlight animation on winning team's score cell when a new hole result is detected
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Team Name Limit, Empty Revert & Score Header Flash
+
+- [x] Frontend: SideMatches inline team name — enforce 20-char max with character counter and warning message (not just maxLength attribute)
+- [x] Frontend: SideMatches inline team name — saving empty input clears the stored name so the auto-generated default is shown
+- [x] Frontend: ScoreEntry scorecard drawer — extend winner-flash animation to the match score summary header (wins/halves/losses tally) when match status updates
+- [x] TypeScript check, tests, checkpoint

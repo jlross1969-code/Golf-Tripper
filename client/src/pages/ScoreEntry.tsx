@@ -147,6 +147,9 @@ export default function ScoreEntry() {
   // Track which hole indices just got a new result (for flash animation)
   const [flashedHoles, setFlashedHoles] = useState<Record<number, "A" | "B">>({});
   const prevHoleResultsRef = useRef<string>("[]");
+  // Track when the overall match score header should flash
+  const [flashHeader, setFlashHeader] = useState<"A" | "B" | null>(null);
+  const prevMatchStatusRef = useRef<number>(0);
 
   // Admin score correction dialog
   const [correctOpen, setCorrectOpen] = useState(false);
@@ -289,6 +292,17 @@ export default function ScoreEntry() {
     });
     if (Object.keys(newFlashes).length > 0) {
       setFlashedHoles(newFlashes);
+      // Also flash the header based on the new match status direction
+      const newStatus = myGroupMatch?.matchStatus ?? 0;
+      const prevStatus = prevMatchStatusRef.current;
+      if (newStatus !== prevStatus) {
+        const headerSide = newStatus > 0 ? "A" : newStatus < 0 ? "B" : null;
+        if (headerSide) {
+          setFlashHeader(headerSide);
+          setTimeout(() => setFlashHeader(null), 1600);
+        }
+      }
+      prevMatchStatusRef.current = myGroupMatch?.matchStatus ?? 0;
       const t = setTimeout(() => setFlashedHoles({}), 1600);
       prevHoleResultsRef.current = holeResultsStr;
       return () => clearTimeout(t);
@@ -1199,6 +1213,37 @@ export default function ScoreEntry() {
                 <span className="text-xs text-muted-foreground">vs</span>
                 <span className="text-orange-400 font-medium">{myGroupMatch.pairBTeamName ?? myGroupMatch.pairBNames.join(" & ")}</span>
               </div>
+              {/* Match score summary — flashes when match status changes */}
+              {(() => {
+                const results = myGroupMatch.holeResultsParsed as ("A" | "B" | "H")[];
+                const aWins = results.filter(r => r === "A").length;
+                const bWins = results.filter(r => r === "B").length;
+                const halves = results.filter(r => r === "H").length;
+                const status = myGroupMatch.matchStatus;
+                const statusLabel = status === 0 ? "All Square" : status > 0 ? `${status} Up (A)` : `${Math.abs(status)} Up (B)`;
+                const headerFlashClass = flashHeader === "A" ? "winner-flash-a" : flashHeader === "B" ? "winner-flash-b" : "";
+                return (
+                  <div className={`mt-2 flex items-center justify-between px-3 py-2 rounded-lg border border-border bg-muted/40 ${headerFlashClass}`}>
+                    <div className="text-center">
+                      <span className="text-lg font-bold text-blue-400">{aWins}</span>
+                      <span className="block text-[10px] text-muted-foreground">A wins</span>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-sm text-muted-foreground">{halves}H</span>
+                    </div>
+                    <div className="text-center">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        status === 0 ? "bg-muted text-muted-foreground" :
+                        status > 0 ? "bg-blue-600/20 text-blue-300" : "bg-orange-600/20 text-orange-300"
+                      }`}>{statusLabel}</span>
+                    </div>
+                    <div className="text-center">
+                      <span className="text-lg font-bold text-orange-400">{bWins}</span>
+                      <span className="block text-[10px] text-muted-foreground">B wins</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </SheetHeader>
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">

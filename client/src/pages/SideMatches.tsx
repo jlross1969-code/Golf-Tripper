@@ -309,27 +309,37 @@ export default function SideMatches() {
                             <div className="flex flex-col gap-1 items-center">
                               <Input
                                 value={teamNameDraft}
-                                onChange={(e) => setTeamNameDraft(e.target.value)}
+                                onChange={(e) => setTeamNameDraft(e.target.value.slice(0, 20))}
                                 placeholder={teamName}
-                                maxLength={64}
-                                className="h-7 text-xs text-center"
+                                maxLength={20}
+                                className={`h-7 text-xs text-center ${teamNameDraft.length >= 20 ? "border-destructive focus-visible:ring-destructive" : ""}`}
                                 autoFocus
                                 onKeyDown={(e) => {
-                                  if (e.key === "Enter") setTeamName.mutate({ groupId, teamName: teamNameDraft });
+                                  if (e.key === "Enter" && teamNameDraft.length <= 20) setTeamName.mutate({ groupId, teamName: teamNameDraft });
                                   if (e.key === "Escape") setEditingTeamName(null);
                                 }}
                               />
-                              <div className="flex gap-1">
-                                <Button size="icon" variant="ghost" className="h-6 w-6"
-                                  onClick={() => setTeamName.mutate({ groupId, teamName: teamNameDraft })}
-                                  disabled={setTeamName.isPending}>
-                                  <Check className="w-3 h-3 text-green-400" />
-                                </Button>
-                                <Button size="icon" variant="ghost" className="h-6 w-6"
-                                  onClick={() => setEditingTeamName(null)}>
-                                  <X className="w-3 h-3 text-muted-foreground" />
-                                </Button>
+                              <div className="flex items-center justify-between w-full px-0.5">
+                                <span className={`text-[10px] ${teamNameDraft.length >= 20 ? "text-destructive font-medium" : teamNameDraft.length >= 16 ? "text-amber-400" : "text-muted-foreground"}`}>
+                                  {teamNameDraft.length >= 20 ? "20/20 — max reached" : `${teamNameDraft.length}/20`}
+                                </span>
+                                <div className="flex gap-1">
+                                  <Button size="icon" variant="ghost" className="h-6 w-6"
+                                    onClick={() => setTeamName.mutate({ groupId, teamName: teamNameDraft })}
+                                    disabled={setTeamName.isPending || teamNameDraft.length > 20}>
+                                    <Check className="w-3 h-3 text-green-400" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" className="h-6 w-6"
+                                    onClick={() => setEditingTeamName(null)}>
+                                    <X className="w-3 h-3 text-muted-foreground" />
+                                  </Button>
+                                </div>
                               </div>
+                              {teamNameDraft.length === 0 && (
+                                <p className="text-[10px] text-muted-foreground text-center">
+                                  Saving empty will revert to auto-generated name
+                                </p>
+                              )}
                             </div>
                           ) : (
                             <div className="flex flex-col items-center gap-0.5">
