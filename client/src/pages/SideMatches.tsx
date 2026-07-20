@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Users, Swords, Trophy, Minus, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, Users, Swords, Trophy, Minus, ChevronRight, Pencil, Check, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -185,6 +186,20 @@ export default function SideMatches() {
   const [selectedType, setSelectedType] = useState<string>("");
   const [holeByHoleMatchId, setHoleByHoleMatchId] = useState<number | null>(null);
 
+  // Inline team name editing state: key = matchId + side ('A'|'B')
+  const [editingTeamName, setEditingTeamName] = useState<string | null>(null); // e.g. "42-A"
+  const [teamNameDraft, setTeamNameDraft] = useState<string>("");
+
+  const utils = trpc.useUtils();
+  const setTeamName = trpc.groups.setTeamName.useMutation({
+    onSuccess: () => {
+      toast.success("Team name saved!");
+      setEditingTeamName(null);
+      utils.groupMatch.getByRound.invalidate({ roundId: id });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const createMatch = trpc.sideMatches.create.useMutation({
     onSuccess: () => {
       toast.success("Side match created");
@@ -272,24 +287,84 @@ export default function SideMatches() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-4 pb-4 space-y-4">
-                  {/* Team name vs display */}
-                  <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center text-center">
-                    <div className="space-y-1">
-                      <Badge className="bg-blue-600 text-white text-xs">Pair A</Badge>
-                      <p className="text-sm font-bold text-foreground">{pairATeamName}</p>
-                      {match.pairATeamName && (
-                        <p className="text-xs text-muted-foreground">{match.pairANames.join(" & ")}</p>
-                      )}
-                    </div>
-                    <span className="text-muted-foreground font-bold text-lg">vs</span>
-                    <div className="space-y-1">
-                      <Badge className="bg-orange-600 text-white text-xs">Pair B</Badge>
-                      <p className="text-sm font-bold text-foreground">{pairBTeamName}</p>
-                      {match.pairBTeamName && (
-                        <p className="text-xs text-muted-foreground">{match.pairBNames.join(" & ")}</p>
-                      )}
-                    </div>
-                  </div>
+                  {/* Team name vs display — with inline edit for the current user's pair */}
+                  {(() => {
+                    const myPairSide =
+                      user && (match.player1Id === user.id || match.player1PartnerId === user.id) ? "A" :
+                      user && (match.player2Id === user.id || match.player2PartnerId === user.id) ? "B" : null;
+
+                    function TeamNameCell({ side, teamName, names, groupId }: {
+                      side: "A" | "B"; teamName: string; names: string[]; groupId: number;
+                    }) {
+                      const editKey = `${match.id}-${side}`;
+                      const isEditing = editingTeamName === editKey;
+                      const isMyPair = myPairSide === side;
+                      const hasCustomName = side === "A" ? !!match.pairATeamName : !!match.pairBTeamName;
+                      return (
+                        <div className="space-y-1">
+                          <Badge className={side === "A" ? "bg-blue-600 text-white text-xs" : "bg-orange-600 text-white text-xs"}>
+                            Pair {side}
+                          </Badge>
+                          {isEditing ? (
+                            <div className="flex flex-col gap-1 items-center">
+                              <Input
+                                value={teamNameDraft}
+                                onChange={(e) => setTeamNameDraft(e.target.value)}
+                                placeholder={teamName}
+                                maxLength={64}
+                                className="h-7 text-xs text-center"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") setTeamName.mutate({ groupId, teamName: teamNameDraft });
+                                  if (e.key === "Escape") setEditingTeamName(null);
+                                }}
+                              />
+                              <div className="flex gap-1">
+                                <Button size="icon" variant="ghost" className="h-6 w-6"
+                                  onClick={() => setTeamName.mutate({ groupId, teamName: teamNameDraft })}
+                                  disabled={setTeamName.isPending}>
+                                  <Check className="w-3 h-3 text-green-400" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-6 w-6"
+                                  onClick={() => setEditingTeamName(null)}>
+                                  <X className="w-3 h-3 text-muted-foreground" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <div className="flex items-center gap-1">
+                                <p className="text-sm font-bold text-foreground">{teamName}</p>
+                                {isMyPair && (
+                                  <button
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                    onClick={() => {
+                                      setTeamNameDraft(hasCustomName ? teamName : "");
+                                      setEditingTeamName(editKey);
+                                    }}
+                                    title="Edit team name"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                              {hasCustomName && (
+                                <p className="text-xs text-muted-foreground">{names.join(" & ")}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center text-center">
+                        <TeamNameCell side="A" teamName={pairATeamName} names={match.pairANames} groupId={match.groupId} />
+                        <span className="text-muted-foreground font-bold text-lg">vs</span>
+                        <TeamNameCell side="B" teamName={pairBTeamName} names={match.pairBNames} groupId={match.groupId} />
+                      </div>
+                    );
+                  })()}
 
                   {holeResults.length > 0 && (
                     <div>

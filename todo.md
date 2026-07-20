@@ -385,3 +385,9 @@
 - [ ] Frontend: Re-seed preview drag-to-edit — drag players between proposed groups before confirming
 - [ ] Backend + Frontend: Round summary PDF — top 3 individual, top 3 4BBB pairs, achievements, skins results
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Inline Team Name Edit & Scorecard Animation
+
+- [x] Frontend: SideMatches — inline team name edit (pencil icon next to team name, inline input with save/cancel, calls groups.setTeamName)
+- [x] Frontend: ScoreEntry scorecard comparison drawer — highlight animation on winning team's score cell when a new hole result is detected
+- [x] TypeScript check, tests, checkpoint

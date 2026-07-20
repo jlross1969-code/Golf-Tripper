@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { calculateNetScore, calculateStablefordPoints, detectAchievement, formatAchievementType } from "../../../shared/scoring";
 import AchievementAlert from "@/components/AchievementAlert";
@@ -144,6 +144,9 @@ export default function ScoreEntry() {
 
   // Scorecard comparison drawer
   const [compareOpen, setCompareOpen] = useState(false);
+  // Track which hole indices just got a new result (for flash animation)
+  const [flashedHoles, setFlashedHoles] = useState<Record<number, "A" | "B">>({});
+  const prevHoleResultsRef = useRef<string>("[]");
 
   // Admin score correction dialog
   const [correctOpen, setCorrectOpen] = useState(false);
@@ -272,6 +275,27 @@ export default function ScoreEntry() {
   const myGroupMatch = myGroup
     ? groupMatches?.find((m) => m.groupId === myGroup.groupId)
     : null;
+
+  // Detect new hole results and trigger flash animation in the comparison drawer
+  const holeResultsStr = JSON.stringify(myGroupMatch?.holeResultsParsed ?? []);
+  useEffect(() => {
+    const currentResults: ("A" | "B" | "H")[] = JSON.parse(holeResultsStr);
+    const prev: ("A" | "B" | "H")[] = JSON.parse(prevHoleResultsRef.current);
+    const newFlashes: Record<number, "A" | "B"> = {};
+    currentResults.forEach((r, idx) => {
+      if ((r === "A" || r === "B") && prev[idx] !== r) {
+        newFlashes[idx] = r;
+      }
+    });
+    if (Object.keys(newFlashes).length > 0) {
+      setFlashedHoles(newFlashes);
+      const t = setTimeout(() => setFlashedHoles({}), 1600);
+      prevHoleResultsRef.current = holeResultsStr;
+      return () => clearTimeout(t);
+    }
+    prevHoleResultsRef.current = holeResultsStr;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holeResultsStr]);
 
   const getScore = (userId: number, holeId: number) =>
     holeScores[userId]?.[holeId] ?? 0;
@@ -1202,8 +1226,9 @@ export default function ScoreEntry() {
                     const pairBScores = scorecard?.filter(sc => pairBIds.includes(sc.userId)).map(sc => sc.scores.find(s => s.holeId === hole.id)).filter(Boolean);
                     const bestAPoints = pairAScores && pairAScores.length > 0 ? Math.max(...pairAScores.map(s => s!.stablefordPoints)) : null;
                     const bestBPoints = pairBScores && pairBScores.length > 0 ? Math.max(...pairBScores.map(s => s!.stablefordPoints)) : null;
+                    const flashClass = flashedHoles[hIdx] === "A" ? "winner-flash-a" : flashedHoles[hIdx] === "B" ? "winner-flash-b" : "";
                     return (
-                      <tr key={hole.id} className={`border-b border-border/50 hover:bg-muted/30 ${hIdx === currentHoleIdx ? "bg-primary/5" : ""}`}>
+                      <tr key={hole.id} className={`border-b border-border/50 hover:bg-muted/30 ${hIdx === currentHoleIdx ? "bg-primary/5" : ""} ${flashClass}`}>
                         <td className="py-2 px-2 font-medium text-foreground">{hole.holeNumber}</td>
                         <td className="py-2 px-2 text-center text-muted-foreground">{hole.par}</td>
                         {scoringPlayers.map((p) => {
@@ -1219,16 +1244,16 @@ export default function ScoreEntry() {
                             </td>
                           );
                         })}
-                        <td className={`py-2 px-2 text-center font-bold text-sm ${holeResult === "A" ? "text-blue-400" : "text-foreground"}`}>
+                        <td className={`py-2 px-2 text-center font-bold text-sm transition-colors ${holeResult === "A" ? "text-blue-400" : "text-foreground"}`}>
                           {bestAPoints ?? "—"}
                         </td>
                         <td className="py-2 px-2 text-center">
-                          {holeResult === "A" && <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold mx-auto">A</span>}
-                          {holeResult === "B" && <span className="w-5 h-5 rounded-full bg-orange-600 text-white text-[10px] flex items-center justify-center font-bold mx-auto">B</span>}
+                          {holeResult === "A" && <span className={`w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold mx-auto ${flashedHoles[hIdx] === "A" ? "ring-2 ring-blue-400 ring-offset-1 ring-offset-background" : ""}`}>A</span>}
+                          {holeResult === "B" && <span className={`w-5 h-5 rounded-full bg-orange-600 text-white text-[10px] flex items-center justify-center font-bold mx-auto ${flashedHoles[hIdx] === "B" ? "ring-2 ring-orange-400 ring-offset-1 ring-offset-background" : ""}`}>B</span>}
                           {holeResult === "H" && <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] flex items-center justify-center mx-auto">H</span>}
                           {!holeResult && <span className="text-xs text-muted-foreground">—</span>}
                         </td>
-                        <td className={`py-2 px-2 text-center font-bold text-sm ${holeResult === "B" ? "text-orange-400" : "text-foreground"}`}>
+                        <td className={`py-2 px-2 text-center font-bold text-sm transition-colors ${holeResult === "B" ? "text-orange-400" : "text-foreground"}`}>
                           {bestBPoints ?? "—"}
                         </td>
                       </tr>
