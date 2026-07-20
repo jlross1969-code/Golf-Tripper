@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -18,6 +18,7 @@ type GroupPlayer = {
   scorerId: number | null;
   user?: { id: number; name: string | null } | undefined;
   nickname?: string | null;
+  currentHandicap?: number | null;
 };
 
 export default function AdminGroups() {
@@ -94,6 +95,15 @@ export default function AdminGroups() {
     onError: (e) => toast.error(e.message),
   });
 
+  // Tee time / starting hole inline edit state per group
+  const [teeTimeEdits, setTeeTimeEdits] = useState<Record<number, string>>({});
+  const [startingHoleEdits, setStartingHoleEdits] = useState<Record<number, string>>({});
+
+  const updateSettings = trpc.groups.updateSettings.useMutation({
+    onSuccess: () => { toast.success("Group settings saved"); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+
   const autoGroup = trpc.groups.autoGroup.useMutation({
     onSuccess: (data) => {
       toast.success(`Auto-grouped ${data.totalPlayers} players into ${data.groupIds.length} groups with pairs assigned`);
@@ -120,6 +130,9 @@ export default function AdminGroups() {
       return (
         <span className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs ${color}`}>
           {playerName(p)}
+          {p.currentHandicap != null && (
+            <span className="opacity-60 font-normal">{p.currentHandicap}</span>
+          )}
           {!group.pairsLocked && (
             <button
               className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
@@ -268,6 +281,54 @@ export default function AdminGroups() {
                 </div>
               </div>
               {renderGroupPlayers(group as any)}
+
+              {/* Tee time & starting hole */}
+              <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-3 items-end">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Tee Time
+                  </label>
+                  <input
+                    type="time"
+                    className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground w-28 focus:outline-none focus:ring-1 focus:ring-primary"
+                    value={teeTimeEdits[group.id] ?? (group as any).teeTime ?? ""}
+                    onChange={(e) => setTeeTimeEdits((prev) => ({ ...prev, [group.id]: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Flag className="w-3 h-3" /> Starting Hole
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={18}
+                    className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground w-20 focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="1–18"
+                    value={startingHoleEdits[group.id] ?? ((group as any).startingHole != null ? String((group as any).startingHole) : "")}
+                    onChange={(e) => setStartingHoleEdits((prev) => ({ ...prev, [group.id]: e.target.value }))}
+                  />
+                </div>
+                <button
+                  className="text-xs text-primary hover:underline disabled:opacity-50"
+                  disabled={updateSettings.isPending}
+                  onClick={() => {
+                    const tt = teeTimeEdits[group.id] ?? (group as any).teeTime ?? null;
+                    const sh = startingHoleEdits[group.id] !== undefined
+                      ? (startingHoleEdits[group.id] === "" ? null : Number(startingHoleEdits[group.id]))
+                      : ((group as any).startingHole ?? null);
+                    updateSettings.mutate({ groupId: group.id, teeTime: tt || null, startingHole: sh });
+                  }}
+                >
+                  Save
+                </button>
+                {((group as any).teeTime || (group as any).startingHole) && (
+                  <span className="text-xs text-muted-foreground">
+                    {(group as any).teeTime && <span className="mr-2">⏰ {(group as any).teeTime}</span>}
+                    {(group as any).startingHole && <span>Hole {(group as any).startingHole}</span>}
+                  </span>
+                )}
+              </div>
             </div>
           ))
         )}

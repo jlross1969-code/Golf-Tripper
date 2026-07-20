@@ -90,6 +90,7 @@ import {
   updateInvite,
   deleteInvite,
   revokeTripShareLink,
+  updateGroupSettings,
 } from "./db";
 import { TRPCError } from "@trpc/server";
 
@@ -503,6 +504,18 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
         return getMyGroupForRound(input.roundId, ctx.user.id);
+      }),
+
+    // Admin: set tee time and starting hole for a group
+    updateSettings: adminProcedure
+      .input(z.object({
+        groupId: z.number(),
+        teeTime: z.string().max(10).nullable().optional(),
+        startingHole: z.number().min(1).max(18).nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await updateGroupSettings(input.groupId, input.teeTime ?? null, input.startingHole ?? null);
+        return { success: true };
       }),
   }),
 

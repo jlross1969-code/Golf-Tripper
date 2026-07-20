@@ -216,3 +216,13 @@
 - [x] Player UI: Show trip description on TripDashboard (below trip name/dates if set)
 - [x] Player UI: Starting handicap input on JoinTripShare success screen (player sets own HCP, updates trip_players)
 - [x] Tests and checkpoint
+
+## Session - Handicaps on Group Cards + Tee Time/Starting Hole per Group
+
+- [x] DB: add teeTime (varchar 10, nullable) and startingHole (int, nullable) columns to groups table
+- [x] Apply DB migration for groups teeTime and startingHole
+- [x] Backend: getGroupPlayers includes currentHandicap from trip_players
+- [x] Backend: groups.update procedure (admin only) to set teeTime and startingHole
+- [x] Admin UI: show handicap next to each player name on group player chips in AdminGroups
+- [x] Admin UI: tee time and starting hole inputs on each group card in AdminGroups
+- [x] Tests and checkpoint

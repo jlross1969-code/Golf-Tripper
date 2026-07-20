@@ -43,6 +43,13 @@
       "when": 1784456394904,
       "tag": "0005_faulty_salo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1784510330785,
+      "tag": "0006_acoustic_galactus",
+      "breakpoints": true
     }
   ]
 }

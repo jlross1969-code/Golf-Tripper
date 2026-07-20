@@ -115,6 +115,10 @@ export const groups = mysqlTable("groups", {
   name: varchar("name", { length: 100 }).notNull(),
   // Whether pairs have been locked (no more self-pairing allowed once true)
   pairsLocked: boolean("pairsLocked").default(false).notNull(),
+  // Tee time for this group (e.g. "08:30")
+  teeTime: varchar("teeTime", { length: 10 }),
+  // Starting hole number (1-18)
+  startingHole: int("startingHole"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

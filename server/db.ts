@@ -430,15 +430,17 @@ export async function getGroupPlayers(groupId: number, tripId?: number): Promise
   if (userIds.length === 0) return [];
   const userList = await db.select().from(users).where(inArray(users.id, userIds));
   const userMap = new Map(userList.map((u) => [u.id, u]));
-  // Also fetch nicknames from trip_players if tripId is provided
+  // Also fetch nicknames and handicaps from trip_players if tripId is provided
   let nicknameMap = new Map<number, string | null>();
+  let handicapMap = new Map<number, number>();
   if (tripId) {
-    const tpList = await db.select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname })
+    const tpList = await db.select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap })
       .from(tripPlayers)
       .where(and(eq(tripPlayers.tripId, tripId), inArray(tripPlayers.userId, userIds)));
     nicknameMap = new Map(tpList.map((tp) => [tp.userId, tp.nickname ?? null]));
+    handicapMap = new Map(tpList.map((tp) => [tp.userId, tp.currentHandicap]));
   }
-  return players.map((p) => ({ ...p, user: userMap.get(p.userId), nickname: nicknameMap.get(p.userId) ?? null }));
+  return players.map((p) => ({ ...p, user: userMap.get(p.userId), nickname: nicknameMap.get(p.userId) ?? null, currentHandicap: handicapMap.get(p.userId) ?? null }));
 }
 
 export async function deleteGroup(groupId: number): Promise<void> {
@@ -1301,4 +1303,13 @@ export async function revokeTripShareLink(tripId: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(trips).set({ shareToken: null }).where(eq(trips.id, tripId));
+}
+
+/**
+ * Update tee time and starting hole for a group.
+ */
+export async function updateGroupSettings(groupId: number, teeTime: string | null, startingHole: number | null): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(groups).set({ teeTime, startingHole }).where(eq(groups.id, groupId));
 }
