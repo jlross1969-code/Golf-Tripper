@@ -69,6 +69,19 @@ export default function AdminGroups() {
   const [correctHoleId, setCorrectHoleId] = useState("");
   const [correctGross, setCorrectGross] = useState("");
 
+  // Achievement verification state (for admin-corrected scores)
+  type PendingAchievement = {
+    type: "hole_in_one" | "eagle" | "birdie";
+    holeId: number;
+    holeNumber: number;
+    par: number;
+    grossScore: number;
+    userId: number;
+    playerName: string;
+  };
+  const [pendingAchievement, setPendingAchievement] = useState<PendingAchievement | null>(null);
+  const [pendingAchievementId, setPendingAchievementId] = useState<number | null>(null);
+
   // Compute set of userIds already assigned to any group in this round
   const assignedUserIds = new Set<number>(
     (groups ?? []).flatMap((g) => g.players.map((p) => p.userId))
@@ -136,13 +149,43 @@ export default function AdminGroups() {
     onError: (e) => toast.error(e.message),
   });
 
+  const createAchievement = trpc.achievements.create.useMutation();
+  const confirmAchievement = trpc.achievements.confirm.useMutation();
+
   const adminCorrect = trpc.scores.adminCorrect.useMutation({
-    onSuccess: (d) => {
+    onSuccess: async (d, variables) => {
       toast.success(`Score corrected — Net: ${d.netScore}, Pts: ${d.stablefordPoints}`);
       setCorrectOpen(false);
+      const correctedPlayer = correctPlayer;
       setCorrectPlayer(null);
       setCorrectHoleId("");
       setCorrectGross("");
+      // Trigger achievement verification if the corrected score qualifies
+      if (d.achievementType) {
+        try {
+          const achResult = await createAchievement.mutateAsync({
+            roundId: variables.roundId,
+            userId: variables.userId,
+            holeId: variables.holeId,
+            holeNumber: variables.holeNumber,
+            par: variables.par,
+            grossScore: variables.grossScore,
+            type: d.achievementType,
+          });
+          setPendingAchievementId(achResult.achievementId);
+          setPendingAchievement({
+            type: d.achievementType,
+            holeId: variables.holeId,
+            holeNumber: variables.holeNumber,
+            par: variables.par,
+            grossScore: variables.grossScore,
+            userId: variables.userId,
+            playerName: correctedPlayer?.nickname ?? correctedPlayer?.user?.name ?? "Player",
+          });
+        } catch {
+          // Achievement creation failed silently — score is still saved
+        }
+      }
     },
     onError: (e) => toast.error(e.message),
   });
@@ -632,7 +675,7 @@ export default function AdminGroups() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setCorrectOpen(false); setCorrectPlayer(null); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setCorrectOpen(false); setCorrectPlayer(null); setCorrectHoleId(""); setCorrectGross(""); }}>Cancel</Button>
             <Button
               disabled={!correctHoleId || !correctGross || !correctPlayer || adminCorrect.isPending || !selectedHole}
               onClick={() => {
@@ -650,6 +693,59 @@ export default function AdminGroups() {
               }}
             >
               {adminCorrect.isPending ? "Saving..." : "Save Correction"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Achievement Verification Dialog (for admin-corrected scores) */}
+      <Dialog open={!!pendingAchievement} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-2xl">
+              {pendingAchievement?.type === "hole_in_one" ? "🏆" : pendingAchievement?.type === "eagle" ? "🦅" : "🐦"}
+              {pendingAchievement?.type === "hole_in_one" ? "Hole-in-One!" : pendingAchievement?.type === "eagle" ? "Eagle!" : "Birdie!"}
+            </DialogTitle>
+            <DialogDescription>
+              <strong>{pendingAchievement?.playerName}</strong> scored a{" "}
+              {pendingAchievement?.type === "hole_in_one" ? "hole-in-one" : pendingAchievement?.type === "eagle" ? "eagle" : "birdie"}{" "}
+              ({pendingAchievement?.grossScore} on Par {pendingAchievement?.par}) on Hole {pendingAchievement?.holeNumber}.
+              Please verify this score is correct before broadcasting to all players.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Dismiss without broadcasting
+                setPendingAchievement(null);
+                setPendingAchievementId(null);
+              }}
+            >
+              Score is Wrong
+            </Button>
+            <Button
+              onClick={() => {
+                if (pendingAchievementId && pendingAchievement) {
+                  confirmAchievement.mutate(
+                    {
+                      achievementId: pendingAchievementId,
+                      tripId: tId,
+                      playerName: pendingAchievement.playerName,
+                    },
+                    {
+                      onSuccess: () => toast.success("Achievement confirmed & broadcast!", { duration: 6000 }),
+                      onError: (e) => toast.error(e.message),
+                    }
+                  );
+                }
+                setPendingAchievement(null);
+                setPendingAchievementId(null);
+              }}
+              disabled={confirmAchievement.isPending}
+              className="gap-2"
+            >
+              Confirm &amp; Broadcast
             </Button>
           </DialogFooter>
         </DialogContent>

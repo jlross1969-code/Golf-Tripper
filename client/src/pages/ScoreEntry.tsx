@@ -148,13 +148,40 @@ export default function ScoreEntry() {
   const [correctGross, setCorrectGross] = useState("");
 
   const adminCorrect = trpc.scores.adminCorrect.useMutation({
-    onSuccess: (d) => {
+    onSuccess: async (d, variables) => {
       toast.success(`Score corrected — Net: ${d.netScore}, Pts: ${d.stablefordPoints}`);
       setCorrectOpen(false);
       setCorrectUserId(null);
       setCorrectHoleId(null);
       setCorrectGross("");
       utils.scores.getScorecard.invalidate({ roundId: id });
+      // Trigger achievement verification if the corrected score qualifies
+      if (d.achievementType) {
+        const player = players?.find((p) => p.userId === variables.userId);
+        try {
+          const achResult = await createAchievement.mutateAsync({
+            roundId: variables.roundId,
+            userId: variables.userId,
+            holeId: variables.holeId,
+            holeNumber: variables.holeNumber,
+            par: variables.par,
+            grossScore: variables.grossScore,
+            type: d.achievementType,
+          });
+          setPendingAchievementId(achResult.achievementId);
+          setPendingAchievement({
+            type: d.achievementType,
+            holeId: variables.holeId,
+            holeNumber: variables.holeNumber,
+            par: variables.par,
+            grossScore: variables.grossScore,
+            userId: variables.userId,
+            playerName: player?.nickname ?? player?.user?.name ?? "Player",
+          });
+        } catch {
+          // Achievement creation failed silently — score is still saved
+        }
+      }
     },
     onError: (e) => toast.error(e.message),
   });

@@ -719,7 +719,9 @@ export const appRouter = router({
           netScore,
           stablefordPoints,
         });
-        return { netScore, stablefordPoints };
+        // Detect achievement so the frontend can prompt for confirmation
+        const achievementType = detectAchievement(input.grossScore, input.par);
+        return { netScore, stablefordPoints, achievementType };
       }),
 
     getPlayerScorecard: publicProcedure
