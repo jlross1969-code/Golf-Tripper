@@ -346,3 +346,14 @@
 - [x] Backend: achievements per player per round exposed in daily leaderboard data
 - [x] Frontend: share/screenshot button on Daily Leaderboard Highlights tab (html2canvas or native share)
 - [x] TypeScript check, checkpoint
+
+## Session - Trip Highlights Share, Achievement Badges, Grouping Copy/Re-seed
+
+- [x] Frontend: share button on Trip Leaderboard Highlights tab
+- [x] Frontend: achievement badges (HIO/Eagle/Birdie cumulative) on Trip Leaderboard rows
+- [x] Backend: Highlights push notification when round is marked complete
+- [x] Backend: groups.copyToRound procedure — copy exact groups+pairings from one round to another
+- [x] Backend: groups.reseedBy4BBB procedure — re-seed groups by 4BBB pair ranking from previous round
+- [x] Backend: groups.reseedByIndividual procedure — re-seed groups by individual net trip ranking (top players together)
+- [x] Frontend: Copy/Re-seed Groupings dialog on AdminGroups page (3 options + preview + confirm)
+- [x] TypeScript check, tests, checkpoint

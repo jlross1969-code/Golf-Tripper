@@ -6,7 +6,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag, Pencil, Copy } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -62,6 +62,12 @@ export default function AdminGroups() {
   // Auto-group state
   const [autoGroupOpen, setAutoGroupOpen] = useState(false);
   const [autoGroupCount, setAutoGroupCount] = useState("");
+
+  // Copy / Re-seed state
+  const [reseedOpen, setReseedOpen] = useState(false);
+  const [reseedMode, setReseedMode] = useState<"copy" | "4bbb" | "individual">("copy");
+  const [reseedSourceRoundId, setReseedSourceRoundId] = useState("");
+  const [reseedGroupSize, setReseedGroupSize] = useState("4");
 
   // Score correction state
   const [correctOpen, setCorrectOpen] = useState(false);
@@ -148,6 +154,23 @@ export default function AdminGroups() {
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const copyToRound = trpc.groups.copyToRound.useMutation({
+    onSuccess: (d) => { toast.success(`Copied ${d.groupsCreated} groups to this round`); setReseedOpen(false); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const reseedBy4BBB = trpc.groups.reseedBy4BBB.useMutation({
+    onSuccess: (d) => { toast.success(`Re-seeded into ${d.groupsCreated} groups by 4BBB standings`); setReseedOpen(false); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const reseedByIndividual = trpc.groups.reseedByIndividual.useMutation({
+    onSuccess: (d) => { toast.success(`Re-seeded into ${d.groupsCreated} groups by individual standings`); setReseedOpen(false); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Other rounds in this trip (for copy/re-seed source selection)
+  const { data: tripRounds } = trpc.rounds.list.useQuery({ tripId: tId });
+  const otherRounds = (tripRounds ?? []).filter((r) => r.id !== rId);
 
   const createAchievement = trpc.achievements.create.useMutation();
   const confirmAchievement = trpc.achievements.confirm.useMutation();
@@ -314,6 +337,9 @@ export default function AdminGroups() {
           </Link>
           <Button size="sm" variant="outline" className="gap-2" onClick={() => setAutoGroupOpen(true)}>
             <Shuffle className="w-4 h-4" /> Auto-Group
+          </Button>
+          <Button size="sm" variant="outline" className="gap-2" onClick={() => setReseedOpen(true)}>
+            <Copy className="w-4 h-4" /> Copy / Re-seed
           </Button>
           <Button size="sm" className="gap-2" onClick={() => setGroupOpen(true)}>
             <Plus className="w-4 h-4" /> New Group
@@ -693,6 +719,115 @@ export default function AdminGroups() {
               }}
             >
               {adminCorrect.isPending ? "Saving..." : "Save Correction"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Copy / Re-seed Groupings Dialog */}
+      <Dialog open={reseedOpen} onOpenChange={setReseedOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="w-4 h-4 text-primary" />
+              Copy / Re-seed Groupings
+            </DialogTitle>
+            <DialogDescription>
+              Import groupings from another round into this one. Existing groups will be cleared first.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300">
+              ⚠️ This will delete all existing groups for this round and replace them.
+            </div>
+
+            {/* Mode selector */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Method</label>
+              <div className="grid grid-cols-1 gap-2">
+                {([
+                  { value: "copy", label: "Copy exact groupings & pairings", desc: "Same groups, same partners — ideal when partnerships carry over unchanged." },
+                  { value: "4bbb", label: "Re-seed by 4BBB pair standings", desc: "Best pair from the source round goes into Group 1, second pair into Group 2, etc." },
+                  { value: "individual", label: "Re-seed by individual trip standings", desc: "Snake draft by cumulative net score — top and bottom players in the same group for competitive balance." },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setReseedMode(opt.value)}
+                    className={`text-left rounded-lg border px-4 py-3 transition-colors ${
+                      reseedMode === opt.value
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    <p className="font-medium text-sm">{opt.label}</p>
+                    <p className="text-xs mt-0.5 opacity-75">{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Source round selector (copy + 4bbb) */}
+            {(reseedMode === "copy" || reseedMode === "4bbb") && (
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1 block">
+                  Source Round
+                </label>
+                <Select value={reseedSourceRoundId} onValueChange={setReseedSourceRoundId}>
+                  <SelectTrigger><SelectValue placeholder="Select source round..." /></SelectTrigger>
+                  <SelectContent>
+                    {otherRounds.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No other rounds in this trip.</div>
+                    ) : (
+                      otherRounds.map((r) => (
+                        <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Group size (4bbb + individual) */}
+            {(reseedMode === "4bbb" || reseedMode === "individual") && (
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1 block">
+                  Players per Group
+                </label>
+                <Select value={reseedGroupSize} onValueChange={setReseedGroupSize}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2 players (pairs only)</SelectItem>
+                    <SelectItem value="4">4 players (standard)</SelectItem>
+                    <SelectItem value="6">6 players</SelectItem>
+                    <SelectItem value="8">8 players</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReseedOpen(false)}>Cancel</Button>
+            <Button
+              disabled={
+                (reseedMode !== "individual" && !reseedSourceRoundId) ||
+                copyToRound.isPending || reseedBy4BBB.isPending || reseedByIndividual.isPending
+              }
+              onClick={() => {
+                const srcId = Number(reseedSourceRoundId);
+                const gSize = Number(reseedGroupSize);
+                if (reseedMode === "copy") {
+                  copyToRound.mutate({ sourceRoundId: srcId, targetRoundId: rId, tripId: tId });
+                } else if (reseedMode === "4bbb") {
+                  reseedBy4BBB.mutate({ sourceRoundId: srcId, targetRoundId: rId, tripId: tId, groupSize: gSize });
+                } else {
+                  reseedByIndividual.mutate({ targetRoundId: rId, tripId: tId, groupSize: gSize });
+                }
+              }}
+            >
+              {(copyToRound.isPending || reseedBy4BBB.isPending || reseedByIndividual.isPending)
+                ? "Applying..."
+                : reseedMode === "copy" ? "Copy Groupings" : reseedMode === "4bbb" ? "Re-seed by 4BBB" : "Re-seed by Standings"}
             </Button>
           </DialogFooter>
         </DialogContent>

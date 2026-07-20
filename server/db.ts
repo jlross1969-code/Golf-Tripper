@@ -1504,3 +1504,216 @@ export async function updateGroupSettings(groupId: number, teeTime: string | nul
   if (!db) throw new Error("DB unavailable");
   await db.update(groups).set({ teeTime, startingHole }).where(eq(groups.id, groupId));
 }
+
+// ─── Grouping Copy / Re-seed ──────────────────────────────────────────────────
+
+/**
+ * Copy exact groups and pairings from sourceRoundId to targetRoundId.
+ * Clears any existing groups on the target round first.
+ * Returns the number of groups created.
+ */
+export async function copyGroupingsToRound(
+  sourceRoundId: number,
+  targetRoundId: number,
+  tripId: number
+): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  // Clear existing groups on target round
+  const existingTarget = await db.select({ id: groups.id }).from(groups).where(eq(groups.roundId, targetRoundId));
+  for (const g of existingTarget) {
+    await db.delete(groupPlayers).where(eq(groupPlayers.groupId, g.id));
+    await db.delete(groups).where(eq(groups.id, g.id));
+  }
+
+  // Copy each source group
+  const sourceGroups = await db.select().from(groups).where(eq(groups.roundId, sourceRoundId));
+  for (const sg of sourceGroups) {
+    const newGroupResult = await db.insert(groups).values({
+      roundId: targetRoundId,
+      tripId,
+      name: sg.name,
+      pairsLocked: false,
+      teeTime: sg.teeTime ?? null,
+      startingHole: sg.startingHole ?? null,
+    });
+    const newGroupId = (newGroupResult[0] as any).insertId as number;
+
+    // Copy players with their partnerId mappings
+    const sourcePlayers = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, sg.id));
+    for (const sp of sourcePlayers) {
+      await db.insert(groupPlayers).values({
+        groupId: newGroupId,
+        userId: sp.userId,
+        partnerId: sp.partnerId ?? null,
+        pairId: sp.pairId ?? null,
+        scorerId: null, // reset scorer for new round
+      });
+    }
+  }
+  return sourceGroups.length;
+}
+
+/**
+ * Re-seed groups for targetRoundId based on 4BBB pair standings from sourceRoundId.
+ * Best pair goes into group 1, second pair into group 2, etc.
+ * Preserves pair partnerships. Clears existing groups on target round first.
+ */
+export async function reseedGroupsBy4BBB(
+  sourceRoundId: number,
+  targetRoundId: number,
+  tripId: number,
+  groupSize: number = 4
+): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  // Get source groups and compute 4BBB best-ball net per pair
+  const sourceGroups = await db.select().from(groups).where(eq(groups.roundId, sourceRoundId));
+  const round = await db.select().from(rounds).where(eq(rounds.id, sourceRoundId)).limit(1);
+  if (!round[0]) throw new Error("Source round not found");
+  const courseHolesRows = await db.select().from(holes).where(eq(holes.courseId, round[0].courseId));
+
+  // Gather all scores for the source round
+  const allScores = await db.select().from(scores).where(eq(scores.roundId, sourceRoundId));
+  const scoreMap = new Map<string, number>(); // `${userId}-${holeId}` -> netScore
+  for (const s of allScores) {
+    if (s.netScore !== null) scoreMap.set(`${s.userId}-${s.holeId}`, s.netScore);
+  }
+
+  type PairEntry = { userId1: number; userId2: number; totalBestBall: number };
+  const pairEntries: PairEntry[] = [];
+  const seenPairs = new Set<string>();
+
+  for (const sg of sourceGroups) {
+    const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, sg.id));
+    for (const gp of gps) {
+      if (!gp.partnerId) continue;
+      const key = [gp.userId, gp.partnerId].sort().join("-");
+      if (seenPairs.has(key)) continue;
+      seenPairs.add(key);
+      let total = 0;
+      for (const h of courseHolesRows) {
+        const s1 = scoreMap.get(`${gp.userId}-${h.id}`);
+        const s2 = scoreMap.get(`${gp.partnerId}-${h.id}`);
+        if (s1 !== undefined && s2 !== undefined) total += Math.min(s1, s2);
+        else if (s1 !== undefined) total += s1;
+        else if (s2 !== undefined) total += s2;
+      }
+      pairEntries.push({ userId1: gp.userId, userId2: gp.partnerId, totalBestBall: total });
+    }
+  }
+
+  // Sort pairs: best (lowest net) first
+  pairEntries.sort((a, b) => a.totalBestBall - b.totalBestBall);
+
+  // Clear existing groups on target round
+  const existingTarget = await db.select({ id: groups.id }).from(groups).where(eq(groups.roundId, targetRoundId));
+  for (const g of existingTarget) {
+    await db.delete(groupPlayers).where(eq(groupPlayers.groupId, g.id));
+    await db.delete(groups).where(eq(groups.id, g.id));
+  }
+
+  // Fill groups: pairs per group = groupSize / 2
+  const pairsPerGroup = Math.max(1, Math.floor(groupSize / 2));
+  let groupIndex = 0;
+  let currentGroupId: number | null = null;
+  let pairsInCurrentGroup = 0;
+
+  for (const pair of pairEntries) {
+    if (currentGroupId === null || pairsInCurrentGroup >= pairsPerGroup) {
+      groupIndex++;
+      const res = await db.insert(groups).values({
+        roundId: targetRoundId,
+        tripId,
+        name: `Group ${groupIndex}`,
+        pairsLocked: false,
+      });
+      currentGroupId = (res[0] as any).insertId as number;
+      pairsInCurrentGroup = 0;
+    }
+    await db.insert(groupPlayers).values({ groupId: currentGroupId, userId: pair.userId1, partnerId: pair.userId2 });
+    await db.insert(groupPlayers).values({ groupId: currentGroupId, userId: pair.userId2, partnerId: pair.userId1 });
+    pairsInCurrentGroup++;
+  }
+
+  return groupIndex;
+}
+
+/**
+ * Re-seed groups for targetRoundId based on individual cumulative net trip standings.
+ * Uses a snake draft: rank players 1..N by cumulative net, then fill groups so
+ * top and bottom players are in the same group (competitive balance).
+ * Clears existing groups on target round first.
+ */
+export async function reseedGroupsByIndividual(
+  targetRoundId: number,
+  tripId: number,
+  groupSize: number = 4
+): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  // Get all trip players sorted by cumulative net (ascending = best first)
+  const tripPlayerList = await db.select().from(tripPlayers).where(eq(tripPlayers.tripId, tripId));
+
+  // Compute cumulative net for each player across all completed rounds in the trip
+  const tripRounds = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.tripId, tripId));
+  const roundIds = tripRounds.map((r) => r.id);
+
+  const cumulativeNet = new Map<number, number>();
+  for (const tp of tripPlayerList) cumulativeNet.set(tp.userId, 0);
+
+  if (roundIds.length > 0) {
+    const allScoresForTrip = await db.select().from(scores).where(inArray(scores.roundId, roundIds));
+    for (const s of allScoresForTrip) {
+      if (s.netScore !== null) {
+        cumulativeNet.set(s.userId, (cumulativeNet.get(s.userId) ?? 0) + s.netScore);
+      }
+    }
+  }
+
+  // Sort players by cumulative net ascending (best = lowest net first)
+  const sorted = tripPlayerList
+    .map((tp) => ({ userId: tp.userId, net: cumulativeNet.get(tp.userId) ?? 999 }))
+    .sort((a, b) => a.net - b.net);
+
+  // Snake draft into groups
+  const numGroups = Math.max(1, Math.ceil(sorted.length / groupSize));
+  const groupBuckets: number[][] = Array.from({ length: numGroups }, () => []);
+
+  for (let i = 0; i < sorted.length; i++) {
+    const round = Math.floor(i / numGroups);
+    const posInRound = i % numGroups;
+    const groupIdx = round % 2 === 0 ? posInRound : numGroups - 1 - posInRound;
+    groupBuckets[groupIdx].push(sorted[i].userId);
+  }
+
+  // Clear existing groups on target round
+  const existingTarget = await db.select({ id: groups.id }).from(groups).where(eq(groups.roundId, targetRoundId));
+  for (const g of existingTarget) {
+    await db.delete(groupPlayers).where(eq(groupPlayers.groupId, g.id));
+    await db.delete(groups).where(eq(groups.id, g.id));
+  }
+
+  // Create groups
+  let created = 0;
+  for (let gi = 0; gi < groupBuckets.length; gi++) {
+    const bucket = groupBuckets[gi];
+    if (bucket.length === 0) continue;
+    const res = await db.insert(groups).values({
+      roundId: targetRoundId,
+      tripId,
+      name: `Group ${gi + 1}`,
+      pairsLocked: false,
+    });
+    const newGroupId = (res[0] as any).insertId as number;
+    for (const userId of bucket) {
+      await db.insert(groupPlayers).values({ groupId: newGroupId, userId, partnerId: null });
+    }
+    created++;
+  }
+
+  return created;
+}

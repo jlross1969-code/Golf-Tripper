@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download, Star, Users } from "lucide-react";
+import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download, Star, Users, Share2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 
@@ -35,6 +35,7 @@ function PlayerRow({ player, mode }: { player: any; mode: "stroke" | "stableford
   const [expanded, setExpanded] = useState(false);
   const score = mode === "stroke" ? player.cumulativeNet : player.cumulativeStableford;
   const scoreLabel = mode === "stroke" ? "Net" : "Pts";
+  const ach = player.achievements as { hio: number; eagle: number; birdie: number } | undefined;
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -45,7 +46,12 @@ function PlayerRow({ player, mode }: { player: any; mode: "stroke" | "stableford
         <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(player.position)}</div>
         <PlayerAvatar name={player.userName} photoUrl={player.photoUrl} />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground truncate">{player.userName ?? "Unknown"}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="font-semibold text-foreground truncate">{player.userName ?? "Unknown"}</p>
+            {ach && ach.hio > 0 && <span className="text-xs bg-yellow-400/20 text-yellow-400 px-1.5 py-0.5 rounded-full font-bold">🕳️ {ach.hio}</span>}
+            {ach && ach.eagle > 0 && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">🦅 {ach.eagle}</span>}
+            {ach && ach.birdie > 0 && <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">🐦 {ach.birdie}</span>}
+          </div>
           <p className="text-xs text-muted-foreground">{player.rounds.length} rounds</p>
         </div>
         <div className="text-right mr-2">
@@ -156,6 +162,38 @@ export default function TripLeaderboard() {
             </TabsContent>
             <TabsContent value="highlights">
               <div className="space-y-6">
+                {/* Share Button */}
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      const top3 = data.stableford.slice(0, 3);
+                      const pairs = data.fourBBB.slice(0, 3);
+                      const medals = ["🥇", "🥈", "🥉"];
+                      let text = `🏌️ ${trip?.name ?? "Golf Trip"} — Overall Highlights\n\n`;
+                      text += "🏆 Top 3 Individual (Stableford):\n";
+                      top3.forEach((p, i) => {
+                        text += `${medals[i]} ${p.userName ?? "Unknown"} — ${p.cumulativeStableford} pts\n`;
+                      });
+                      if (pairs.length > 0) {
+                        text += "\n🧑\u200D🤝\u200D🧑 Top 3 Pairs (4BBB Cumulative):\n";
+                        pairs.forEach((t, i) => {
+                          text += `${medals[i]} ${t.player1Name} & ${t.player2Name} — ${t.cumulativeBestBall} best ball\n`;
+                        });
+                      }
+                      if (navigator.share) {
+                        navigator.share({ title: `${trip?.name ?? "Golf Trip"} Highlights`, text });
+                      } else {
+                        navigator.clipboard.writeText(text).then(() => alert("Results copied to clipboard!"));
+                      }
+                    }}
+                  >
+                    <Share2 className="w-3 h-3" />
+                    Share
+                  </Button>
+                </div>
                 {/* Top 3 Individual (Stableford) */}
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">

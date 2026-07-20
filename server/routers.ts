@@ -96,6 +96,9 @@ import {
   updateGroupSettings,
   setCoAdmin,
   getCoAdminCount,
+  copyGroupingsToRound,
+  reseedGroupsBy4BBB,
+  reseedGroupsByIndividual,
 } from "./db";
 import { TRPCError } from "@trpc/server";
 import { sendPushToTrip } from "./webPush";
@@ -465,6 +468,40 @@ export const appRouter = router({
           ...rest,
           ...(roundDate ? { roundDate: new Date(roundDate) } : {}),
         } as any);
+
+        // When a round is marked complete, send a Highlights push notification
+        if (input.status === "completed") {
+          try {
+            const round = await getRound(id);
+            if (round) {
+              const scorecard = await getRoundScorecard(id);
+              const top3 = [...scorecard]
+                .filter((p) => p.holesPlayed > 0)
+                .sort((a, b) => b.totalStableford - a.totalStableford)
+                .slice(0, 3);
+              const lines = top3.map((p, i) =>
+                `${["\ud83e\udd47","\ud83e\udd48","\ud83e\udd49"][i]} ${p.userName ?? "Player"} \u2014 ${p.totalStableford} pts`
+              );
+              const body = lines.length > 0
+                ? `Top 3:\n${lines.join("\n")}`
+                : "Scores are in — check the leaderboard!";
+              await createNotification({
+                tripId: round.tripId,
+                message: `${round.name} is complete! ${body}`,
+                type: "round_complete",
+              });
+              sendPushToTrip(round.tripId, {
+                title: `⛳ ${round.name} Complete!`,
+                body,
+                tag: `round-complete-${id}`,
+                url: `/trip/${round.tripId}/round/${id}/leaderboard`,
+              });
+            }
+          } catch {
+            // Notification failure must not block the round update
+          }
+        }
+
         return { success: true };
       }),
 
@@ -604,6 +641,43 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
         return getMyGroupForRound(input.roundId, ctx.user.id);
+      }),
+
+    // Admin: copy exact groupings + pairings from one round to another
+    copyToRound: adminProcedure
+      .input(z.object({
+        sourceRoundId: z.number(),
+        targetRoundId: z.number(),
+        tripId: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const count = await copyGroupingsToRound(input.sourceRoundId, input.targetRoundId, input.tripId);
+        return { groupsCreated: count };
+      }),
+
+    // Admin: re-seed groups for targetRound based on 4BBB pair standings from sourceRound
+    reseedBy4BBB: adminProcedure
+      .input(z.object({
+        sourceRoundId: z.number(),
+        targetRoundId: z.number(),
+        tripId: z.number(),
+        groupSize: z.number().min(2).max(8).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const count = await reseedGroupsBy4BBB(input.sourceRoundId, input.targetRoundId, input.tripId, input.groupSize);
+        return { groupsCreated: count };
+      }),
+
+    // Admin: re-seed groups for targetRound based on individual cumulative net trip standings
+    reseedByIndividual: adminProcedure
+      .input(z.object({
+        targetRoundId: z.number(),
+        tripId: z.number(),
+        groupSize: z.number().min(2).max(8).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const count = await reseedGroupsByIndividual(input.targetRoundId, input.tripId, input.groupSize);
+        return { groupsCreated: count };
       }),
 
     // Admin: set tee time and starting hole for a group
@@ -1015,10 +1089,20 @@ export const appRouter = router({
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         const leaderboard = await getTripLeaderboard(input.tripId);
-        const strokePlay = [...leaderboard]
+        // Cumulative achievement counts per player across the whole trip
+        const tripAchievements = await getAchievementsByTrip(input.tripId);
+        const achMap: Record<number, { hio: number; eagle: number; birdie: number }> = {};
+        for (const a of tripAchievements) {
+          if (!achMap[a.userId]) achMap[a.userId] = { hio: 0, eagle: 0, birdie: 0 };
+          if (a.type === "hole_in_one") achMap[a.userId].hio++;
+          else if (a.type === "eagle") achMap[a.userId].eagle++;
+          else if (a.type === "birdie") achMap[a.userId].birdie++;
+        }
+        const withAch = leaderboard.map((p) => ({ ...p, achievements: achMap[p.userId] ?? { hio: 0, eagle: 0, birdie: 0 } }));
+        const strokePlay = [...withAch]
           .sort((a, b) => a.cumulativeNet - b.cumulativeNet)
           .map((p, i) => ({ ...p, position: i + 1 }));
-        const stableford = [...leaderboard]
+        const stableford = [...withAch]
           .sort((a, b) => b.cumulativeStableford - a.cumulativeStableford)
           .map((p, i) => ({ ...p, position: i + 1 }));
         const fourBBB = await getTripFourBBBLeaderboard(input.tripId);
