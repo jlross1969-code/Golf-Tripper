@@ -455,3 +455,8 @@
 
 ## Session - Long Drive Unit Toggle
 - [x] Frontend: LongDriveResults — yards/metres toggle switch; convert input value before sending to server (server always stores metres); display leaderboard distances in the chosen unit; persist preference to localStorage
+
+## Session - Long Drive Rules
+- [x] Backend: longDrive.submitEntry rejects if calculated drive distance does not beat the current round leader's best drive (return descriptive error with current leader's distance)
+- [x] Frontend: LongDriveResults entry form — add "Must be on the fairway" rule notice; show friendly toast when server rejects a non-beating drive (include current leader distance in message)
+- [x] TypeScript check, tests, checkpoint

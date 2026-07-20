@@ -1846,13 +1846,28 @@ export const appRouter = router({
         const tripPlayer = await getTripPlayer(round.tripId, ctx.user.id);
         if (!tripPlayer) throw new TRPCError({ code: "NOT_FOUND", message: "You are not a player in this trip" });
 
-        const { driveDistanceM, isNewLeader, entryId } = await submitLongDriveEntry(
-          input.roundId,
-          ctx.user.id,
-          tripPlayer.id,
-          input.distanceToPinM,
-          holeDistanceM
-        );
+        let driveDistanceM: number;
+        let isNewLeader: boolean;
+        let entryId: number;
+        try {
+          ({ driveDistanceM, isNewLeader, entryId } = await submitLongDriveEntry(
+            input.roundId,
+            ctx.user.id,
+            tripPlayer.id,
+            input.distanceToPinM,
+            holeDistanceM
+          ));
+        } catch (err: any) {
+          if (typeof err?.message === "string" && err.message.startsWith("DOES_NOT_BEAT_LEADER:")) {
+            const leaderDistM = Number(err.message.split(":")[1]);
+            const leaderDistYds = Math.round(leaderDistM * 1.09361);
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Drive not recorded — must beat the current leader (${leaderDistM}m / ${leaderDistYds}yds). Only drives that take the lead are recorded.`,
+            });
+          }
+          throw err;
+        }
 
         // Broadcast achievement if new leader
         if (isNewLeader) {

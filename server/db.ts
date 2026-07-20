@@ -1992,6 +1992,14 @@ export async function submitLongDriveEntry(
 
   const isNewLeader = !currentLeader || driveDistanceM > currentLeader.driveDistanceM;
 
+  // Rule: a new entry must beat the current round leader (not just the player's own previous entry).
+  // Exception: if the player IS the current leader, allow them to update their own entry freely.
+  if (currentLeader && currentLeader.userId !== userId && !isNewLeader) {
+    throw new Error(
+      `DOES_NOT_BEAT_LEADER:${currentLeader.driveDistanceM}`
+    );
+  }
+
   // Remove previous entry by this user for this round (one entry per player)
   await db.delete(longDriveEntries).where(
     and(eq(longDriveEntries.roundId, roundId), eq(longDriveEntries.userId, userId))

@@ -81,7 +81,14 @@ export default function LongDriveResults() {
       setDistanceToPin("");
       refetch();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => {
+      // Friendly message for the "must beat leader" rule
+      if (e.message.includes("must beat the current leader")) {
+        toast.error(e.message, { duration: 6000 });
+      } else {
+        toast.error(e.message);
+      }
+    },
   });
 
   const handleSubmit = () => {
@@ -169,6 +176,16 @@ export default function LongDriveResults() {
                   <Zap className="w-3.5 h-3.5 text-yellow-400" />
                   Drive distance = hole length − your distance to pin.
                 </p>
+                {/* Fairway rule */}
+                <p className="flex items-center gap-1.5 text-amber-400/90 font-medium">
+                  <span className="text-base leading-none">⛳</span>
+                  <strong>Rule:</strong> Drive must be on the fairway to qualify.
+                </p>
+                {/* Must-beat-leader rule */}
+                <p className="flex items-center gap-1.5 text-amber-400/90 font-medium">
+                  <Trophy className="w-3.5 h-3.5" />
+                  Only drives that beat the current round leader are recorded.
+                </p>
               </div>
             </div>
 
@@ -179,6 +196,11 @@ export default function LongDriveResults() {
                 <p className="text-xs text-muted-foreground">
                   Enter the distance from your ball to the pin in <strong className="text-foreground">{useYards ? "yards" : "metres"}</strong> as shown on your rangefinder.
                 </p>
+                {/* Fairway confirmation reminder */}
+                <div className="flex items-center gap-2 bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2">
+                  <span className="text-base leading-none">⛳</span>
+                  <p className="text-xs text-amber-300/90">Confirm your drive is on the <strong>fairway</strong> before submitting. Off-fairway drives are not eligible.</p>
+                </div>
                 <div className="flex items-center gap-2">
                   <Ruler className="w-4 h-4 text-primary flex-shrink-0" />
                   <div className="relative flex-1">
