@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download, Target } from "lucide-react";
+import { ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download, Target, Star } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -102,6 +102,7 @@ export default function DailyLeaderboard() {
               {data.round.strokePlayEnabled && <TabsTrigger value="stroke" className="flex-1 gap-2"><Trophy className="w-4 h-4" />Stroke Play</TabsTrigger>}
               {data.round.fourBBBEnabled && <TabsTrigger value="4bbb" className="flex-1 gap-2"><Users className="w-4 h-4" />4BBB</TabsTrigger>}
               {data.round.skinsEnabled && <TabsTrigger value="skins" className="flex-1 gap-2"><Layers className="w-4 h-4" />Skins</TabsTrigger>}
+              <TabsTrigger value="highlights" className="flex-1 gap-2"><Star className="w-4 h-4" />Highlights</TabsTrigger>
             </TabsList>
 
             {/* Stroke Play Tab */}
@@ -185,6 +186,76 @@ export default function DailyLeaderboard() {
                 </div>
               </TabsContent>
             )}
+            {/* Highlights Tab */}
+            <TabsContent value="highlights">
+              <div className="space-y-6">
+                {/* Top 3 Individual */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-primary" /> Top 3 Individual
+                  </h3>
+                  {data.strokePlay.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground bg-card border border-border rounded-xl text-sm">
+                      No individual scores yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {data.strokePlay.slice(0, 3).map((p) => (
+                        <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                          <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
+                          <PlayerAvatar name={p.userName} photoUrl={(p as any).photoUrl} />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
+                            <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
+                            <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Top 3 4BBB Pairs */}
+                {data.round.fourBBBEnabled && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-primary" /> Top 3 Pairs (4BBB)
+                    </h3>
+                    {data.fourBBB.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground bg-card border border-border rounded-xl text-sm">
+                        No 4BBB pairs scored yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {data.fourBBB.slice(0, 3).map((t) => (
+                          <div key={t.teamName} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4">
+                            <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(t.position)}</div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-foreground truncate">{t.teamName}</p>
+                              <p className="text-xs text-muted-foreground">{t.holesPlayed} holes played</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-lg font-bold text-foreground">{t.totalBestBall}</p>
+                              <p className="text-xs text-muted-foreground">Best Ball Net</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!data.round.fourBBBEnabled && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    4BBB not enabled for this round.
+                  </p>
+                )}
+              </div>
+            </TabsContent>
+
           </Tabs>
         )}
       </div>

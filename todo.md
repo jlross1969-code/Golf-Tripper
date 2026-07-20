@@ -329,3 +329,10 @@
 - [x] Backend: achievements.listByPlayer tRPC procedure
 - [x] Frontend: achievement history section on MyProfile page
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Achievement Badge & Highlights Tab
+
+- [x] Frontend: achievement count badge on profile avatar (gold badge with total count)
+- [x] Backend: leaderboard.getRoundHighlights procedure — top 3 individual (Stableford) + top 3 4BBB pairs
+- [x] Frontend: Highlights tab on Daily Leaderboard page — top 3 individual and top 3 4BBB pair finishes
+- [x] TypeScript check, checkpoint

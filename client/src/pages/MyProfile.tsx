@@ -241,6 +241,15 @@ export default function MyProfile() {
                       displayName.charAt(0).toUpperCase()
                     )}
                   </div>
+                  {/* Achievement count badge */}
+                  {myAchievements && myAchievements.length > 0 && (
+                    <div
+                      className="absolute -top-1 -left-1 w-6 h-6 rounded-full bg-amber-400 text-black flex items-center justify-center text-xs font-black shadow-md"
+                      title={`${myAchievements.length} achievement${myAchievements.length !== 1 ? "s" : ""}`}
+                    >
+                      {myAchievements.length}
+                    </div>
+                  )}
                   <button
                     className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md hover:bg-primary/80 transition-colors"
                     onClick={() => fileInputRef.current?.click()}
