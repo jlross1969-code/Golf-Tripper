@@ -226,3 +226,14 @@
 - [x] Admin UI: show handicap next to each player name on group player chips in AdminGroups
 - [x] Admin UI: tee time and starting hole inputs on each group card in AdminGroups
 - [x] Tests and checkpoint
+
+## Session - Score Entry Overhaul (Hole-by-Hole Mode)
+
+- [x] Score page: hole-by-hole mode with ± buttons, hole number nav (prev/next), par/distance display
+- [x] Score page: open on group's assigned starting hole (from groups.startingHole)
+- [x] Score page: scorer can enter scores for partner as well as themselves
+- [x] Score page: Par and Pick Up quick-select shortcuts per player per hole
+- [x] Score page: show Shots, Points, Total running totals per player
+- [x] Score page: mode toggle between hole-by-hole and existing all-holes grid
+- [x] Score page: mismatch detection on submit — warn user which holes have conflicting scores between scorer and partner's entries
+- [x] Tests and checkpoint

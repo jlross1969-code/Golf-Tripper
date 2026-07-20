@@ -1089,6 +1089,8 @@ export async function getMyGroupForRound(roundId: number, userId: number): Promi
   groupId: number;
   groupName: string;
   pairsLocked: boolean;
+  startingHole: number | null;
+  teeTime: string | null;
   myEntry: GroupPlayer | null;
   partner: (GroupPlayer & { user: User | undefined }) | null;
   opponents: (GroupPlayer & { user: User | undefined })[];
@@ -1114,6 +1116,8 @@ export async function getMyGroupForRound(roundId: number, userId: number): Promi
       groupId: grp.id,
       groupName: grp.name,
       pairsLocked: grp.pairsLocked,
+      startingHole: grp.startingHole ?? null,
+      teeTime: grp.teeTime ?? null,
       myEntry,
       partner,
       opponents,
