@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -9,10 +9,40 @@ import { Link, useParams } from "wouter";
 import {
   ArrowLeft, User, Pencil, Check, X,
   TrendingDown, TrendingUp, BarChart2, Trophy, Target,
+  Camera, Bell, BellOff, Flag, Hash,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+
+// ─── Web Push helpers ─────────────────────────────────────────────────────────
+
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const arr = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) arr[i] = rawData.charCodeAt(i);
+  return arr;
+}
+
+async function subscribeToPush(): Promise<PushSubscription | null> {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  const reg = await navigator.serviceWorker.ready;
+  try {
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer,
+    });
+    return sub;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function MyProfile() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -20,10 +50,14 @@ export default function MyProfile() {
   const { user } = useAuth();
 
   const { data: trip } = trpc.trips.get.useQuery({ id });
-  const { data: rounds } = trpc.rounds.list.useQuery({ tripId: id });
   const { data: players, isLoading: playersLoading } = trpc.players.tripPlayers.useQuery({ tripId: id });
   const { data: history, isLoading: historyLoading } = trpc.players.handicapHistory.useQuery(
     { tripId: id, userId: user?.id },
+    { enabled: !!user?.id }
+  );
+  const { data: rounds } = trpc.rounds.list.useQuery({ tripId: id });
+  const { data: roundSummaries, isLoading: summariesLoading } = trpc.players.getMyRoundSummaries.useQuery(
+    { tripId: id },
     { enabled: !!user?.id }
   );
 
@@ -32,7 +66,22 @@ export default function MyProfile() {
 
   const [editingNickname, setEditingNickname] = useState(false);
   const [nicknameInput, setNicknameInput] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
+
+  // Sync photoUrl from server data
+  useEffect(() => {
+    if (me?.photoUrl) setPhotoUrl(me.photoUrl);
+  }, [me?.photoUrl]);
+
+  // Check current push permission
+  useEffect(() => {
+    if (!("Notification" in window)) return;
+    setPushEnabled(Notification.permission === "granted");
+  }, []);
 
   const setNickname = trpc.players.setNickname.useMutation({
     onSuccess: () => {
@@ -79,6 +128,79 @@ export default function MyProfile() {
   const totalChange = currentHandicap !== null && me ? currentHandicap - me.startingHandicap : null;
   const isLoading = playersLoading || historyLoading;
 
+  // ─── Photo upload ──────────────────────────────────────────────────────────
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Photo must be under 5 MB");
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", file);
+      formData.append("tripId", String(id));
+      const res = await fetch("/api/upload/profile-photo", { method: "POST", body: formData });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json() as { url: string };
+      setPhotoUrl(url);
+      utils.players.tripPlayers.invalidate();
+      toast.success("Photo updated!");
+    } catch {
+      toast.error("Failed to upload photo");
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  // ─── Push notifications ────────────────────────────────────────────────────
+  async function handleEnablePush() {
+    if (!("serviceWorker" in navigator)) {
+      toast.error("Push notifications are not supported in this browser");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      toast.error("Notification permission denied");
+      return;
+    }
+    const sub = await subscribeToPush();
+    if (!sub) {
+      toast.error("Failed to subscribe to push notifications");
+      return;
+    }
+    const subJson = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+    const res = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subJson),
+    });
+    if (res.ok) {
+      setPushEnabled(true);
+      toast.success("Achievement notifications enabled!");
+    } else {
+      toast.error("Failed to save push subscription");
+    }
+  }
+
+  async function handleDisablePush() {
+    if (!("serviceWorker" in navigator)) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await fetch("/api/push/unsubscribe", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+      await sub.unsubscribe();
+    }
+    setPushEnabled(false);
+    toast.success("Notifications disabled");
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -102,9 +224,38 @@ export default function MyProfile() {
           <Card>
             <CardContent className="pt-5">
               <div className="flex items-start gap-4">
-                {/* Avatar */}
-                <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-2xl font-black text-primary flex-shrink-0">
-                  {displayName.charAt(0).toUpperCase()}
+                {/* Avatar with photo upload */}
+                <div className="relative flex-shrink-0">
+                  <div
+                    className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-2xl font-black text-primary overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Tap to change photo"
+                  >
+                    {photoUrl ? (
+                      <img src={photoUrl} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      displayName.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <button
+                    className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md hover:bg-primary/80 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingPhoto}
+                    title="Upload photo"
+                  >
+                    {uploadingPhoto ? (
+                      <span className="animate-spin text-xs">⟳</span>
+                    ) : (
+                      <Camera className="w-3 h-3" />
+                    )}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
                 </div>
 
                 {/* Name + nickname edit */}
@@ -186,6 +337,36 @@ export default function MyProfile() {
           </Card>
         )}
 
+        {/* Push notification toggle */}
+        {"Notification" in window && (
+          <Card>
+            <CardContent className="pt-4 pb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                {pushEnabled ? (
+                  <Bell className="w-5 h-5 text-primary" />
+                ) : (
+                  <BellOff className="w-5 h-5 text-muted-foreground" />
+                )}
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Achievement Alerts</p>
+                  <p className="text-xs text-muted-foreground">
+                    {pushEnabled ? "You'll be notified of eagles, birdies & HIOs" : "Get push alerts for eagles, birdies & HIOs"}
+                  </p>
+                </div>
+              </div>
+              {pushEnabled ? (
+                <Button size="sm" variant="outline" onClick={handleDisablePush}>
+                  Turn off
+                </Button>
+              ) : (
+                <Button size="sm" onClick={handleEnablePush}>
+                  Enable
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Quick links */}
         <div className="grid grid-cols-2 gap-3">
           <Link href={`/trip/${id}/my-handicap`}>
@@ -211,6 +392,51 @@ export default function MyProfile() {
             </Card>
           </Link>
         </div>
+
+        {/* Round-by-round score summary */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Flag className="w-4 h-4 text-primary" /> My Scores
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {summariesLoading ? (
+              [1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-lg mb-2" />)
+            ) : !roundSummaries || roundSummaries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No rounds yet. Scores will appear here after each round.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {roundSummaries.map((s) => (
+                  <div key={s.roundId} className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{s.roundName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {s.roundDate ? new Date(s.roundDate).toLocaleDateString() : ""} · {s.holesScored}/18 holes
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0 text-right">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Gross</p>
+                        <p className="text-sm font-bold text-foreground">{s.holesScored > 0 ? s.totalGross : "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Net</p>
+                        <p className="text-sm font-bold text-foreground">{s.holesScored > 0 ? s.totalNet : "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Pts</p>
+                        <p className="text-sm font-bold text-primary">{s.holesScored > 0 ? s.totalPoints : "—"}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Handicap timeline (condensed) */}
         <Card>
@@ -270,6 +496,7 @@ export default function MyProfile() {
             )}
           </CardContent>
         </Card>
+
       </div>
     </div>
   );

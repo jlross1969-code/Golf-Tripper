@@ -284,3 +284,20 @@
 - [x] Frontend: /trip/:tripId/my-profile page — nickname edit, current handicap, handicap history chart
 - [x] Frontend: link to My Profile from TripDashboard
 - [x] Tests and checkpoint
+
+## Session - Profile Photo, Score Summary, Push Notifications
+
+- [x] DB: add photoUrl (varchar 512, nullable) column to trip_players table
+- [x] Apply DB migration for photoUrl
+- [x] Backend: POST /api/upload/profile-photo — accepts multipart, stores in S3, returns URL
+- [x] Backend: players.setPhotoUrl procedure (player-accessible, updates own photoUrl)
+- [x] Backend: expose photoUrl in getTripPlayers and getMyGroup responses
+- [x] Backend: players.myRoundScores procedure — returns per-round gross/net totals for the current user
+- [x] Backend: Web Push — store push subscriptions in push_subscriptions table (userId, endpoint, keys)
+- [x] Backend: send Web Push notification when achievement is confirmed
+- [x] Frontend: My Profile — photo upload button (camera icon on avatar), preview, save to S3
+- [x] Frontend: My Profile — show uploaded photo in avatar circle
+- [x] Frontend: My Profile — "My Scores" section with per-round gross/net/points summary
+- [x] Frontend: Push notification subscription prompt on Trip Dashboard (ask permission, save subscription)
+- [x] Frontend: Service worker handles push events and shows notification
+- [x] Tests and checkpoint

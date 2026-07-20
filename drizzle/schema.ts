@@ -79,6 +79,8 @@ export const tripPlayers = mysqlTable("trip_players", {
   currentHandicap: float("currentHandicap").default(0).notNull(),
   // Player-settable preferred display name (set after accepting invite)
   nickname: varchar("nickname", { length: 64 }),
+  // Profile photo stored in S3
+  photoUrl: varchar("photoUrl", { length: 512 }),
   // Co-admin: can perform admin actions on this trip (max 4 per trip, assigned by owner)
   isCoAdmin: boolean("isCoAdmin").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -320,3 +322,17 @@ export const ntpEntries = mysqlTable("ntp_entries", {
 });
 
 export type NtpEntry = typeof ntpEntries.$inferSelect;
+
+// ─── Push Subscriptions ───────────────────────────────────────────────────────
+// Stores Web Push API subscriptions so the server can push achievement alerts.
+
+export const pushSubscriptions = mysqlTable("push_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;

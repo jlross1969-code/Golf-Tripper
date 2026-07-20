@@ -95,6 +95,7 @@ import {
   getCoAdminCount,
 } from "./db";
 import { TRPCError } from "@trpc/server";
+import { sendPushToTrip } from "./webPush";
 
 // Admin guard middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -335,6 +336,34 @@ export const appRouter = router({
         });
         await updatePlayerHandicap(input.tripId, ctx.user.id, input.handicap);
         return { success: true };
+      }),
+
+    // Get round-by-round score summaries for the current user in a trip
+    getMyRoundSummaries: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const tp = await getTripPlayer(input.tripId, ctx.user.id);
+        if (!tp) throw new TRPCError({ code: "FORBIDDEN", message: "Not a member of this trip" });
+        const rounds = await getRoundsByTrip(input.tripId);
+        const summaries = await Promise.all(
+          rounds.map(async (round) => {
+            const playerScores = await import("./db").then(db => db.getScoresByRoundAndUser(round.id, ctx.user.id));
+            const totalGross = playerScores.reduce((sum: number, s: { grossScore: number }) => sum + s.grossScore, 0);
+            const totalNet = playerScores.reduce((sum: number, s: { netScore: number }) => sum + s.netScore, 0);
+            const totalPoints = playerScores.reduce((sum: number, s: { stablefordPoints: number }) => sum + s.stablefordPoints, 0);
+            return {
+              roundId: round.id,
+              roundName: round.name,
+              roundDate: round.roundDate,
+              status: round.status,
+              holesScored: playerScores.length,
+              totalGross,
+              totalNet,
+              totalPoints,
+            };
+          })
+        );
+        return summaries;
       }),
 
     // Trip owner can assign up to 4 co-admins per trip
@@ -719,6 +748,13 @@ export const appRouter = router({
         });
 
         await markAchievementBroadcast(achievement.id);
+
+        // Send Web Push notification to all trip subscribers
+        sendPushToTrip(input.tripId, {
+          title: "🏌️ Achievement!",
+          body: message,
+          tag: `achievement-${achievement.id}`,
+        }).catch(() => {}); // fire-and-forget, don't block response
 
         return { success: true, message };
       }),
