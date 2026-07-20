@@ -237,3 +237,14 @@
 - [x] Score page: mode toggle between hole-by-hole and existing all-holes grid
 - [x] Score page: mismatch detection on submit — warn user which holes have conflicting scores between scorer and partner's entries
 - [x] Tests and checkpoint
+
+## Session - Co-Admin Assignment
+
+- [x] DB: add isCoAdmin (boolean, default false) column to trip_players table
+- [x] Apply DB migration for isCoAdmin
+- [x] Backend: players.setCoAdmin procedure (trip owner only, max 4 co-admins per trip)
+- [x] Backend: expose isCoAdmin in players.tripPlayers response
+- [x] Backend: update trip-level admin checks to allow co-admins (isCoAdmin = true)
+- [x] Admin UI: Co-Admin toggle button per player on Admin Players page (owner only)
+- [x] Admin UI: show Co-Admin badge on player rows; disable toggle when 4 already assigned
+- [x] Tests and checkpoint

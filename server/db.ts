@@ -914,6 +914,25 @@ export async function setPlayerNickname(tripId: number, userId: number, nickname
     .where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, userId)));
 }
 
+export async function setCoAdmin(tripId: number, userId: number, isCoAdmin: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(tripPlayers)
+    .set({ isCoAdmin })
+    .where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, userId)));
+}
+
+export async function getCoAdminCount(tripId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db
+    .select()
+    .from(tripPlayers)
+    .where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.isCoAdmin, true)));
+  return result.length;
+}
+
 // ─── Nearest to Pin ───────────────────────────────────────────────────────────
 
 import { NearestToPin, NtpEntry } from "../drizzle/schema";

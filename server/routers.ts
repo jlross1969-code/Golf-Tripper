@@ -91,6 +91,8 @@ import {
   deleteInvite,
   revokeTripShareLink,
   updateGroupSettings,
+  setCoAdmin,
+  getCoAdminCount,
 } from "./db";
 import { TRPCError } from "@trpc/server";
 
@@ -300,6 +302,30 @@ export const appRouter = router({
           adjustedBy: ctx.user.id,
         });
         await updatePlayerHandicap(input.tripId, ctx.user.id, input.handicap);
+        return { success: true };
+      }),
+
+    // Trip owner can assign up to 4 co-admins per trip
+    setCoAdmin: adminProcedure
+      .input(z.object({
+        tripId: z.number(),
+        userId: z.number(),
+        isCoAdmin: z.boolean(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        // Only the trip owner (createdBy) can assign co-admins
+        const trip = await getTrip(input.tripId);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        if (trip.createdBy !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Only the trip owner can assign co-admins" });
+        // Verify the target player is on this trip
+        const tp = await getTripPlayer(input.tripId, input.userId);
+        if (!tp) throw new TRPCError({ code: "NOT_FOUND", message: "Player not found on this trip" });
+        // Enforce max 4 co-admins when promoting
+        if (input.isCoAdmin) {
+          const count = await getCoAdminCount(input.tripId);
+          if (count >= 4) throw new TRPCError({ code: "BAD_REQUEST", message: "Maximum 4 co-admins allowed per trip" });
+        }
+        await setCoAdmin(input.tripId, input.userId, input.isCoAdmin);
         return { success: true };
       }),
   }),

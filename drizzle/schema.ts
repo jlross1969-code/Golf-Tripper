@@ -79,6 +79,8 @@ export const tripPlayers = mysqlTable("trip_players", {
   currentHandicap: float("currentHandicap").default(0).notNull(),
   // Player-settable preferred display name (set after accepting invite)
   nickname: varchar("nickname", { length: 64 }),
+  // Co-admin: can perform admin actions on this trip (max 4 per trip, assigned by owner)
+  isCoAdmin: boolean("isCoAdmin").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

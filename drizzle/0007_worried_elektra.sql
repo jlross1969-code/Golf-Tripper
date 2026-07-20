@@ -1,0 +1,1 @@
+ALTER TABLE `trip_players` ADD `isCoAdmin` boolean DEFAULT false NOT NULL;
