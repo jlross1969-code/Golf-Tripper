@@ -226,23 +226,16 @@ export default function ScoreEntry() {
   const isPaired = !!myGroup?.partner;
   const isLocked = myGroup?.pairsLocked ?? false;
 
-  // Players to score in hole-by-hole mode:
-  // Show ALL group members (self first, then others) so the scorer can enter
-  // scores for the whole group regardless of whether pairs are formally set up.
+  // Players to score in hole-by-hole mode: self + paired partner only
   const scoringPlayers = (() => {
     if (!players || !user) return [];
-    if (myGroup?.allMembers?.length) {
-      // Build from allMembers so we only show people in this group
-      const groupUserIds = myGroup.allMembers.map((m: any) => m.userId);
-      const groupPlayers = players.filter((p) => groupUserIds.includes(p.userId));
-      // Self first
-      const me = groupPlayers.find((p) => p.userId === user.id);
-      const others = groupPlayers.filter((p) => p.userId !== user.id);
-      return me ? [me, ...others] : groupPlayers;
-    }
-    // Fallback: just self
     const me = players.find((p) => p.userId === user.id);
-    return me ? [me] : [];
+    if (!me) return [];
+    if (isPaired && myGroup?.partner) {
+      const partner = players.find((p) => p.userId === myGroup.partner!.userId);
+      return partner ? [me, partner] : [me];
+    }
+    return [me];
   })();
 
   const myGroupMatch = myGroup
@@ -831,23 +824,21 @@ export default function ScoreEntry() {
       {scoreMode === "grid" && (
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
 
-          {/* Grid mode: tab switcher for all group members (or all trip players if no group) */}
-          {scoringPlayers.length > 0 && (() => {
-            const activeId = selectedUserId && scoringPlayers.some((p) => p.userId === selectedUserId)
+          {/* Grid mode: tab switcher between self and partner (when paired) */}
+          {isPaired && myGroup?.partner && players && user && (() => {
+            const me = players.find((p) => p.userId === user.id);
+            const partner = players.find((p) => p.userId === myGroup.partner!.userId);
+            const gridPlayers = [me, partner].filter(Boolean) as typeof players;
+            const activeId = selectedUserId && gridPlayers.some((p) => p.userId === selectedUserId)
               ? selectedUserId
-              : scoringPlayers[0]?.userId ?? null;
-            // Sync selectedUserId if it's not in the group
-            if (activeId && activeId !== selectedUserId) {
-              // Use a timeout to avoid setState during render
-              setTimeout(() => setSelectedUserId(activeId), 0);
-            }
+              : gridPlayers[0]?.userId ?? null;
             return (
-              <div className="flex flex-wrap gap-1 bg-muted rounded-lg p-1">
-                {scoringPlayers.map((p) => (
+              <div className="flex gap-1 bg-muted rounded-lg p-1">
+                {gridPlayers.map((p) => (
                   <button
                     key={p.userId}
                     onClick={() => setSelectedUserId(p.userId)}
-                    className={`flex-1 min-w-[80px] flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                       activeId === p.userId ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -861,6 +852,28 @@ export default function ScoreEntry() {
               </div>
             );
           })()}
+
+          {/* Player selector (only when not paired) */}
+          {!isPaired && (
+            <div>
+              <label className="text-sm font-medium text-foreground mb-2 block">Select Player to Score</label>
+              <Select
+                value={selectedUserId?.toString() ?? ""}
+                onValueChange={(v) => setSelectedUserId(Number(v))}
+              >
+                <SelectTrigger className="w-full max-w-xs">
+                  <SelectValue placeholder="Choose a player..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {players?.map((p) => (
+                    <SelectItem key={p.userId} value={p.userId.toString()}>
+                      {p.nickname ?? p.user?.name ?? `Player ${p.userId}`} (HCP {p.currentHandicap})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Scorecard grid */}
           {selectedUserId && (() => {
