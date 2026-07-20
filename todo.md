@@ -366,3 +366,22 @@
 - [x] Backend: admin scorecard query — all 18 holes for a player in a round with hole details
 - [x] Frontend: admin per-player scorecard drawer/page from AdminGroups (read-only + correction pencil per hole)
 - [x] TypeScript check, checkpoint
+
+## Session - Team Names, Side Match 4BBB, Scorecard Compare, Re-seed Edit, Round PDF
+
+- [x] DB: add teamName (varchar 64, nullable) to group_players table (per pair — both players in a pair share it)
+- [x] Apply DB migration for teamName
+- [x] Backend: groups.setTeamName procedure (player sets own pair's team name)
+- [x] Backend: expose teamName in getGroupPlayers, getMyGroup, and group match queries
+- [x] Backend: auto team name fallback = "Team [lowest marker nickname/name]" (client-side fallback on GroupPairing + SideMatches)
+- [x] Frontend: team name input on GroupPairing page (player sets after pairing)
+- [x] Frontend: team name shown on Side Match summary and hole-by-hole views
+- [x] Backend: 4BBB matchplay engine — best-ball Stableford per hole (pick best of pair), running match status (X Up / AS / X Down), final result
+- [x] Backend: groupMatch.getByRound returns hole-by-hole best-ball Stableford for each pair + running match status
+- [x] Backend: groupMatch.getHoleByHole — new procedure returning per-hole best-ball Stableford + match result for detailed view
+- [x] Frontend: Side Match page — Summary view (team names, HC, match result per pair)
+- [x] Frontend: Side Match page — Hole-by-Hole sheet (Hole / Par / SI / A Pts / Match / B Pts / Status table, winner highlighted per row)
+- [x] Frontend: Scorecard comparison drawer in ScoreEntry — side-by-side both partners' 18 holes with best-ball result per hole
+- [ ] Frontend: Re-seed preview drag-to-edit — drag players between proposed groups before confirming
+- [ ] Backend + Frontend: Round summary PDF — top 3 individual, top 3 4BBB pairs, achievements, skins results
+- [x] TypeScript check, tests, checkpoint

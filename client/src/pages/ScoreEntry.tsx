@@ -10,6 +10,7 @@ import {
   ArrowLeft, ArrowRight, Flag, CheckCircle, AlertTriangle,
   Target, Users, Swords, LayoutGrid, ChevronLeft, ChevronRight, Pencil,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
@@ -140,6 +141,9 @@ export default function ScoreEntry() {
   // Mismatch dialog
   const [mismatchHoles, setMismatchHoles] = useState<number[]>([]);
   const [mismatchOpen, setMismatchOpen] = useState(false);
+
+  // Scorecard comparison drawer
+  const [compareOpen, setCompareOpen] = useState(false);
 
   // Admin score correction dialog
   const [correctOpen, setCorrectOpen] = useState(false);
@@ -580,14 +584,23 @@ export default function ScoreEntry() {
       {myGroupMatch && (
         <div className="px-4 py-2 bg-primary/5 border-b border-primary/20 flex items-center justify-between text-xs">
           <span className="text-primary font-medium flex items-center gap-1">
-            <Swords className="w-3 h-3" /> {myGroupMatch.pairANames.join(" & ")}
+            <Swords className="w-3 h-3" />
+            {myGroupMatch.pairATeamName ?? myGroupMatch.pairANames.join(" & ")}
           </span>
-          <Badge variant="secondary" className="text-xs">
-            {myGroupMatch.winner !== "pending"
-              ? myGroupMatch.winner === "halved" ? "Halved" : `${myGroupMatch.winner === "player1" ? myGroupMatch.pairANames[0] : myGroupMatch.pairBNames[0]} wins`
-              : matchStatusLabel(myGroupMatch.matchStatus, myGroupMatch.holeResultsParsed.length)}
-          </Badge>
-          <span className="text-primary font-medium">{myGroupMatch.pairBNames.join(" & ")}</span>
+          <button
+            className="flex flex-col items-center gap-0.5 px-2 hover:opacity-80 transition-opacity"
+            onClick={() => setCompareOpen(true)}
+          >
+            <Badge variant="secondary" className="text-xs">
+              {myGroupMatch.winner !== "pending"
+                ? myGroupMatch.winner === "halved" ? "Halved" : `${myGroupMatch.winner === "player1" ? (myGroupMatch.pairATeamName ?? myGroupMatch.pairANames[0]) : (myGroupMatch.pairBTeamName ?? myGroupMatch.pairBNames[0])} wins`
+                : matchStatusLabel(myGroupMatch.matchStatus, myGroupMatch.holeResultsParsed.length)}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">tap for scorecard</span>
+          </button>
+          <span className="text-primary font-medium">
+            {myGroupMatch.pairBTeamName ?? myGroupMatch.pairBNames.join(" & ")}
+          </span>
         </div>
       )}
 
@@ -1147,6 +1160,113 @@ export default function ScoreEntry() {
           </Dialog>
         );
       })()}
+
+      {/* ── Scorecard Comparison Sheet ──────────────────────────────────── */}
+      {myGroupMatch && (
+        <Sheet open={compareOpen} onOpenChange={setCompareOpen}>
+          <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
+            <SheetHeader className="pb-4">
+              <SheetTitle className="flex items-center gap-2">
+                <Swords className="w-4 h-4 text-primary" />
+                4BBB Scorecard Comparison
+              </SheetTitle>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-blue-400 font-medium">{myGroupMatch.pairATeamName ?? myGroupMatch.pairANames.join(" & ")}</span>
+                <span className="text-xs text-muted-foreground">vs</span>
+                <span className="text-orange-400 font-medium">{myGroupMatch.pairBTeamName ?? myGroupMatch.pairBNames.join(" & ")}</span>
+              </div>
+            </SheetHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Hole</th>
+                    <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium">Par</th>
+                    {scoringPlayers.map((p) => (
+                      <th key={p.userId} className="text-center py-2 px-2 text-xs font-medium text-foreground">
+                        {p.nickname ?? p.user?.name ?? `P${p.userId}`}
+                        <span className="block text-[10px] text-muted-foreground font-normal">HC {p.currentHandicap}</span>
+                      </th>
+                    ))}
+                    <th className="text-center py-2 px-2 text-xs text-blue-400 font-medium">Best A</th>
+                    <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium">Hole</th>
+                    <th className="text-center py-2 px-2 text-xs text-orange-400 font-medium">Best B</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {holes.map((hole, hIdx) => {
+                    const pairAIds = [myGroupMatch.player1Id, myGroupMatch.player1PartnerId].filter(Boolean) as number[];
+                    const pairBIds = [myGroupMatch.player2Id, myGroupMatch.player2PartnerId].filter(Boolean) as number[];
+                    const holeResult = (myGroupMatch.holeResultsParsed as ("A" | "B" | "H")[])[hIdx];
+                    const pairAScores = scorecard?.filter(sc => pairAIds.includes(sc.userId)).map(sc => sc.scores.find(s => s.holeId === hole.id)).filter(Boolean);
+                    const pairBScores = scorecard?.filter(sc => pairBIds.includes(sc.userId)).map(sc => sc.scores.find(s => s.holeId === hole.id)).filter(Boolean);
+                    const bestAPoints = pairAScores && pairAScores.length > 0 ? Math.max(...pairAScores.map(s => s!.stablefordPoints)) : null;
+                    const bestBPoints = pairBScores && pairBScores.length > 0 ? Math.max(...pairBScores.map(s => s!.stablefordPoints)) : null;
+                    return (
+                      <tr key={hole.id} className={`border-b border-border/50 hover:bg-muted/30 ${hIdx === currentHoleIdx ? "bg-primary/5" : ""}`}>
+                        <td className="py-2 px-2 font-medium text-foreground">{hole.holeNumber}</td>
+                        <td className="py-2 px-2 text-center text-muted-foreground">{hole.par}</td>
+                        {scoringPlayers.map((p) => {
+                          const saved = scorecard?.find(sc => sc.userId === p.userId)?.scores.find(s => s.holeId === hole.id);
+                          return (
+                            <td key={p.userId} className="py-2 px-2 text-center">
+                              {saved ? (
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${scoreClass(saved.grossScore, hole.par)}`}>
+                                  {saved.grossScore}
+                                  <span className="text-[10px] ml-1 opacity-70">{saved.stablefordPoints}pt</span>
+                                </span>
+                              ) : <span className="text-xs text-muted-foreground">—</span>}
+                            </td>
+                          );
+                        })}
+                        <td className={`py-2 px-2 text-center font-bold text-sm ${holeResult === "A" ? "text-blue-400" : "text-foreground"}`}>
+                          {bestAPoints ?? "—"}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {holeResult === "A" && <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold mx-auto">A</span>}
+                          {holeResult === "B" && <span className="w-5 h-5 rounded-full bg-orange-600 text-white text-[10px] flex items-center justify-center font-bold mx-auto">B</span>}
+                          {holeResult === "H" && <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground text-[10px] flex items-center justify-center mx-auto">H</span>}
+                          {!holeResult && <span className="text-xs text-muted-foreground">—</span>}
+                        </td>
+                        <td className={`py-2 px-2 text-center font-bold text-sm ${holeResult === "B" ? "text-orange-400" : "text-foreground"}`}>
+                          {bestBPoints ?? "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/30">
+                    <td colSpan={2} className="py-2 px-2 text-xs font-semibold text-muted-foreground">Total</td>
+                    {scoringPlayers.map((p) => {
+                      const totals = scorecard?.find(sc => sc.userId === p.userId);
+                      return (
+                        <td key={p.userId} className="py-2 px-2 text-center">
+                          <span className="text-xs font-bold text-primary">{totals?.totalStableford ?? 0}pts</span>
+                          <span className="block text-[10px] text-muted-foreground">{totals?.totalGross ?? 0} gross</span>
+                        </td>
+                      );
+                    })}
+                    <td className="py-2 px-2 text-center">
+                      <span className="text-xs font-bold text-blue-400">{(myGroupMatch.holeResultsParsed as string[]).filter(r => r === "A").length}W</span>
+                    </td>
+                    <td className="py-2 px-2 text-center">
+                      <span className="text-xs text-muted-foreground">{(myGroupMatch.holeResultsParsed as string[]).filter(r => r === "H").length}H</span>
+                    </td>
+                    <td className="py-2 px-2 text-center">
+                      <span className="text-xs font-bold text-orange-400">{(myGroupMatch.holeResultsParsed as string[]).filter(r => r === "B").length}W</span>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <div className="mt-4 px-2 py-3 bg-muted/50 rounded-xl text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">4BBB Rule: Best Stableford score from each pair wins the hole.</p>
+              <p>Higher Stableford points wins. Equal points = Halved.</p>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* ── Mismatch Warning Dialog ───────────────────────────────────────── */}
       <Dialog open={mismatchOpen} onOpenChange={setMismatchOpen}>

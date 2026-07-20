@@ -138,6 +138,8 @@ export const groupPlayers = mysqlTable("group_players", {
   pairId: int("pairId"),
   // The user who will enter scores for this player (cross-scoring)
   scorerId: int("scorerId"),
+  // Optional team name for the pair (shared by both players in a pair)
+  teamName: varchar("teamName", { length: 64 }),
 });
 
 export type GroupPlayer = typeof groupPlayers.$inferSelect;

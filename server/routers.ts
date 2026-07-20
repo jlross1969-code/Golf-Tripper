@@ -640,6 +640,27 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    // Player: set team name for their pair (both players share the same teamName)
+    setTeamName: protectedProcedure
+      .input(z.object({ groupId: z.number(), teamName: z.string().max(64) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        const { getDb } = await import("./db");
+        const { groupPlayers: gpTable } = await import("../drizzle/schema");
+        const { eq: eqOp, and: andOp, inArray: inArr } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const myEntry = await db.select().from(gpTable)
+          .where(andOp(eqOp(gpTable.groupId, input.groupId), eqOp(gpTable.userId, ctx.user.id)))
+          .limit(1);
+        if (!myEntry[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Not in this group" });
+        const idsToUpdate = [ctx.user.id];
+        if (myEntry[0].partnerId) idsToUpdate.push(myEntry[0].partnerId);
+        await db.update(gpTable).set({ teamName: input.teamName.trim() || null })
+          .where(andOp(eqOp(gpTable.groupId, input.groupId), inArr(gpTable.userId, idsToUpdate)));
+        return { success: true };
+      }),
+
     // Admin: lock pairs and auto-create the 4BBB matchplay record
     lockPairs: adminProcedure
       .input(z.object({ groupId: z.number(), roundId: z.number() }))
@@ -766,24 +787,119 @@ export const appRouter = router({
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const matches = await import("./db").then(db => db.getMatchPlayResultsByRound(input.roundId));
-        // Enrich with player names
+        // Enrich with player names and team names
         const enriched = await Promise.all(matches.map(async (m) => {
-          const { users: usersTable, tripPlayers: tp } = await import("../drizzle/schema");
-          const { eq: eqOp, inArray: inArr } = await import("drizzle-orm");
+          const { users: usersTable, tripPlayers: tpTable, groupPlayers: gpTable, groups: grpTable } = await import("../drizzle/schema");
+          const { eq: eqOp, inArray: inArr, and: andOp } = await import("drizzle-orm");
           const { getDb } = await import("./db");
           const db = await getDb();
-          if (!db) return { ...m, pairANames: [], pairBNames: [], holeResultsParsed: JSON.parse(m.holeResults || "[]") };
+          if (!db) return { ...m, pairANames: [], pairBNames: [], pairATeamName: null as string | null, pairBTeamName: null as string | null, holeResultsParsed: JSON.parse(m.holeResults || "[]") };
           const ids = [m.player1Id, m.player1PartnerId, m.player2Id, m.player2PartnerId].filter(Boolean) as number[];
           const userRows = await db.select().from(usersTable).where(inArr(usersTable.id, ids));
           const userMap = new Map(userRows.map(u => [u.id, u.name ?? `Player ${u.id}`]));
+          // Fetch group to get tripId for nickname lookup
+          const grpRow = await db.select().from(grpTable).where(eqOp(grpTable.id, m.groupId)).limit(1);
+          const tripId = grpRow[0]?.tripId;
+          let nicknameMap = new Map<number, string>();
+          let teamNameMap = new Map<number, string | null>();
+          if (tripId) {
+            const tpRows = await db.select({ userId: tpTable.userId, nickname: tpTable.nickname })
+              .from(tpTable).where(andOp(eqOp(tpTable.tripId, tripId), inArr(tpTable.userId, ids)));
+            nicknameMap = new Map(tpRows.map(r => [r.userId, r.nickname ?? userMap.get(r.userId) ?? `Player ${r.userId}`]));
+          }
+          // Fetch teamName from groupPlayers
+          const gpRows = await db.select({ userId: gpTable.userId, teamName: gpTable.teamName })
+            .from(gpTable).where(andOp(eqOp(gpTable.groupId, m.groupId), inArr(gpTable.userId, ids)));
+          teamNameMap = new Map(gpRows.map(r => [r.userId, r.teamName ?? null]));
+          const displayName = (id: number) => nicknameMap.get(id) ?? userMap.get(id) ?? `Player ${id}`;
+          const pairAIds = [m.player1Id, m.player1PartnerId].filter(Boolean) as number[];
+          const pairBIds = [m.player2Id, m.player2PartnerId].filter(Boolean) as number[];
+          // Team name: use set teamName or fallback to "Team [lowest HCP player's name]"
+          const pairATeamName = teamNameMap.get(m.player1Id) ?? null;
+          const pairBTeamName = teamNameMap.get(m.player2Id) ?? null;
           return {
             ...m,
-            pairANames: [m.player1Id, m.player1PartnerId].filter(Boolean).map(id => userMap.get(id!) ?? `Player ${id}`),
-            pairBNames: [m.player2Id, m.player2PartnerId].filter(Boolean).map(id => userMap.get(id!) ?? `Player ${id}`),
+            pairANames: pairAIds.map(id => displayName(id)),
+            pairBNames: pairBIds.map(id => displayName(id)),
+            pairATeamName,
+            pairBTeamName,
             holeResultsParsed: JSON.parse(m.holeResults || "[]"),
           };
         }));
         return enriched;
+      }),
+
+    // Get hole-by-hole 4BBB scores for a match (for the detailed view)
+    getHoleByHole: publicProcedure
+      .input(z.object({ matchId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { matchPlayResults: mpr, scores: scoresTable, holes: holesTable, rounds: roundsTable, groupPlayers: gpTable, tripPlayers: tpTable, users: usersTable, groups: grpTable } = await import("../drizzle/schema");
+        const { eq: eqOp, inArray: inArr, and: andOp } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return null;
+        const matchRows = await db.select().from(mpr).where(eqOp(mpr.id, input.matchId)).limit(1);
+        if (!matchRows[0]) return null;
+        const m = matchRows[0];
+        const pairAIds = [m.player1Id, m.player1PartnerId].filter(Boolean) as number[];
+        const pairBIds = [m.player2Id, m.player2PartnerId].filter(Boolean) as number[];
+        const allIds = [...pairAIds, ...pairBIds];
+        // Get round + course holes
+        const roundRow = await db.select().from(roundsTable).where(eqOp(roundsTable.id, m.roundId)).limit(1);
+        if (!roundRow[0]) return null;
+        const courseHoles = await db.select().from(holesTable).where(eqOp(holesTable.courseId, roundRow[0].courseId)).orderBy(holesTable.holeNumber);
+        // Get all scores for these players in this round
+        const allScores = await db.select().from(scoresTable).where(andOp(eqOp(scoresTable.roundId, m.roundId), inArr(scoresTable.userId, allIds)));
+        // Get player display names
+        const grpRow = await db.select().from(grpTable).where(eqOp(grpTable.id, m.groupId)).limit(1);
+        const tripId = grpRow[0]?.tripId;
+        const userRows = await db.select().from(usersTable).where(inArr(usersTable.id, allIds));
+        const userMap = new Map(userRows.map(u => [u.id, u.name ?? `Player ${u.id}`]));
+        let nicknameMap = new Map<number, string>();
+        if (tripId) {
+          const tpRows = await db.select({ userId: tpTable.userId, nickname: tpTable.nickname })
+            .from(tpTable).where(andOp(eqOp(tpTable.tripId, tripId), inArr(tpTable.userId, allIds)));
+          nicknameMap = new Map(tpRows.map(r => [r.userId, r.nickname ?? userMap.get(r.userId) ?? `Player ${r.userId}`]));
+        }
+        const gpRows = await db.select({ userId: gpTable.userId, teamName: gpTable.teamName })
+          .from(gpTable).where(andOp(eqOp(gpTable.groupId, m.groupId), inArr(gpTable.userId, allIds)));
+        const teamNameMap = new Map(gpRows.map(r => [r.userId, r.teamName ?? null]));
+        const displayName = (id: number) => nicknameMap.get(id) ?? userMap.get(id) ?? `Player ${id}`;
+        // Build hole-by-hole data
+        const holeData = courseHoles.map((hole) => {
+          const pairAScores = allScores.filter(s => pairAIds.includes(s.userId) && s.holeId === hole.id);
+          const pairBScores = allScores.filter(s => pairBIds.includes(s.userId) && s.holeId === hole.id);
+          const bestAPoints = pairAScores.length > 0 ? Math.max(...pairAScores.map(s => s.stablefordPoints)) : null;
+          const bestBPoints = pairBScores.length > 0 ? Math.max(...pairBScores.map(s => s.stablefordPoints)) : null;
+          const bestAGross = pairAScores.length > 0 ? Math.min(...pairAScores.map(s => s.grossScore)) : null;
+          const bestBGross = pairBScores.length > 0 ? Math.min(...pairBScores.map(s => s.grossScore)) : null;
+          let holeResult: "A" | "B" | "H" | null = null;
+          if (bestAPoints !== null && bestBPoints !== null) {
+            holeResult = bestAPoints > bestBPoints ? "A" : bestAPoints < bestBPoints ? "B" : "H";
+          }
+          return {
+            holeNumber: hole.holeNumber,
+            par: hole.par,
+            strokeIndex: hole.strokeIndex,
+            pairABestPoints: bestAPoints,
+            pairBBestPoints: bestBPoints,
+            pairABestGross: bestAGross,
+            pairBBestGross: bestBGross,
+            result: holeResult,
+          };
+        });
+        return {
+          matchId: m.id,
+          matchStatus: m.matchStatus,
+          winner: m.winner,
+          pairAIds,
+          pairBIds,
+          pairANames: pairAIds.map(id => displayName(id)),
+          pairBNames: pairBIds.map(id => displayName(id)),
+          pairATeamName: teamNameMap.get(m.player1Id) ?? null,
+          pairBTeamName: teamNameMap.get(m.player2Id) ?? null,
+          holes: holeData,
+        };
       }),
 
     // Recalculate a group match from current scores (called after each score submission)

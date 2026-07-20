@@ -2,8 +2,9 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Users, Swords, CheckCircle, Lock } from "lucide-react";
+import { ArrowLeft, Users, Swords, CheckCircle, Lock, Pencil, Tag } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -21,10 +22,21 @@ export default function GroupPairing() {
   );
 
   const [selectedPartnerId, setSelectedPartnerId] = useState<number | null>(null);
+  const [teamNameInput, setTeamNameInput] = useState<string>("");
+  const [editingTeamName, setEditingTeamName] = useState(false);
 
   const selfPair = trpc.groups.selfPair.useMutation({
     onSuccess: () => {
       toast.success("Partner selected! You will score each other's round.");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const setTeamName = trpc.groups.setTeamName.useMutation({
+    onSuccess: () => {
+      toast.success("Team name saved!");
+      setEditingTeamName(false);
       refetch();
     },
     onError: (e) => toast.error(e.message),
@@ -58,12 +70,29 @@ export default function GroupPairing() {
   const hasPartner = !!myGroup.partner;
   const myPairId = myGroup.myEntry?.pairId ?? null;
 
+  // Current team name: from myEntry or partner's entry
+  const currentTeamName = (myGroup.myEntry as any)?.teamName as string | null | undefined;
+
+  // Default team name fallback: "Team [lowest handicap player's name]"
+  function getDefaultTeamName() {
+    if (!hasPartner || !myGroup) return null;
+    const me = myGroup.myEntry;
+    const partner = myGroup.partner;
+    const myHcp = (me as any)?.currentHandicap ?? 99;
+    const partnerHcp = (partner as any)?.currentHandicap ?? 99;
+    const lowestMarker = myHcp <= partnerHcp ? me : partner;
+    const name = (lowestMarker as any)?.nickname ?? (lowestMarker as any)?.user?.name ?? "Team";
+    return `Team ${name}`;
+  }
+
   // Other players in the group (excluding current user)
   const otherPlayers = myGroup.allMembers.filter((p: any) => p.userId !== user?.id);
 
   function playerDisplayName(p: any) {
     return p.nickname ?? p.user?.name ?? `Player ${p.userId}`;
   }
+
+  const displayedTeamName = currentTeamName || getDefaultTeamName();
 
   return (
     <div className="min-h-screen bg-background">
@@ -109,6 +138,71 @@ export default function GroupPairing() {
                 Select a partner from your group. You will score each other's round and compete as a pair in the 4BBB Matchplay.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Team name section — only show when paired */}
+        {hasPartner && (
+          <div className="px-4 py-4 bg-card border border-border rounded-xl space-y-3">
+            <div className="flex items-center gap-2">
+              <Tag className="w-4 h-4 text-primary" />
+              <p className="text-sm font-semibold text-foreground">Team Name</p>
+            </div>
+
+            {editingTeamName ? (
+              <div className="flex gap-2">
+                <Input
+                  value={teamNameInput}
+                  onChange={(e) => setTeamNameInput(e.target.value)}
+                  placeholder={getDefaultTeamName() ?? "Enter team name…"}
+                  maxLength={64}
+                  className="flex-1 text-sm"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      setTeamName.mutate({ groupId: myGroup.groupId, teamName: teamNameInput });
+                    } else if (e.key === "Escape") {
+                      setEditingTeamName(false);
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  disabled={setTeamName.isPending}
+                  onClick={() => setTeamName.mutate({ groupId: myGroup.groupId, teamName: teamNameInput })}
+                >
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditingTeamName(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{displayedTeamName}</p>
+                  {!currentTeamName && (
+                    <p className="text-xs text-muted-foreground">Auto-generated from lowest handicap player</p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => {
+                    setTeamNameInput(currentTeamName ?? "");
+                    setEditingTeamName(true);
+                  }}
+                >
+                  <Pencil className="w-3 h-3" />
+                  {currentTeamName ? "Edit" : "Set Name"}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

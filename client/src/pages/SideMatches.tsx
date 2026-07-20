@@ -5,8 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Users, Swords, Trophy, Minus } from "lucide-react";
+import { ArrowLeft, Plus, Users, Swords, Trophy, Minus, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -25,13 +27,148 @@ function holeResultIcon(result: "A" | "B" | "H") {
   return <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground text-xs flex items-center justify-center"><Minus className="w-3 h-3" /></span>;
 }
 
-function matchStatusLabel(status: number, holesPlayed: number) {
+function matchStatusLabel(status: number, holesPlayed: number, pairATeamName: string, pairBTeamName: string) {
   if (holesPlayed === 0) return { label: "Not started", color: "secondary" as const };
   if (status === 0) return { label: "All Square", color: "secondary" as const };
   const n = Math.abs(status);
-  const side = status > 0 ? "Pair A" : "Pair B";
+  const side = status > 0 ? pairATeamName : pairBTeamName;
   return { label: `${side} ${n} UP`, color: "default" as const };
 }
+
+// Running match status after each hole
+function buildRunningStatus(holeResults: { result: "A" | "B" | "H" | null }[], totalHoles: number): string[] {
+  let status = 0;
+  return holeResults.map((h, i) => {
+    if (h.result === "A") status++;
+    else if (h.result === "B") status--;
+    const holesPlayed = i + 1;
+    const holesRemaining = totalHoles - holesPlayed;
+    if (status === 0) return "AS";
+    const n = Math.abs(status);
+    const dir = status > 0 ? "A" : "B";
+    if (n > holesRemaining) return `${dir}${n}&${holesRemaining}`;
+    if (n === holesRemaining) return `${dir}${n}D`;
+    return `${dir}${n}`;
+  });
+}
+
+// ─── Hole-by-Hole Sheet ───────────────────────────────────────────────────────
+
+interface HoleByHoleSheetProps {
+  matchId: number | null;
+  onClose: () => void;
+}
+
+function HoleByHoleSheet({ matchId, onClose }: HoleByHoleSheetProps) {
+  const { data, isLoading } = trpc.groupMatch.getHoleByHole.useQuery(
+    { matchId: matchId! },
+    { enabled: matchId !== null }
+  );
+
+  const pairATeamName = data?.pairATeamName ?? `${data?.pairANames?.join(" & ") ?? "Pair A"}`;
+  const pairBTeamName = data?.pairBTeamName ?? `${data?.pairBNames?.join(" & ") ?? "Pair B"}`;
+
+  const runningStatus = data ? buildRunningStatus(data.holes.map(h => ({ result: h.result })), data.holes.length) : [];
+
+  return (
+    <Sheet open={matchId !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
+        <SheetHeader className="pb-4">
+          <SheetTitle className="flex items-center gap-2">
+            <Swords className="w-4 h-4 text-primary" />
+            Hole-by-Hole Breakdown
+          </SheetTitle>
+          {data && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span className="text-blue-400 font-medium">{pairATeamName}</span>
+              <span className="text-xs">vs</span>
+              <span className="text-orange-400 font-medium">{pairBTeamName}</span>
+            </div>
+          )}
+        </SheetHeader>
+
+        {isLoading && (
+          <div className="space-y-2">
+            {[...Array(9)].map((_, i) => <Skeleton key={i} className="h-10 rounded" />)}
+          </div>
+        )}
+
+        {data && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground font-medium">Hole</th>
+                  <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium">Par</th>
+                  <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium">SI</th>
+                  <th className="text-center py-2 px-2 text-xs text-blue-400 font-medium">A Pts</th>
+                  <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium">Match</th>
+                  <th className="text-center py-2 px-2 text-xs text-orange-400 font-medium">B Pts</th>
+                  <th className="text-center py-2 px-2 text-xs text-muted-foreground font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.holes.map((hole, i) => {
+                  const status = runningStatus[i];
+                  const isAWin = hole.result === "A";
+                  const isBWin = hole.result === "B";
+                  const isHalved = hole.result === "H";
+                  return (
+                    <tr key={hole.holeNumber} className="border-b border-border/50 hover:bg-muted/30">
+                      <td className="py-2 px-2 font-medium text-foreground">{hole.holeNumber}</td>
+                      <td className="py-2 px-2 text-center text-muted-foreground">{hole.par}</td>
+                      <td className="py-2 px-2 text-center text-muted-foreground">{hole.strokeIndex}</td>
+                      <td className={`py-2 px-2 text-center font-bold ${isAWin ? "text-blue-400" : "text-foreground"}`}>
+                        {hole.pairABestPoints ?? "—"}
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        {hole.result ? holeResultIcon(hole.result) : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                      <td className={`py-2 px-2 text-center font-bold ${isBWin ? "text-orange-400" : "text-foreground"}`}>
+                        {hole.pairBBestPoints ?? "—"}
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        {status ? (
+                          <span className={`text-xs font-medium ${
+                            status === "AS" ? "text-muted-foreground" :
+                            status.startsWith("A") ? "text-blue-400" : "text-orange-400"
+                          }`}>{status}</span>
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border bg-muted/30">
+                  <td colSpan={3} className="py-2 px-2 text-xs font-semibold text-muted-foreground">Total</td>
+                  <td className="py-2 px-2 text-center font-bold text-blue-400">
+                    {data.holes.filter(h => h.result === "A").length}W
+                  </td>
+                  <td className="py-2 px-2 text-center text-xs text-muted-foreground">
+                    {data.holes.filter(h => h.result === "H").length}H
+                  </td>
+                  <td className="py-2 px-2 text-center font-bold text-orange-400">
+                    {data.holes.filter(h => h.result === "B").length}W
+                  </td>
+                  <td className="py-2 px-2 text-center">
+                    {data.winner !== "pending" && (
+                      <Badge className={`text-xs ${data.winner === "player1" ? "bg-blue-600" : data.winner === "player2" ? "bg-orange-600" : "bg-muted"} text-white`}>
+                        {data.winner === "player1" ? "A Wins" : data.winner === "player2" ? "B Wins" : "Halved"}
+                      </Badge>
+                    )}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SideMatches() {
   const { roundId } = useParams<{ roundId: string }>();
@@ -46,6 +183,7 @@ export default function SideMatches() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [selectedType, setSelectedType] = useState<string>("");
+  const [holeByHoleMatchId, setHoleByHoleMatchId] = useState<number | null>(null);
 
   const createMatch = trpc.sideMatches.create.useMutation({
     onSuccess: () => {
@@ -110,12 +248,14 @@ export default function SideMatches() {
 
           {groupMatches && groupMatches.map((match) => {
             const holeResults: ("A" | "B" | "H")[] = match.holeResultsParsed ?? [];
-            const { label: statusLabel, color: statusColor } = matchStatusLabel(match.matchStatus, holeResults.length);
+            const pairATeamName = match.pairATeamName ?? `${match.pairANames.join(" & ")}`;
+            const pairBTeamName = match.pairBTeamName ?? `${match.pairBNames.join(" & ")}`;
+            const { label: statusLabel, color: statusColor } = matchStatusLabel(match.matchStatus, holeResults.length, pairATeamName, pairBTeamName);
             const isComplete = match.winner !== "pending";
             const winnerLabel =
               match.winner === "halved" ? "Match Halved" :
-              match.winner === "player1" ? `${match.pairANames.join(" & ")} Win` :
-              match.winner === "player2" ? `${match.pairBNames.join(" & ")} Win` : null;
+              match.winner === "player1" ? `${pairATeamName} Win` :
+              match.winner === "player2" ? `${pairBTeamName} Win` : null;
 
             return (
               <Card key={match.id} className="border-border mb-3">
@@ -132,19 +272,22 @@ export default function SideMatches() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-4 pb-4 space-y-4">
+                  {/* Team name vs display */}
                   <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center text-center">
                     <div className="space-y-1">
                       <Badge className="bg-blue-600 text-white text-xs">Pair A</Badge>
-                      {match.pairANames.map((name: string, i: number) => (
-                        <p key={i} className="text-sm font-medium text-foreground">{name}</p>
-                      ))}
+                      <p className="text-sm font-bold text-foreground">{pairATeamName}</p>
+                      {match.pairATeamName && (
+                        <p className="text-xs text-muted-foreground">{match.pairANames.join(" & ")}</p>
+                      )}
                     </div>
                     <span className="text-muted-foreground font-bold text-lg">vs</span>
                     <div className="space-y-1">
                       <Badge className="bg-orange-600 text-white text-xs">Pair B</Badge>
-                      {match.pairBNames.map((name: string, i: number) => (
-                        <p key={i} className="text-sm font-medium text-foreground">{name}</p>
-                      ))}
+                      <p className="text-sm font-bold text-foreground">{pairBTeamName}</p>
+                      {match.pairBTeamName && (
+                        <p className="text-xs text-muted-foreground">{match.pairBNames.join(" & ")}</p>
+                      )}
                     </div>
                   </div>
 
@@ -162,7 +305,7 @@ export default function SideMatches() {
                     </div>
                   )}
 
-                  {holeResults.length > 0 && !isComplete && (
+                  {holeResults.length > 0 && (
                     <div className="grid grid-cols-3 text-center text-sm border-t border-border pt-3">
                       <div>
                         <p className="font-bold text-blue-400">{holeResults.filter((r) => r === "A").length}</p>
@@ -182,6 +325,17 @@ export default function SideMatches() {
                   {holeResults.length === 0 && (
                     <p className="text-xs text-muted-foreground text-center py-2">Waiting for scores to be entered...</p>
                   )}
+
+                  {/* Hole-by-hole detail button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 text-xs"
+                    onClick={() => setHoleByHoleMatchId(match.id)}
+                  >
+                    <ChevronRight className="w-3 h-3" />
+                    View Hole-by-Hole Breakdown
+                  </Button>
                 </CardContent>
               </Card>
             );
@@ -246,6 +400,12 @@ export default function SideMatches() {
           <p>• This is a group side match — separate from the main round leaderboard.</p>
         </div>
       </div>
+
+      {/* Hole-by-Hole Sheet */}
+      <HoleByHoleSheet
+        matchId={holeByHoleMatchId}
+        onClose={() => setHoleByHoleMatchId(null)}
+      />
 
       {/* Create Side Match Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
