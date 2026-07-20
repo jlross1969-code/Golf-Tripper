@@ -4,16 +4,47 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Zap, Trophy, Ruler } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
+
+// ── unit helpers ──────────────────────────────────────────────────────────────
+const YARDS_PER_METRE = 1.09361;
+const toYards = (m: number) => Math.round(m * YARDS_PER_METRE);
+const toMetres = (m: number) => Math.round(m);
+const fromYards = (yds: number) => Math.round(yds / YARDS_PER_METRE);
+const UNIT_KEY = "longDriveUnit"; // localStorage key
 
 export default function LongDriveResults() {
   const { roundId } = useParams<{ roundId: string }>();
   const rId = Number(roundId);
   const { user } = useAuth();
 
+  // ── unit preference (persisted) ───────────────────────────────────────────
+  const [useYards, setUseYards] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(UNIT_KEY) !== "metres";
+    } catch {
+      return true; // default yards
+    }
+  });
+
+  const toggleUnit = (checked: boolean) => {
+    setUseYards(checked);
+    try {
+      localStorage.setItem(UNIT_KEY, checked ? "yards" : "metres");
+    } catch {}
+    // Clear any partially-typed input to avoid confusion
+    setDistanceToPin("");
+  };
+
+  const unitLabel = useYards ? "yds" : "m";
+  const displayDist = (metres: number) => useYards ? toYards(metres) : toMetres(metres);
+
+  // ── data ──────────────────────────────────────────────────────────────────
   const { data: roundData } = trpc.rounds.get.useQuery({ id: rId });
   const round = roundData?.round;
 
@@ -27,32 +58,41 @@ export default function LongDriveResults() {
   const [achievementText, setAchievementText] = useState("");
   const prevLeaderRef = useRef<number | null>(null);
 
-  // Watch for new leader and show achievement popup
+  // ── achievement popup ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!leaderboard || leaderboard.length === 0) return;
     const currentLeader = leaderboard[0];
     if (prevLeaderRef.current !== null && prevLeaderRef.current !== currentLeader.userId) {
       const name = (currentLeader as any).playerName ?? "A player";
-      const dist = Math.round(currentLeader.driveDistanceM * 1.09361);
-      const unit = "yds";
-      setAchievementText(`💨 New Long Drive Leader!\n${name} — ${dist} ${unit}`);
+      const dist = displayDist(currentLeader.driveDistanceM);
+      setAchievementText(`💨 New Long Drive Leader!\n${name} — ${dist} ${unitLabel}`);
       setShowAchievement(true);
       setTimeout(() => setShowAchievement(false), 4000);
     }
     prevLeaderRef.current = currentLeader.userId;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaderboard]);
 
+  // ── mutation ──────────────────────────────────────────────────────────────
   const submitEntry = trpc.longDrive.submitEntry.useMutation({
     onSuccess: (data: any) => {
-      const dist = data.driveDistanceYards ?? data.driveDistanceM;
-      const unit = data.driveDistanceYards ? "yds" : "m";
-      toast.success(`Drive recorded: ${dist} ${unit}${data.isNewLeader ? " 🏆 You're the new leader!" : ""}`);
+      const dist = displayDist(data.driveDistanceM ?? 0);
+      toast.success(`Drive recorded: ${dist} ${unitLabel}${data.isNewLeader ? " 🏆 You're the new leader!" : ""}`);
       setDistanceToPin("");
       refetch();
     },
     onError: (e) => toast.error(e.message),
   });
 
+  const handleSubmit = () => {
+    const raw = Number(distanceToPin);
+    if (!raw || raw <= 0) return;
+    // Always send metres to the server
+    const metres = useYards ? fromYards(raw) : raw;
+    submitEntry.mutate({ roundId: rId, distanceToPinM: metres });
+  };
+
+  // ── derived ───────────────────────────────────────────────────────────────
   const isEnabled = round?.longDriveEnabled;
   const holeNumber = round?.longDriveHole;
   const myEntry = leaderboard?.find((e: any) => e.userId === user?.id);
@@ -82,9 +122,21 @@ export default function LongDriveResults() {
           <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
         </Link>
         <Zap className="w-5 h-5 text-primary" />
-        <div>
+        <div className="flex-1">
           <h1 className="font-bold text-foreground">Long Drive</h1>
           <p className="text-xs text-muted-foreground">{round.name}</p>
+        </div>
+
+        {/* Unit toggle — always visible in header */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Label htmlFor="unit-toggle" className="text-xs text-muted-foreground select-none">m</Label>
+          <Switch
+            id="unit-toggle"
+            checked={useYards}
+            onCheckedChange={toggleUnit}
+            aria-label="Toggle between yards and metres"
+          />
+          <Label htmlFor="unit-toggle" className="text-xs text-muted-foreground select-none">yds</Label>
         </div>
       </header>
 
@@ -109,8 +161,14 @@ export default function LongDriveResults() {
                 </div>
               </div>
               <div className="bg-muted/30 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
-                <p className="flex items-center gap-1.5"><Ruler className="w-3.5 h-3.5 text-primary" /> After your drive, aim your rangefinder at the pin and enter the distance below.</p>
-                <p className="flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-yellow-400" /> Drive distance = hole length − your distance to pin.</p>
+                <p className="flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5 text-primary" />
+                  After your drive, aim your rangefinder at the pin and enter the distance below in <strong className="text-foreground">{useYards ? "yards" : "metres"}</strong>.
+                </p>
+                <p className="flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-yellow-400" />
+                  Drive distance = hole length − your distance to pin.
+                </p>
               </div>
             </div>
 
@@ -118,28 +176,31 @@ export default function LongDriveResults() {
             {!myEntry ? (
               <div className="bg-card border border-border rounded-xl p-4 space-y-3">
                 <p className="text-sm font-semibold text-foreground">Submit Your Drive</p>
-                <p className="text-xs text-muted-foreground">Enter the distance from your ball to the pin (in yards) as shown on your rangefinder.</p>
+                <p className="text-xs text-muted-foreground">
+                  Enter the distance from your ball to the pin in <strong className="text-foreground">{useYards ? "yards" : "metres"}</strong> as shown on your rangefinder.
+                </p>
                 <div className="flex items-center gap-2">
                   <Ruler className="w-4 h-4 text-primary flex-shrink-0" />
-                  <Input
-                    type="number"
-                    min="1"
-                    max="600"
-                    step="1"
-                    value={distanceToPin}
-                    onChange={(e) => setDistanceToPin(e.target.value)}
-                    className="h-9 text-sm"
-                    placeholder="Distance to pin (yards)..."
-                  />
+                  <div className="relative flex-1">
+                    <Input
+                      type="number"
+                      min="1"
+                      max={useYards ? 660 : 600}
+                      step="1"
+                      value={distanceToPin}
+                      onChange={(e) => setDistanceToPin(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                      className="h-9 text-sm pr-10"
+                      placeholder={`Distance to pin (${unitLabel})...`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                      {unitLabel}
+                    </span>
+                  </div>
                   <Button
                     size="sm"
                     disabled={!distanceToPin || submitEntry.isPending}
-                    onClick={() => {
-                      const yards = Number(distanceToPin);
-                      // Convert yards to metres for the server (server stores in metres)
-                      const metres = Math.round(yards / 1.09361);
-                      submitEntry.mutate({ roundId: rId, distanceToPinM: metres });
-                    }}
+                    onClick={handleSubmit}
                   >
                     {submitEntry.isPending ? "..." : "Submit"}
                   </Button>
@@ -151,8 +212,8 @@ export default function LongDriveResults() {
                   <Zap className="w-4 h-4" /> Your drive recorded
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Distance to pin: {Math.round((myEntry as any).distanceToPinM * 1.09361)} yds ·
-                    Drive: <strong className="text-foreground">{Math.round((myEntry as any).driveDistanceM * 1.09361)} yds</strong>
+                  Distance to pin: {displayDist((myEntry as any).distanceToPinM)} {unitLabel} ·
+                  Drive: <strong className="text-foreground">{displayDist((myEntry as any).driveDistanceM)} {unitLabel}</strong>
                 </p>
               </div>
             )}
@@ -181,12 +242,14 @@ export default function LongDriveResults() {
                       <p className={`font-medium text-sm ${entry.userId === user?.id ? "text-primary" : "text-foreground"}`}>
                         {(entry as any).playerName ?? "Player"}{entry.userId === user?.id ? " (you)" : ""}
                       </p>
-                      <p className="text-xs text-muted-foreground">{Math.round(entry.distanceToPinM * 1.09361)} yds to pin</p>
+                      <p className="text-xs text-muted-foreground">
+                        {displayDist(entry.distanceToPinM)} {unitLabel} to pin
+                      </p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className={`font-bold text-lg ${i === 0 ? "text-yellow-400" : "text-foreground"}`}>
-                        {Math.round(entry.driveDistanceM * 1.09361)}
-                        <span className="text-xs font-normal text-muted-foreground ml-1">yds</span>
+                        {displayDist(entry.driveDistanceM)}
+                        <span className="text-xs font-normal text-muted-foreground ml-1">{unitLabel}</span>
                       </p>
                       {i === 0 && <Badge variant="outline" className="text-[10px] text-yellow-400 border-yellow-600/40">Leader</Badge>}
                     </div>

@@ -452,3 +452,6 @@
 - [x] Frontend: Long Drive button in TripDashboard active round actions (only when longDriveEnabled)
 - [x] Frontend: Long Drive link in AdminRounds round card actions
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Long Drive Unit Toggle
+- [x] Frontend: LongDriveResults — yards/metres toggle switch; convert input value before sending to server (server always stores metres); display leaderboard distances in the chosen unit; persist preference to localStorage
