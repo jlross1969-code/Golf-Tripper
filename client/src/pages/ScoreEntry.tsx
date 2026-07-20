@@ -2,12 +2,13 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Link, useParams } from "wouter";
 import {
   ArrowLeft, ArrowRight, Flag, CheckCircle, AlertTriangle,
-  Target, Users, Swords, LayoutGrid, ChevronLeft, ChevronRight,
+  Target, Users, Swords, LayoutGrid, ChevronLeft, ChevronRight, Pencil,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -139,6 +140,31 @@ export default function ScoreEntry() {
   // Mismatch dialog
   const [mismatchHoles, setMismatchHoles] = useState<number[]>([]);
   const [mismatchOpen, setMismatchOpen] = useState(false);
+
+  // Admin score correction dialog
+  const [correctOpen, setCorrectOpen] = useState(false);
+  const [correctUserId, setCorrectUserId] = useState<number | null>(null);
+  const [correctHoleId, setCorrectHoleId] = useState<number | null>(null);
+  const [correctGross, setCorrectGross] = useState("");
+
+  const adminCorrect = trpc.scores.adminCorrect.useMutation({
+    onSuccess: (d) => {
+      toast.success(`Score corrected — Net: ${d.netScore}, Pts: ${d.stablefordPoints}`);
+      setCorrectOpen(false);
+      setCorrectUserId(null);
+      setCorrectHoleId(null);
+      setCorrectGross("");
+      utils.scores.getScorecard.invalidate({ roundId: id });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function openCorrection(userId: number, holeId: number) {
+    setCorrectUserId(userId);
+    setCorrectHoleId(holeId);
+    setCorrectGross("");
+    setCorrectOpen(true);
+  }
 
   // Edit mode: set of "userId-holeId" keys where saved score is being edited
   const [editingKeys, setEditingKeys] = useState<Set<string>>(new Set());
@@ -638,12 +664,22 @@ export default function ScoreEntry() {
                         <p className="text-xs text-muted-foreground">
                           Net {saved.netScore} · {saved.stablefordPoints} pts
                         </p>
-                        <button
-                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors border border-border rounded-full px-3 py-1 hover:border-primary"
-                          onClick={() => startEdit(player.userId, currentHole.id, saved.grossScore)}
-                        >
-                          <CheckCircle className="w-3 h-3 text-primary" /> Saved · tap to edit
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors border border-border rounded-full px-3 py-1 hover:border-primary"
+                            onClick={() => startEdit(player.userId, currentHole.id, saved.grossScore)}
+                          >
+                            <CheckCircle className="w-3 h-3 text-primary" /> Saved · tap to edit
+                          </button>
+                          {user?.role === "admin" && (
+                            <button
+                              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-amber-400 transition-colors border border-border rounded-full px-3 py-1 hover:border-amber-400"
+                              onClick={() => openCorrection(player.userId, currentHole.id)}
+                            >
+                              <Pencil className="w-3 h-3" /> Admin fix
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div>
@@ -902,7 +938,20 @@ export default function ScoreEntry() {
                                   Save
                                 </Button>
                               )}
-                              {existing && <CheckCircle className="w-4 h-4 text-primary mx-auto" />}
+                              {existing && (
+                                <div className="flex items-center gap-1 justify-center">
+                                  <CheckCircle className="w-4 h-4 text-primary" />
+                                  {user?.role === "admin" && (
+                                    <button
+                                      className="text-muted-foreground hover:text-amber-400 transition-colors"
+                                      title="Admin: correct this score"
+                                      onClick={() => openCorrection(selectedUserId!, hole.id)}
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             {ntpByHole.has(hole.id) && (() => {
                               const ntp = ntpByHole.get(hole.id)!;
@@ -1006,6 +1055,63 @@ export default function ScoreEntry() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Admin Score Correction Dialog ──────────────────────────────── */}
+      {(() => {
+        const corrHole = correctHoleId ? holes.find((h) => h.id === correctHoleId) : null;
+        const corrPlayer = correctUserId ? players?.find((p) => p.userId === correctUserId) : null;
+        return (
+          <Dialog open={correctOpen} onOpenChange={(o) => { if (!o) { setCorrectOpen(false); setCorrectUserId(null); setCorrectHoleId(null); setCorrectGross(""); } }}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-amber-400" />
+                  Admin: Correct Score
+                </DialogTitle>
+                <DialogDescription>
+                  Override the saved score for{" "}
+                  <strong>{corrPlayer?.nickname ?? corrPlayer?.user?.name ?? "Player"}</strong>{" "}
+                  on Hole {corrHole?.holeNumber} (Par {corrHole?.par} · SI {corrHole?.strokeIndex}).
+                  Net and Stableford points will be recalculated automatically.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-2">
+                <label className="text-sm font-medium text-foreground mb-1 block">New Gross Score</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={correctGross}
+                  onChange={(e) => setCorrectGross(e.target.value)}
+                  placeholder="e.g. 5"
+                  autoFocus
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setCorrectOpen(false); setCorrectUserId(null); setCorrectHoleId(null); setCorrectGross(""); }}>Cancel</Button>
+                <Button
+                  disabled={!correctGross || !corrHole || !corrPlayer || adminCorrect.isPending}
+                  onClick={() => {
+                    if (!corrHole || !corrPlayer) return;
+                    adminCorrect.mutate({
+                      roundId: id,
+                      userId: corrPlayer.userId,
+                      holeId: corrHole.id,
+                      holeNumber: corrHole.holeNumber,
+                      par: corrHole.par,
+                      strokeIndex: corrHole.strokeIndex,
+                      grossScore: Number(correctGross),
+                      handicap: corrPlayer.currentHandicap,
+                    });
+                  }}
+                >
+                  {adminCorrect.isPending ? "Saving..." : "Save Correction"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* ── Mismatch Warning Dialog ───────────────────────────────────────── */}
       <Dialog open={mismatchOpen} onOpenChange={setMismatchOpen}>

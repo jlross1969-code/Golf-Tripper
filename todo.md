@@ -312,3 +312,12 @@
 - [x] Frontend: Admin score correction UI — accessible from AdminGroups or a dedicated scorecard view
 - [x] Frontend: end-of-round recalculation prompt — when admin marks round complete, show dialog asking to run HC recalculation now
 - [x] Tests and checkpoint
+
+## Session - Scorecard Correction & Avatar Upload
+
+- [x] Read player scorecard page and profile page to understand current structure
+- [x] Backend: players.updatePhoto procedure (upload photo to S3, save URL to trip_players)
+- [x] Backend: ensure scores.adminCorrect is accessible from scorecard context (already exists)
+- [x] Frontend: player scorecard page — add pencil icon per hole row for admin score correction
+- [x] Frontend: player profile page — add avatar upload UI (file picker, preview, save)
+- [x] Tests and checkpoint
