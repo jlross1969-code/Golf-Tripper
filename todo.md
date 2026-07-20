@@ -415,3 +415,10 @@
 - [x] Frontend: emoji picker popover in the inline team name editor (curated golf/sport emoji list)
 - [x] Frontend: display selected emoji next to team name in display mode and in SideMatches match cards
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Emoji Picker Search, Bounce Animation, Randomize
+
+- [x] Frontend: emoji picker — add search input to filter curated list and search unicode emoji names
+- [x] Frontend: team mascot emoji in summary card — bounce animation when that team wins a hole
+- [x] Frontend: randomize button next to emoji picker — generates a fun random team name + matching emoji
+- [x] TypeScript check, tests, checkpoint

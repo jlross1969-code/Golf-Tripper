@@ -126,6 +126,14 @@
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* Mascot emoji bounce animation when team is leading or has won */
+@keyframes mascot-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30%       { transform: translateY(-4px) scale(1.15); }
+  60%       { transform: translateY(1px) scale(0.95); }
+  80%       { transform: translateY(-2px) scale(1.05); }
+}
+
 /* Winner flash animation for scorecard comparison drawer */
 @keyframes winner-flash {
   0%   { background-color: transparent; }

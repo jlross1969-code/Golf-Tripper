@@ -9,11 +9,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Users, Swords, Trophy, Minus, ChevronRight, Pencil, Check, X } from "lucide-react";
+import { ArrowLeft, Plus, Users, Swords, Trophy, Minus, ChevronRight, Pencil, Check, X, Shuffle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 
 const SIDE_MATCH_TYPES = [
@@ -201,6 +201,7 @@ export default function SideMatches() {
   const [teamNameDraft, setTeamNameDraft] = useState<string>("");
   const [emojiDraft, setEmojiDraft] = useState<string>("");
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [emojiSearch, setEmojiSearch] = useState("");
 
   const utils = trpc.useUtils();
   const setTeamName = trpc.groups.setTeamName.useMutation({
@@ -312,11 +313,92 @@ export default function SideMatches() {
                       user && (match.player1Id === user.id || match.player1PartnerId === user.id) ? "A" :
                       user && (match.player2Id === user.id || match.player2PartnerId === user.id) ? "B" : null;
 
-                    const GOLF_EMOJI = [
-                      "⛳","🏌️","🏌️‍♂️","🏌️‍♀️","🎯","🏆","🥇","🥈","🥉",
-                      "🦅","🦆","🦉","🦁","🐯","🐻","🦊","🐺","🦈","🦅","🦋",
-                      "🔥","⚡","💥","🌪️","❄️","🌊","🌟","✨","💫","🎖️",
-                      "🍀","🌈","🎱","🎳","🎲","🃏","🎰","🚀","💎","👑",
+                    // Curated emoji with searchable names
+                    const GOLF_EMOJI_DATA: { em: string; name: string }[] = [
+                      { em: "⛳", name: "golf hole flag" },
+                      { em: "🏌️", name: "golfer golf player" },
+                      { em: "🏌️‍♂️", name: "man golfer golf" },
+                      { em: "🏌️‍♀️", name: "woman golfer golf" },
+                      { em: "🎯", name: "target bullseye dart" },
+                      { em: "🏆", name: "trophy winner champion" },
+                      { em: "🥇", name: "gold medal first" },
+                      { em: "🥈", name: "silver medal second" },
+                      { em: "🥉", name: "bronze medal third" },
+                      { em: "🦅", name: "eagle bird" },
+                      { em: "🦆", name: "duck bird" },
+                      { em: "🦉", name: "owl bird" },
+                      { em: "🦁", name: "lion king fierce" },
+                      { em: "🐯", name: "tiger fierce" },
+                      { em: "🐻", name: "bear" },
+                      { em: "🦊", name: "fox clever" },
+                      { em: "🐺", name: "wolf pack" },
+                      { em: "🦈", name: "shark" },
+                      { em: "🦋", name: "butterfly" },
+                      { em: "🐮", name: "cow bull" },
+                      { em: "🐍", name: "snake" },
+                      { em: "🐼", name: "panda bear" },
+                      { em: "🐧", name: "penguin" },
+                      { em: "🐢", name: "turtle" },
+                      { em: "🦖", name: "T-rex dinosaur" },
+                      { em: "🔥", name: "fire hot" },
+                      { em: "⚡", name: "lightning bolt electric" },
+                      { em: "💥", name: "explosion boom" },
+                      { em: "🌪️", name: "tornado storm" },
+                      { em: "❄️", name: "snowflake ice cold" },
+                      { em: "🌊", name: "wave ocean water" },
+                      { em: "🌟", name: "star glowing" },
+                      { em: "✨", name: "sparkles magic" },
+                      { em: "💫", name: "dizzy stars" },
+                      { em: "🎖️", name: "medal military" },
+                      { em: "🍀", name: "four leaf clover lucky" },
+                      { em: "🌈", name: "rainbow" },
+                      { em: "🎱", name: "billiards pool" },
+                      { em: "🎳", name: "bowling" },
+                      { em: "🎲", name: "dice game" },
+                      { em: "🃏", name: "joker card" },
+                      { em: "🚀", name: "rocket launch" },
+                      { em: "💎", name: "gem diamond" },
+                      { em: "👑", name: "crown king" },
+                      { em: "💣", name: "bomb" },
+                      { em: "🎉", name: "party celebration" },
+                      { em: "🤯", name: "mind blown exploding" },
+                      { em: "😈", name: "devil evil" },
+                      { em: "👽", name: "alien" },
+                      { em: "🤖", name: "robot" },
+                      { em: "💀", name: "skull" },
+                      { em: "🌞", name: "sun" },
+                      { em: "🌕", name: "moon" },
+                      { em: "☘️", name: "shamrock clover" },
+                      { em: "🍎", name: "apple" },
+                      { em: "🥑", name: "avocado" },
+                    ];
+
+                    const RANDOM_TEAMS: { name: string; emoji: string }[] = [
+                      { name: "Eagle Hunters", emoji: "🦅" },
+                      { name: "Birdie Boys", emoji: "🦆" },
+                      { name: "The Bogey Men", emoji: "😈" },
+                      { name: "Fairway Foxes", emoji: "🦊" },
+                      { name: "Iron Wolves", emoji: "🐺" },
+                      { name: "Sand Sharks", emoji: "🦈" },
+                      { name: "Rough Riders", emoji: "🔥" },
+                      { name: "Thunder Putts", emoji: "⚡" },
+                      { name: "The Albatross", emoji: "🦅" },
+                      { name: "Ace Chasers", emoji: "🎯" },
+                      { name: "Bunker Kings", emoji: "👑" },
+                      { name: "Green Machine", emoji: "🍀" },
+                      { name: "Tee Rexes", emoji: "🦖" },
+                      { name: "Hole Hunters", emoji: "⛳" },
+                      { name: "Putter Pandas", emoji: "🐼" },
+                      { name: "Birdie Bandits", emoji: "💥" },
+                      { name: "Wedge Warriors", emoji: "🎖️" },
+                      { name: "The Scratch Pack", emoji: "🏆" },
+                      { name: "Bogey Busters", emoji: "💣" },
+                      { name: "The Stableford", emoji: "🌟" },
+                      { name: "Chip Shots", emoji: "🎉" },
+                      { name: "Fringe Dwellers", emoji: "🌊" },
+                      { name: "The Condors", emoji: "🦅" },
+                      { name: "Penalty Pals", emoji: "🤯" },
+                      { name: "Dormie Squad", emoji: "🚀" },
                     ];
 
                     function TeamNameCell({ side, teamName, teamEmoji, names, groupId }: {
@@ -337,8 +419,21 @@ export default function SideMatches() {
                               className="flex flex-col gap-1 items-center"
                               style={{ animation: "team-name-fade-in 180ms cubic-bezier(0.23,1,0.32,1) both" }}
                             >
-                              {/* Emoji picker row */}
+                              {/* Emoji picker row + randomize */}
                               <div className="flex items-center gap-1 w-full">
+                                {/* Randomize button */}
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground hover:bg-muted w-8 h-8 flex items-center justify-center rounded-md border border-border transition-colors flex-shrink-0"
+                                  title="Randomize team name & mascot"
+                                  onClick={() => {
+                                    const pick = RANDOM_TEAMS[Math.floor(Math.random() * RANDOM_TEAMS.length)];
+                                    setTeamNameDraft(pick.name);
+                                    setEmojiDraft(pick.emoji);
+                                  }}
+                                >
+                                  <Shuffle className="w-3.5 h-3.5" />
+                                </button>
                                 <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
                                   <PopoverTrigger asChild>
                                     <button
@@ -349,26 +444,50 @@ export default function SideMatches() {
                                       {emojiDraft || "😶"}
                                     </button>
                                   </PopoverTrigger>
-                                  <PopoverContent className="w-64 p-2" align="start">
-                                    <p className="text-[10px] text-muted-foreground mb-2 px-1">Pick a mascot emoji</p>
-                                    <div className="grid grid-cols-8 gap-0.5">
-                                      {/* Clear option */}
-                                      <button
-                                        className="text-xs w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
-                                        onClick={() => { setEmojiDraft(""); setEmojiPickerOpen(false); }}
-                                        title="No mascot"
-                                        type="button"
-                                      >✕</button>
-                                      {GOLF_EMOJI.map((em) => (
+                                  <PopoverContent className="w-72 p-2" align="start">
+                                    <p className="text-[10px] text-muted-foreground mb-1.5 px-1">Pick a mascot emoji</p>
+                                    {/* Search input */}
+                                    <Input
+                                      value={emojiSearch}
+                                      onChange={(e) => setEmojiSearch(e.target.value)}
+                                      placeholder="Search emoji…"
+                                      className="h-7 text-xs mb-2"
+                                      autoFocus
+                                    />
+                                    <div className="grid grid-cols-8 gap-0.5 max-h-40 overflow-y-auto">
+                                      {/* Clear option — only show when not searching */}
+                                      {!emojiSearch && (
                                         <button
-                                          key={em}
-                                          className={`text-lg w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors ${
-                                            emojiDraft === em ? "bg-primary/20 ring-1 ring-primary" : ""
-                                          }`}
-                                          onClick={() => { setEmojiDraft(em); setEmojiPickerOpen(false); }}
+                                          className="text-xs w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
+                                          onClick={() => { setEmojiDraft(""); setEmojiPickerOpen(false); }}
+                                          title="No mascot"
                                           type="button"
-                                        >{em}</button>
-                                      ))}
+                                        >✕</button>
+                                      )}
+                                      {(() => {
+                                        const q = emojiSearch.toLowerCase().trim();
+                                        const filtered = q
+                                          ? GOLF_EMOJI_DATA.filter(d => d.em.includes(q) || d.name.includes(q))
+                                          : GOLF_EMOJI_DATA;
+                                        if (filtered.length === 0) {
+                                          return (
+                                            <div className="col-span-8 text-[10px] text-muted-foreground text-center py-2">
+                                              No emoji found
+                                            </div>
+                                          );
+                                        }
+                                        return filtered.map((d) => (
+                                          <button
+                                            key={d.em}
+                                            className={`text-lg w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors ${
+                                              emojiDraft === d.em ? "bg-primary/20 ring-1 ring-primary" : ""
+                                            }`}
+                                            onClick={() => { setEmojiDraft(d.em); setEmojiPickerOpen(false); setEmojiSearch(""); }}
+                                            type="button"
+                                            title={d.name}
+                                          >{d.em}</button>
+                                        ));
+                                      })()}
                                     </div>
                                   </PopoverContent>
                                 </Popover>
@@ -420,9 +539,20 @@ export default function SideMatches() {
                               style={{ animation: "team-name-fade-in 180ms cubic-bezier(0.23,1,0.32,1) both" }}
                             >
                               <div className="flex items-center gap-1">
-                                {displayEmoji && (
-                                  <span className="text-lg leading-none" aria-hidden>{displayEmoji}</span>
-                                )}
+                                {displayEmoji && (() => {
+                                  // Bounce when this pair is winning or has won
+                                  const aWins = holeResults.filter(r => r === "A").length;
+                                  const bWins = holeResults.filter(r => r === "B").length;
+                                  const isLeading = side === "A" ? aWins > bWins : bWins > aWins;
+                                  const hasWon = (side === "A" && match.winner === "player1") || (side === "B" && match.winner === "player2");
+                                  return (
+                                    <span
+                                      className="text-lg leading-none"
+                                      aria-hidden
+                                      style={isLeading || hasWon ? { animation: "mascot-bounce 0.7s cubic-bezier(0.36,0.07,0.19,0.97) infinite" } : undefined}
+                                    >{displayEmoji}</span>
+                                  );
+                                })()}
                                 <p
                                   className={`text-sm font-bold text-foreground ${isMyPair ? "cursor-pointer select-none hover:text-primary transition-colors" : ""}`}
                                   onDoubleClick={isMyPair ? () => {
