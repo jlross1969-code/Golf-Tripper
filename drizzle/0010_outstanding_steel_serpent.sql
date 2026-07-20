@@ -1,0 +1,1 @@
+ALTER TABLE `group_players` ADD `teamEmoji` varchar(8);

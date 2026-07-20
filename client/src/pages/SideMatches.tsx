@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Plus, Users, Swords, Trophy, Minus, ChevronRight, Pencil, Check, X } from "lucide-react";
@@ -69,6 +70,8 @@ function HoleByHoleSheet({ matchId, onClose }: HoleByHoleSheetProps) {
 
   const pairATeamName = data?.pairATeamName ?? `${data?.pairANames?.join(" & ") ?? "Pair A"}`;
   const pairBTeamName = data?.pairBTeamName ?? `${data?.pairBNames?.join(" & ") ?? "Pair B"}`;
+  const pairAEmoji = data?.pairATeamEmoji ?? "";
+  const pairBEmoji = data?.pairBTeamEmoji ?? "";
 
   const runningStatus = data ? buildRunningStatus(data.holes.map(h => ({ result: h.result })), data.holes.length) : [];
 
@@ -82,9 +85,15 @@ function HoleByHoleSheet({ matchId, onClose }: HoleByHoleSheetProps) {
           </SheetTitle>
           {data && (
             <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span className="text-blue-400 font-medium">{pairATeamName}</span>
+              <span className="text-blue-400 font-medium flex items-center gap-1">
+                {pairAEmoji && <span aria-hidden>{pairAEmoji}</span>}
+                {pairATeamName}
+              </span>
               <span className="text-xs">vs</span>
-              <span className="text-orange-400 font-medium">{pairBTeamName}</span>
+              <span className="text-orange-400 font-medium flex items-center gap-1">
+                {pairBTeamName}
+                {pairBEmoji && <span aria-hidden>{pairBEmoji}</span>}
+              </span>
             </div>
           )}
         </SheetHeader>
@@ -190,17 +199,21 @@ export default function SideMatches() {
   // Inline team name editing state: key = matchId + side ('A'|'B')
   const [editingTeamName, setEditingTeamName] = useState<string | null>(null); // e.g. "42-A"
   const [teamNameDraft, setTeamNameDraft] = useState<string>("");
+  const [emojiDraft, setEmojiDraft] = useState<string>("");
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   const utils = trpc.useUtils();
   const setTeamName = trpc.groups.setTeamName.useMutation({
     onSuccess: (_data, variables) => {
       const savedName = variables.teamName.trim();
+      const savedEmoji = (variables.teamEmoji ?? "").trim();
       if (savedName === "") {
         toast.success("Team name reverted to default.");
       } else {
-        toast.success(`Team name saved: "${savedName}"`);
+        toast.success(`${savedEmoji ? savedEmoji + " " : ""}Team name saved: "${savedName}"`);
       }
       setEditingTeamName(null);
+      setEmojiPickerOpen(false);
       utils.groupMatch.getByRound.invalidate({ roundId: id });
     },
     onError: (e) => toast.error(e.message),
@@ -299,13 +312,21 @@ export default function SideMatches() {
                       user && (match.player1Id === user.id || match.player1PartnerId === user.id) ? "A" :
                       user && (match.player2Id === user.id || match.player2PartnerId === user.id) ? "B" : null;
 
-                    function TeamNameCell({ side, teamName, names, groupId }: {
-                      side: "A" | "B"; teamName: string; names: string[]; groupId: number;
+                    const GOLF_EMOJI = [
+                      "⛳","🏌️","🏌️‍♂️","🏌️‍♀️","🎯","🏆","🥇","🥈","🥉",
+                      "🦅","🦆","🦉","🦁","🐯","🐻","🦊","🐺","🦈","🦅","🦋",
+                      "🔥","⚡","💥","🌪️","❄️","🌊","🌟","✨","💫","🎖️",
+                      "🍀","🌈","🎱","🎳","🎲","🃏","🎰","🚀","💎","👑",
+                    ];
+
+                    function TeamNameCell({ side, teamName, teamEmoji, names, groupId }: {
+                      side: "A" | "B"; teamName: string; teamEmoji: string | null; names: string[]; groupId: number;
                     }) {
                       const editKey = `${match.id}-${side}`;
                       const isEditing = editingTeamName === editKey;
                       const isMyPair = myPairSide === side;
                       const hasCustomName = side === "A" ? !!match.pairATeamName : !!match.pairBTeamName;
+                      const displayEmoji = isEditing ? emojiDraft : (teamEmoji ?? "");
                       return (
                         <div className="space-y-1">
                           <Badge className={side === "A" ? "bg-blue-600 text-white text-xs" : "bg-orange-600 text-white text-xs"}>
@@ -316,28 +337,64 @@ export default function SideMatches() {
                               className="flex flex-col gap-1 items-center"
                               style={{ animation: "team-name-fade-in 180ms cubic-bezier(0.23,1,0.32,1) both" }}
                             >
-                              <Input
-                                value={teamNameDraft}
-                                onChange={(e) => setTeamNameDraft(e.target.value.slice(0, 20))}
-                                placeholder={teamName}
-                                maxLength={20}
-                                className={`h-7 text-xs text-center ${teamNameDraft.length > 20 ? "border-destructive focus-visible:ring-destructive" : ""}`}
-                                autoFocus
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" && teamNameDraft.length <= 20 && !setTeamName.isPending) {
-                                    e.preventDefault();
-                                    setTeamName.mutate({ groupId, teamName: teamNameDraft });
-                                  }
-                                  if (e.key === "Escape") setEditingTeamName(null);
-                                }}
-                              />
+                              {/* Emoji picker row */}
+                              <div className="flex items-center gap-1 w-full">
+                                <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      className="text-xl leading-none w-8 h-8 flex items-center justify-center rounded-md border border-border hover:bg-muted transition-colors"
+                                      title="Pick a team mascot emoji"
+                                      type="button"
+                                    >
+                                      {emojiDraft || "😶"}
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-64 p-2" align="start">
+                                    <p className="text-[10px] text-muted-foreground mb-2 px-1">Pick a mascot emoji</p>
+                                    <div className="grid grid-cols-8 gap-0.5">
+                                      {/* Clear option */}
+                                      <button
+                                        className="text-xs w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
+                                        onClick={() => { setEmojiDraft(""); setEmojiPickerOpen(false); }}
+                                        title="No mascot"
+                                        type="button"
+                                      >✕</button>
+                                      {GOLF_EMOJI.map((em) => (
+                                        <button
+                                          key={em}
+                                          className={`text-lg w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors ${
+                                            emojiDraft === em ? "bg-primary/20 ring-1 ring-primary" : ""
+                                          }`}
+                                          onClick={() => { setEmojiDraft(em); setEmojiPickerOpen(false); }}
+                                          type="button"
+                                        >{em}</button>
+                                      ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                                <Input
+                                  value={teamNameDraft}
+                                  onChange={(e) => setTeamNameDraft(e.target.value.slice(0, 20))}
+                                  placeholder={teamName}
+                                  maxLength={20}
+                                  className={`h-7 text-xs text-center flex-1 ${teamNameDraft.length > 20 ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && teamNameDraft.length <= 20 && !setTeamName.isPending) {
+                                      e.preventDefault();
+                                      setTeamName.mutate({ groupId, teamName: teamNameDraft, teamEmoji: emojiDraft });
+                                    }
+                                    if (e.key === "Escape") setEditingTeamName(null);
+                                  }}
+                                />
+                              </div>
                               <div className="flex items-center justify-between w-full px-0.5">
                                 <span className={`text-[10px] ${teamNameDraft.length === 20 ? "text-amber-400 font-medium" : teamNameDraft.length >= 16 ? "text-amber-400" : "text-muted-foreground"}`}>
                                   {teamNameDraft.length === 20 ? "20/20 — max" : `${teamNameDraft.length}/20`}
                                 </span>
                                 <div className="flex gap-1">
                                   <Button size="icon" variant="ghost" className="h-6 w-6"
-                                    onClick={() => setTeamName.mutate({ groupId, teamName: teamNameDraft })}
+                                    onClick={() => setTeamName.mutate({ groupId, teamName: teamNameDraft, teamEmoji: emojiDraft })}
                                     disabled={setTeamName.isPending || teamNameDraft.length > 20}
                                     title="Save team name (Enter)">
                                     {setTeamName.isPending
@@ -363,10 +420,14 @@ export default function SideMatches() {
                               style={{ animation: "team-name-fade-in 180ms cubic-bezier(0.23,1,0.32,1) both" }}
                             >
                               <div className="flex items-center gap-1">
+                                {displayEmoji && (
+                                  <span className="text-lg leading-none" aria-hidden>{displayEmoji}</span>
+                                )}
                                 <p
                                   className={`text-sm font-bold text-foreground ${isMyPair ? "cursor-pointer select-none hover:text-primary transition-colors" : ""}`}
                                   onDoubleClick={isMyPair ? () => {
                                     setTeamNameDraft(hasCustomName ? teamName : "");
+                                    setEmojiDraft(teamEmoji ?? "");
                                     setEditingTeamName(editKey);
                                   } : undefined}
                                   title={isMyPair ? "Double-click to edit team name" : undefined}
@@ -378,6 +439,7 @@ export default function SideMatches() {
                                     className="text-muted-foreground hover:text-foreground transition-colors"
                                     onClick={() => {
                                       setTeamNameDraft(hasCustomName ? teamName : "");
+                                      setEmojiDraft(teamEmoji ?? "");
                                       setEditingTeamName(editKey);
                                     }}
                                     title="Edit team name"
@@ -397,9 +459,9 @@ export default function SideMatches() {
 
                     return (
                       <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center text-center">
-                        <TeamNameCell side="A" teamName={pairATeamName} names={match.pairANames} groupId={match.groupId} />
+                        <TeamNameCell side="A" teamName={pairATeamName} teamEmoji={match.pairATeamEmoji ?? null} names={match.pairANames} groupId={match.groupId} />
                         <span className="text-muted-foreground font-bold text-lg">vs</span>
-                        <TeamNameCell side="B" teamName={pairBTeamName} names={match.pairBNames} groupId={match.groupId} />
+                        <TeamNameCell side="B" teamName={pairBTeamName} teamEmoji={match.pairBTeamEmoji ?? null} names={match.pairBNames} groupId={match.groupId} />
                       </div>
                     );
                   })()}

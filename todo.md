@@ -406,3 +406,12 @@
 - [x] Frontend: SideMatches inline team name — double-click on team name text to enter edit mode
 - [x] Skill: create reusable inline-editable-field skill documenting the pattern used in this project
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Emoji Mascot Picker
+
+- [x] DB: add teamEmoji (varchar 8, nullable) column to group_players table
+- [x] Apply DB migration for teamEmoji
+- [x] Backend: extend groups.setTeamName to accept and save teamEmoji; expose teamEmoji in getGroupPlayers, getMyGroup, and groupMatch queries
+- [x] Frontend: emoji picker popover in the inline team name editor (curated golf/sport emoji list)
+- [x] Frontend: display selected emoji next to team name in display mode and in SideMatches match cards
+- [x] TypeScript check, tests, checkpoint

@@ -642,7 +642,11 @@ export const appRouter = router({
 
     // Player: set team name for their pair (both players share the same teamName)
     setTeamName: protectedProcedure
-      .input(z.object({ groupId: z.number(), teamName: z.string().max(64) }))
+      .input(z.object({
+        groupId: z.number(),
+        teamName: z.string().max(64),
+        teamEmoji: z.string().max(8).optional(),
+      }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
         const { getDb } = await import("./db");
@@ -656,7 +660,13 @@ export const appRouter = router({
         if (!myEntry[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Not in this group" });
         const idsToUpdate = [ctx.user.id];
         if (myEntry[0].partnerId) idsToUpdate.push(myEntry[0].partnerId);
-        await db.update(gpTable).set({ teamName: input.teamName.trim() || null })
+        const updatePayload: { teamName: string | null; teamEmoji?: string | null } = {
+          teamName: input.teamName.trim() || null,
+        };
+        if (input.teamEmoji !== undefined) {
+          updatePayload.teamEmoji = input.teamEmoji.trim() || null;
+        }
+        await db.update(gpTable).set(updatePayload)
           .where(andOp(eqOp(gpTable.groupId, input.groupId), inArr(gpTable.userId, idsToUpdate)));
         return { success: true };
       }),
@@ -793,7 +803,7 @@ export const appRouter = router({
           const { eq: eqOp, inArray: inArr, and: andOp } = await import("drizzle-orm");
           const { getDb } = await import("./db");
           const db = await getDb();
-          if (!db) return { ...m, pairANames: [], pairBNames: [], pairATeamName: null as string | null, pairBTeamName: null as string | null, holeResultsParsed: JSON.parse(m.holeResults || "[]") };
+          if (!db) return { ...m, pairANames: [] as string[], pairBNames: [] as string[], pairATeamName: null as string | null, pairBTeamName: null as string | null, pairATeamEmoji: null as string | null, pairBTeamEmoji: null as string | null, holeResultsParsed: JSON.parse(m.holeResults || "[]") };
           const ids = [m.player1Id, m.player1PartnerId, m.player2Id, m.player2PartnerId].filter(Boolean) as number[];
           const userRows = await db.select().from(usersTable).where(inArr(usersTable.id, ids));
           const userMap = new Map(userRows.map(u => [u.id, u.name ?? `Player ${u.id}`]));
@@ -807,22 +817,27 @@ export const appRouter = router({
               .from(tpTable).where(andOp(eqOp(tpTable.tripId, tripId), inArr(tpTable.userId, ids)));
             nicknameMap = new Map(tpRows.map(r => [r.userId, r.nickname ?? userMap.get(r.userId) ?? `Player ${r.userId}`]));
           }
-          // Fetch teamName from groupPlayers
-          const gpRows = await db.select({ userId: gpTable.userId, teamName: gpTable.teamName })
+          // Fetch teamName + teamEmoji from groupPlayers
+          const gpRows = await db.select({ userId: gpTable.userId, teamName: gpTable.teamName, teamEmoji: gpTable.teamEmoji })
             .from(gpTable).where(andOp(eqOp(gpTable.groupId, m.groupId), inArr(gpTable.userId, ids)));
           teamNameMap = new Map(gpRows.map(r => [r.userId, r.teamName ?? null]));
+          const teamEmojiMap = new Map(gpRows.map(r => [r.userId, r.teamEmoji ?? null]));
           const displayName = (id: number) => nicknameMap.get(id) ?? userMap.get(id) ?? `Player ${id}`;
           const pairAIds = [m.player1Id, m.player1PartnerId].filter(Boolean) as number[];
           const pairBIds = [m.player2Id, m.player2PartnerId].filter(Boolean) as number[];
           // Team name: use set teamName or fallback to "Team [lowest HCP player's name]"
           const pairATeamName = teamNameMap.get(m.player1Id) ?? null;
           const pairBTeamName = teamNameMap.get(m.player2Id) ?? null;
+          const pairATeamEmoji = teamEmojiMap.get(m.player1Id) ?? null;
+          const pairBTeamEmoji = teamEmojiMap.get(m.player2Id) ?? null;
           return {
             ...m,
             pairANames: pairAIds.map(id => displayName(id)),
             pairBNames: pairBIds.map(id => displayName(id)),
             pairATeamName,
             pairBTeamName,
+            pairATeamEmoji,
+            pairBTeamEmoji,
             holeResultsParsed: JSON.parse(m.holeResults || "[]"),
           };
         }));
@@ -861,9 +876,10 @@ export const appRouter = router({
             .from(tpTable).where(andOp(eqOp(tpTable.tripId, tripId), inArr(tpTable.userId, allIds)));
           nicknameMap = new Map(tpRows.map(r => [r.userId, r.nickname ?? userMap.get(r.userId) ?? `Player ${r.userId}`]));
         }
-        const gpRows = await db.select({ userId: gpTable.userId, teamName: gpTable.teamName })
+        const gpRows = await db.select({ userId: gpTable.userId, teamName: gpTable.teamName, teamEmoji: gpTable.teamEmoji })
           .from(gpTable).where(andOp(eqOp(gpTable.groupId, m.groupId), inArr(gpTable.userId, allIds)));
         const teamNameMap = new Map(gpRows.map(r => [r.userId, r.teamName ?? null]));
+        const teamEmojiMapH = new Map(gpRows.map(r => [r.userId, r.teamEmoji ?? null]));
         const displayName = (id: number) => nicknameMap.get(id) ?? userMap.get(id) ?? `Player ${id}`;
         // Build hole-by-hole data
         const holeData = courseHoles.map((hole) => {
@@ -898,6 +914,8 @@ export const appRouter = router({
           pairBNames: pairBIds.map(id => displayName(id)),
           pairATeamName: teamNameMap.get(m.player1Id) ?? null,
           pairBTeamName: teamNameMap.get(m.player2Id) ?? null,
+          pairATeamEmoji: teamEmojiMapH.get(m.player1Id) ?? null,
+          pairBTeamEmoji: teamEmojiMapH.get(m.player2Id) ?? null,
           holes: holeData,
         };
       }),

@@ -140,6 +140,8 @@ export const groupPlayers = mysqlTable("group_players", {
   scorerId: int("scorerId"),
   // Optional team name for the pair (shared by both players in a pair)
   teamName: varchar("teamName", { length: 64 }),
+  // Optional emoji mascot for the pair (single emoji, shared by both players)
+  teamEmoji: varchar("teamEmoji", { length: 8 }),
 });
 
 export type GroupPlayer = typeof groupPlayers.$inferSelect;
