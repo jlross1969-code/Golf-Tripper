@@ -30,7 +30,7 @@ export default function Home() {
           {isAuthenticated && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-muted-foreground">{user?.name}</span>
-              {user?.role === "admin" && (
+              {(user?.role === "admin" || trips?.some((t) => (t as any).isCoAdmin)) && (
                 <Link href="/admin">
                   <Button variant="outline" size="sm">Admin Panel</Button>
                 </Link>
@@ -82,6 +82,13 @@ export default function Home() {
                           {(trip as any).activeRoundName} — Live
                         </div>
                       )}
+                      {(trip as any).isCoAdmin && (
+                        <div className="flex items-center gap-1 mt-1.5">
+                          <Badge className="text-xs bg-amber-500/15 text-amber-400 border border-amber-500/25 px-1.5 py-0">
+                            Co-Admin
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                   </Link>
                 );
@@ -91,7 +98,7 @@ export default function Home() {
             <div className="text-center py-10 bg-card border border-border rounded-xl">
               <Flag className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
               <p className="text-muted-foreground mb-4">No trips yet. Ask your admin to create one.</p>
-              {user?.role === "admin" && (
+              {(user?.role === "admin" || trips?.some((t) => (t as any).isCoAdmin)) && (
                 <Link href="/admin">
                   <Button>Go to Admin Panel</Button>
                 </Link>

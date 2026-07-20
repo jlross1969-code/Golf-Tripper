@@ -148,9 +148,41 @@ export const appRouter = router({
   // ─── Trips ────────────────────────────────────────────────────────────────
 
   trips: router({
-    list: publicProcedure.query(() => getAllTrips()),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const allTrips = await getAllTrips();
+      // Attach isCoAdmin flag for the current user on each trip
+      const tripIds = allTrips.map((t) => t.id);
+      if (tripIds.length === 0) return allTrips.map((t) => ({ ...t, isCoAdmin: false }));
+      const playerRows = await Promise.all(
+        tripIds.map((tid) => getTripPlayer(tid, ctx.user.id))
+      );
+      return allTrips.map((t, i) => ({
+        ...t,
+        isCoAdmin: !!(playerRows[i]?.isCoAdmin),
+      }));
+    }),
 
     get: publicProcedure.input(z.object({ id: z.number() })).query(({ input }) => getTrip(input.id)),
+
+    getTeeSheet: publicProcedure
+      .input(z.object({ roundId: z.number(), tripId: z.number() }))
+      .query(async ({ input }) => {
+        const groupList = await getGroupsByRound(input.roundId);
+        const groupsWithPlayers = await Promise.all(
+          groupList.map(async (g) => {
+            const players = await getGroupPlayers(g.id, input.tripId);
+            return { ...g, players };
+          })
+        );
+        // Sort by teeTime (nulls last)
+        groupsWithPlayers.sort((a, b) => {
+          if (!a.teeTime && !b.teeTime) return 0;
+          if (!a.teeTime) return 1;
+          if (!b.teeTime) return -1;
+          return a.teeTime.localeCompare(b.teeTime);
+        });
+        return groupsWithPlayers;
+      }),
 
     create: adminProcedure
       .input(
@@ -326,6 +358,16 @@ export const appRouter = router({
           if (count >= 4) throw new TRPCError({ code: "BAD_REQUEST", message: "Maximum 4 co-admins allowed per trip" });
         }
         await setCoAdmin(input.tripId, input.userId, input.isCoAdmin);
+        // Notify the trip when someone is promoted to co-admin
+        if (input.isCoAdmin) {
+          const tp = await getTripPlayer(input.tripId, input.userId);
+          const playerName = tp?.nickname ?? `User ${input.userId}`;
+          await createNotification({
+            tripId: input.tripId,
+            message: `${playerName} has been made a co-admin for this trip.`,
+            type: "general",
+          });
+        }
         return { success: true };
       }),
   }),

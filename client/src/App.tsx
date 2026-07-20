@@ -29,6 +29,7 @@ import TripPlayers from "./pages/TripPlayers";
 import MyHandicap from "./pages/MyHandicap";
 import NTPResults from "./pages/NTPResults";
 import GroupPairing from "./pages/GroupPairing";
+import TeeSheet from "./pages/TeeSheet";
 
 function Router() {
   return (
@@ -46,6 +47,7 @@ function Router() {
       <Route path="/trip/:tripId/my-handicap" component={MyHandicap} />
       <Route path="/round/:roundId/ntp" component={NTPResults} />
       <Route path="/trip/:tripId/my-group/:roundId" component={GroupPairing} />
+      <Route path="/trip/:tripId/round/:roundId/teesheet" component={TeeSheet} />
       <Route path="/admin" component={AdminTrips} />
       <Route path="/admin/trips" component={AdminTrips} />
       <Route path="/admin/trips/:id" component={AdminTripDetail} />

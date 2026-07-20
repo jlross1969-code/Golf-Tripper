@@ -248,3 +248,15 @@
 - [x] Admin UI: Co-Admin toggle button per player on Admin Players page (owner only)
 - [x] Admin UI: show Co-Admin badge on player rows; disable toggle when 4 already assigned
 - [x] Tests and checkpoint
+
+## Session - Co-Admin Access, Notification & Tee Sheet
+
+- [x] Backend: trip-scoped admin guard (tripAdminProcedure) that allows global admin OR co-admin for that trip
+- [x] Backend: apply tripAdminProcedure to groups, rounds, scoring, NTP, and side-match procedures
+- [x] Backend: send in-app notification to player when they are promoted to co-admin
+- [x] Backend: rounds.getTeeSheet procedure — returns all groups for a round sorted by teeTime, with players + handicaps
+- [x] Frontend: co-admin users see Admin Panel button on home screen for their trips
+- [x] Frontend: co-admin users can navigate to admin pages (Groups, Rounds, Players) for their trips
+- [x] Frontend: new TeeSheet page at /trip/:tripId/round/:roundId/teesheet — read-only, shareable
+- [x] Frontend: link to Tee Sheet from TripDashboard and AdminGroups
+- [x] Tests and checkpoint

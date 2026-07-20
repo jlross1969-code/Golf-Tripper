@@ -199,6 +199,11 @@ export default function AdminGroups() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Link href={`/trip/${tId}/round/${rId}/teesheet`}>
+            <Button size="sm" variant="outline" className="gap-2">
+              <Flag className="w-4 h-4" /> Tee Sheet
+            </Button>
+          </Link>
           <Button size="sm" variant="outline" className="gap-2" onClick={() => setAutoGroupOpen(true)}>
             <Shuffle className="w-4 h-4" /> Auto-Group
           </Button>

@@ -157,12 +157,15 @@ export default function TripDashboard() {
                 <Badge className="bg-primary text-primary-foreground">LIVE</Badge>
                 <span className="font-semibold text-foreground">{activeRound.name}</span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Link href={`/round/${activeRound.id}/score`}>
                   <Button size="sm">Enter Scores</Button>
                 </Link>
                 <Link href={`/round/${activeRound.id}/leaderboard`}>
                   <Button size="sm" variant="outline">Leaderboard</Button>
+                </Link>
+                <Link href={`/trip/${id}/round/${activeRound.id}/teesheet`}>
+                  <Button size="sm" variant="outline">Tee Sheet</Button>
                 </Link>
               </div>
             </div>

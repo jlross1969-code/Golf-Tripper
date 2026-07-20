@@ -24,7 +24,10 @@ type Trip = {
 export default function AdminTrips() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
-  const { data: trips, refetch } = trpc.trips.list.useQuery();
+  const { data: allTrips, refetch } = trpc.trips.list.useQuery();
+  const isGlobalAdmin = user?.role === "admin";
+  // Co-admins only see trips they are assigned to
+  const trips = isGlobalAdmin ? allTrips : allTrips?.filter((t) => (t as any).isCoAdmin || t.createdBy === user?.id);
 
   // Create
   const [createOpen, setCreateOpen] = useState(false);
@@ -146,27 +149,33 @@ export default function AdminTrips() {
         </div>
         <div className="flex items-center gap-2">
           <Link href="/"><Button variant="ghost" size="sm">← Back to App</Button></Link>
-          <Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}>
-            <Plus className="w-4 h-4" /> New Trip
-          </Button>
+          {isGlobalAdmin && (
+            <Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}>
+              <Plus className="w-4 h-4" /> New Trip
+            </Button>
+          )}
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-foreground">All Trips</h2>
+          <h2 className="text-xl font-bold text-foreground">{isGlobalAdmin ? "All Trips" : "Your Trips"}</h2>
+          {isGlobalAdmin && (
           <Link href="/admin/courses">
             <Button variant="outline" size="sm" className="gap-2">
               <Settings className="w-4 h-4" /> Manage Courses
             </Button>
           </Link>
+          )}
         </div>
 
         {!trips || trips.length === 0 ? (
           <div className="text-center py-16 bg-card border border-border rounded-xl">
             <Flag className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground mb-4">No trips created yet.</p>
-            <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="w-4 h-4" />Create First Trip</Button>
+            <p className="text-muted-foreground mb-4">{isGlobalAdmin ? "No trips created yet." : "You have not been assigned as co-admin on any trips yet."}</p>
+            {isGlobalAdmin && (
+              <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="w-4 h-4" />Create First Trip</Button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -206,9 +215,11 @@ export default function AdminTrips() {
 
                   {/* Edit, Delete & Copy Invite row */}
                   <div className="flex gap-2 mb-3 flex-wrap">
-                    <Button size="sm" variant="outline" className="gap-1 text-xs flex-1" onClick={() => openEdit(trip as Trip)}>
-                      <Pencil className="w-3 h-3" /> Edit
-                    </Button>
+                    {isGlobalAdmin && (
+                      <Button size="sm" variant="outline" className="gap-1 text-xs flex-1" onClick={() => openEdit(trip as Trip)}>
+                        <Pencil className="w-3 h-3" /> Edit
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" className="gap-1 text-xs flex-1 text-primary border-primary/30 hover:bg-primary/10"
                       disabled={getShareLinkMutation.isPending}
                       onClick={() => copyInviteLink(trip.id)}>
@@ -222,14 +233,16 @@ export default function AdminTrips() {
                         <Link2Off className="w-3 h-3" /> Revoke
                       </Button>
                     )}
-                    {canDelete(trip as Trip) ? (
-                      <Button size="sm" variant="outline" className="gap-1 text-xs text-red-400 border-red-800 hover:bg-red-900/30" onClick={() => openDelete(trip as Trip)}>
-                        <Trash2 className="w-3 h-3" /> Delete
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" className="gap-1 text-xs text-muted-foreground cursor-not-allowed opacity-50" disabled title="Can only delete upcoming or completed trips">
-                        <Trash2 className="w-3 h-3" /> Delete
-                      </Button>
+                    {isGlobalAdmin && (
+                      canDelete(trip as Trip) ? (
+                        <Button size="sm" variant="outline" className="gap-1 text-xs text-red-400 border-red-800 hover:bg-red-900/30" onClick={() => openDelete(trip as Trip)}>
+                          <Trash2 className="w-3 h-3" /> Delete
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" className="gap-1 text-xs text-muted-foreground cursor-not-allowed opacity-50" disabled title="Can only delete upcoming or completed trips">
+                          <Trash2 className="w-3 h-3" /> Delete
+                        </Button>
+                      )
                     )}
                   </div>
 
