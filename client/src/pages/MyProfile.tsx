@@ -9,7 +9,7 @@ import { Link, useParams } from "wouter";
 import {
   ArrowLeft, User, Pencil, Check, X,
   TrendingDown, TrendingUp, BarChart2, Trophy, Target,
-  Camera, Bell, BellOff, Flag, Hash,
+  Camera, Bell, BellOff, Flag, Hash, Star,
 } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
@@ -58,6 +58,10 @@ export default function MyProfile() {
   const { data: rounds } = trpc.rounds.list.useQuery({ tripId: id });
   const { data: roundSummaries, isLoading: summariesLoading } = trpc.players.getMyRoundSummaries.useQuery(
     { tripId: id },
+    { enabled: !!user?.id }
+  );
+  const { data: myAchievements, isLoading: achievementsLoading } = trpc.achievements.listByPlayer.useQuery(
+    {},
     { enabled: !!user?.id }
   );
 
@@ -492,6 +496,48 @@ export default function MyProfile() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Achievement history */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Star className="w-4 h-4 text-amber-400" /> My Achievements
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {achievementsLoading ? (
+              [1, 2].map((i) => <Skeleton key={i} className="h-12 rounded-lg mb-2" />)
+            ) : !myAchievements || myAchievements.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No achievements yet. Eagles, birdies and hole-in-ones will appear here.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {myAchievements.map((a) => {
+                  const emoji = a.type === "hole_in_one" ? "🏆" : a.type === "eagle" ? "🦅" : "🐦";
+                  const label = a.type === "hole_in_one" ? "Hole-in-One" : a.type === "eagle" ? "Eagle" : "Birdie";
+                  return (
+                    <div key={a.id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+                      <span className="text-2xl flex-shrink-0">{emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">
+                          {label} — Hole {a.holeNumber} (Par {a.par})
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {a.roundName ?? "Round"}{a.tripName ? ` · ${a.tripName}` : ""}
+                          {a.createdAt ? ` · ${new Date(a.createdAt).toLocaleDateString()}` : ""}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="text-xs flex-shrink-0">
+                        {a.grossScore} shots
+                      </Badge>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardContent>

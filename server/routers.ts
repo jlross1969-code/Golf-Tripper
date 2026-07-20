@@ -18,6 +18,7 @@ import {
   createTrip,
   deleteGroup,
   getAchievementsByTrip,
+  getAchievementsByPlayer,
   getAllCourses,
   getAllTrips,
   getAllUsers,
@@ -793,6 +794,14 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const achievementList = await getAchievementsByTrip(input.tripId);
         return achievementList;
+      }),
+
+    listByPlayer: protectedProcedure
+      .input(z.object({ userId: z.number().optional() }))
+      .query(async ({ input, ctx }) => {
+        // If no userId provided, return for the current user
+        const targetUserId = input.userId ?? ctx.user.id;
+        return getAchievementsByPlayer(targetUserId);
       }),
   }),
 

@@ -321,3 +321,11 @@
 - [x] Frontend: player scorecard page — add pencil icon per hole row for admin score correction
 - [x] Frontend: player profile page — add avatar upload UI (file picker, preview, save)
 - [x] Tests and checkpoint
+
+## Session - Achievement Guard & Profile History
+
+- [x] Backend: duplicate achievement guard in createAchievement — skip if one already exists for same userId+holeId+roundId
+- [x] Backend: getAchievementsByPlayer query (by userId, across all trips/rounds)
+- [x] Backend: achievements.listByPlayer tRPC procedure
+- [x] Frontend: achievement history section on MyProfile page
+- [x] TypeScript check, tests, checkpoint

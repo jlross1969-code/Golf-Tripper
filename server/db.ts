@@ -505,8 +505,47 @@ export async function createAchievement(data: {
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
+  // Duplicate guard: if an achievement already exists for this player+hole+round, return its id
+  const existing = await db
+    .select({ id: achievements.id })
+    .from(achievements)
+    .where(
+      and(
+        eq(achievements.userId, data.userId),
+        eq(achievements.holeId, data.holeId),
+        eq(achievements.roundId, data.roundId)
+      )
+    )
+    .limit(1);
+  if (existing.length > 0) return existing[0].id;
   const result = await db.insert(achievements).values({ ...data, confirmed: false, broadcastSent: false });
   return (result[0] as any).insertId;
+}
+
+export async function getAchievementsByPlayer(
+  userId: number
+): Promise<(Achievement & { playerName: string | null; roundName: string | null; tripName: string | null })[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      ach: achievements,
+      userName: users.name,
+      roundName: rounds.name,
+      tripName: trips.name,
+    })
+    .from(achievements)
+    .leftJoin(users, eq(achievements.userId, users.id))
+    .leftJoin(rounds, eq(achievements.roundId, rounds.id))
+    .leftJoin(trips, eq(rounds.tripId, trips.id))
+    .where(and(eq(achievements.userId, userId), eq(achievements.confirmed, true)))
+    .orderBy(desc(achievements.createdAt));
+  return rows.map((r) => ({
+    ...r.ach,
+    playerName: r.userName ?? null,
+    roundName: r.roundName ?? null,
+    tripName: r.tripName ?? null,
+  }));
 }
 
 export async function confirmAchievement(id: number): Promise<Achievement | undefined> {
