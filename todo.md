@@ -398,3 +398,11 @@
 - [x] Frontend: SideMatches inline team name — saving empty input clears the stored name so the auto-generated default is shown
 - [x] Frontend: ScoreEntry scorecard drawer — extend winner-flash animation to the match score summary header (wins/halves/losses tally) when match status updates
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Inline Edit Polish & Skill Creation
+
+- [x] Frontend: SideMatches inline team name — smooth fade-in/fade-out CSS transition when editor opens/closes
+- [x] Frontend: SideMatches inline team name — loading spinner inside save button while mutation is pending
+- [x] Frontend: SideMatches inline team name — double-click on team name text to enter edit mode
+- [x] Skill: create reusable inline-editable-field skill documenting the pattern used in this project
+- [x] TypeScript check, tests, checkpoint

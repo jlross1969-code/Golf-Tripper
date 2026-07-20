@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Plus, Users, Swords, Trophy, Minus, ChevronRight, Pencil, Check, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -311,7 +312,10 @@ export default function SideMatches() {
                             Pair {side}
                           </Badge>
                           {isEditing ? (
-                            <div className="flex flex-col gap-1 items-center">
+                            <div
+                              className="flex flex-col gap-1 items-center"
+                              style={{ animation: "team-name-fade-in 180ms cubic-bezier(0.23,1,0.32,1) both" }}
+                            >
                               <Input
                                 value={teamNameDraft}
                                 onChange={(e) => setTeamNameDraft(e.target.value.slice(0, 20))}
@@ -336,10 +340,13 @@ export default function SideMatches() {
                                     onClick={() => setTeamName.mutate({ groupId, teamName: teamNameDraft })}
                                     disabled={setTeamName.isPending || teamNameDraft.length > 20}
                                     title="Save team name (Enter)">
-                                    <Check className="w-3 h-3 text-green-400" />
+                                    {setTeamName.isPending
+                                      ? <Spinner className="w-3 h-3 text-muted-foreground" />
+                                      : <Check className="w-3 h-3 text-green-400" />}
                                   </Button>
                                   <Button size="icon" variant="ghost" className="h-6 w-6"
-                                    onClick={() => setEditingTeamName(null)}>
+                                    onClick={() => setEditingTeamName(null)}
+                                    disabled={setTeamName.isPending}>
                                     <X className="w-3 h-3 text-muted-foreground" />
                                   </Button>
                                 </div>
@@ -351,9 +358,21 @@ export default function SideMatches() {
                               )}
                             </div>
                           ) : (
-                            <div className="flex flex-col items-center gap-0.5">
+                            <div
+                              className="flex flex-col items-center gap-0.5"
+                              style={{ animation: "team-name-fade-in 180ms cubic-bezier(0.23,1,0.32,1) both" }}
+                            >
                               <div className="flex items-center gap-1">
-                                <p className="text-sm font-bold text-foreground">{teamName}</p>
+                                <p
+                                  className={`text-sm font-bold text-foreground ${isMyPair ? "cursor-pointer select-none hover:text-primary transition-colors" : ""}`}
+                                  onDoubleClick={isMyPair ? () => {
+                                    setTeamNameDraft(hasCustomName ? teamName : "");
+                                    setEditingTeamName(editKey);
+                                  } : undefined}
+                                  title={isMyPair ? "Double-click to edit team name" : undefined}
+                                >
+                                  {teamName}
+                                </p>
                                 {isMyPair && (
                                   <button
                                     className="text-muted-foreground hover:text-foreground transition-colors"
