@@ -695,6 +695,33 @@ export const appRouter = router({
       .input(z.object({ roundId: z.number() }))
       .query(({ input }) => getRoundScorecard(input.roundId)),
 
+    adminCorrect: adminProcedure
+      .input(
+        z.object({
+          roundId: z.number(),
+          userId: z.number(),
+          holeId: z.number(),
+          holeNumber: z.number(),
+          par: z.number(),
+          strokeIndex: z.number(),
+          grossScore: z.number().min(1),
+          handicap: z.number().min(0),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const netScore = calculateNetScore(input.grossScore, input.handicap, input.strokeIndex);
+        const stablefordPoints = calculateStablefordPoints(netScore, input.par);
+        await upsertScore({
+          roundId: input.roundId,
+          userId: input.userId,
+          holeId: input.holeId,
+          grossScore: input.grossScore,
+          netScore,
+          stablefordPoints,
+        });
+        return { netScore, stablefordPoints };
+      }),
+
     getPlayerScorecard: publicProcedure
       .input(z.object({ roundId: z.number(), userId: z.number() }))
       .query(async ({ input }) => {

@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download, Target } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +13,23 @@ function positionBadge(pos: number) {
   if (pos === 2) return <span className="text-slate-300 font-bold text-lg">🥈</span>;
   if (pos === 3) return <span className="text-amber-600 font-bold text-lg">🥉</span>;
   return <span className="text-muted-foreground font-semibold w-6 text-center">{pos}</span>;
+}
+
+function PlayerAvatar({ name, photoUrl }: { name: string | null; photoUrl?: string | null }) {
+  const initials = (name ?? "?")
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <Avatar className="w-8 h-8 flex-shrink-0">
+      {photoUrl && <AvatarImage src={photoUrl} alt={name ?? ""} />}
+      <AvatarFallback className="text-xs font-semibold bg-primary/20 text-primary">
+        {initials}
+      </AvatarFallback>
+    </Avatar>
+  );
 }
 
 export default function DailyLeaderboard() {
@@ -96,8 +114,9 @@ export default function DailyLeaderboard() {
                     </div>
                   ) : (
                     data.strokePlay.map((p) => (
-                      <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4">
+                      <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
                         <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
+                        <PlayerAvatar name={p.userName} photoUrl={(p as any).photoUrl} />
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
                           <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
@@ -150,8 +169,9 @@ export default function DailyLeaderboard() {
                     </div>
                   ) : (
                     data.skins.map((s, i) => (
-                      <div key={s.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4">
+                      <div key={s.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
                         <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(i + 1)}</div>
+                        <PlayerAvatar name={s.userName} photoUrl={null} />
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-foreground truncate">{s.userName ?? "Unknown"}</p>
                         </div>

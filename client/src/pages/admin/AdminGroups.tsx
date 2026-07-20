@@ -2,10 +2,11 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag, Pencil } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -20,6 +21,7 @@ type GroupPlayer = {
   user?: { id: number; name: string | null } | undefined;
   nickname?: string | null;
   currentHandicap?: number | null;
+  photoUrl?: string | null;
 };
 
 export default function AdminGroups() {
@@ -60,6 +62,12 @@ export default function AdminGroups() {
   // Auto-group state
   const [autoGroupOpen, setAutoGroupOpen] = useState(false);
   const [autoGroupCount, setAutoGroupCount] = useState("");
+
+  // Score correction state
+  const [correctOpen, setCorrectOpen] = useState(false);
+  const [correctPlayer, setCorrectPlayer] = useState<GroupPlayer | null>(null);
+  const [correctHoleId, setCorrectHoleId] = useState("");
+  const [correctGross, setCorrectGross] = useState("");
 
   // Compute set of userIds already assigned to any group in this round
   const assignedUserIds = new Set<number>(
@@ -128,12 +136,39 @@ export default function AdminGroups() {
     onError: (e) => toast.error(e.message),
   });
 
+  const adminCorrect = trpc.scores.adminCorrect.useMutation({
+    onSuccess: (d) => {
+      toast.success(`Score corrected — Net: ${d.netScore}, Pts: ${d.stablefordPoints}`);
+      setCorrectOpen(false);
+      setCorrectPlayer(null);
+      setCorrectHoleId("");
+      setCorrectGross("");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   function playerName(p: GroupPlayer) {
     return p.nickname ?? p.user?.name ?? `User ${p.userId}`;
   }
 
+  function playerInitials(p: GroupPlayer) {
+    return (playerName(p))
+      .split(" ")
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  }
+
   // Players not yet assigned to any group (available for selection)
   const availablePlayers = (players ?? []).filter((p) => !assignedUserIds.has(p.userId));
+
+  function openCorrect(p: GroupPlayer) {
+    setCorrectPlayer(p);
+    setCorrectHoleId("");
+    setCorrectGross("");
+    setCorrectOpen(true);
+  }
 
   function renderGroupPlayers(group: { id: number; name: string; pairsLocked: boolean; players: GroupPlayer[] }) {
     const pairA = group.players.filter((p) => p.pairId === 1);
@@ -142,14 +177,27 @@ export default function AdminGroups() {
 
     function PlayerChip({ p, color }: { p: GroupPlayer; color: string }) {
       return (
-        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs ${color}`}>
+        <span className={`inline-flex items-center gap-1.5 rounded-full pl-1 pr-2 py-0.5 text-xs ${color}`}>
+          <Avatar className="w-5 h-5 flex-shrink-0">
+            {p.photoUrl && <AvatarImage src={p.photoUrl} alt={playerName(p)} />}
+            <AvatarFallback className="text-[9px] font-bold bg-black/20">
+              {playerInitials(p)}
+            </AvatarFallback>
+          </Avatar>
           {playerName(p)}
           {p.currentHandicap != null && (
             <span className="opacity-60 font-normal">{p.currentHandicap}</span>
           )}
+          <button
+            className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+            title="Correct score"
+            onClick={() => openCorrect(p)}
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
           {!group.pairsLocked && (
             <button
-              className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
+              className="opacity-60 hover:opacity-100 transition-opacity"
               title="Remove from group"
               onClick={() => removePlayer.mutate({ groupId: group.id, userId: p.userId })}
             >
@@ -198,6 +246,9 @@ export default function AdminGroups() {
       </div>
     );
   }
+
+  // Selected hole info for score correction
+  const selectedHole = roundData?.holes.find((h) => h.id.toString() === correctHoleId);
 
   return (
     <div className="min-h-screen bg-background">
@@ -526,6 +577,79 @@ export default function AdminGroups() {
               })}
             >
               {autoGroup.isPending ? "Grouping..." : "Auto-Group Now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Admin Score Correction Dialog */}
+      <Dialog open={correctOpen} onOpenChange={(open) => { if (!open) { setCorrectOpen(false); setCorrectPlayer(null); setCorrectHoleId(""); setCorrectGross(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-primary" />
+              Correct Score
+            </DialogTitle>
+            <DialogDescription>
+              Overwrite any hole score for{" "}
+              <span className="font-semibold text-foreground">
+                {correctPlayer ? playerName(correctPlayer) : ""}
+              </span>
+              . Net score and Stableford points will be recalculated automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Hole</label>
+              <Select value={correctHoleId} onValueChange={setCorrectHoleId}>
+                <SelectTrigger><SelectValue placeholder="Select hole..." /></SelectTrigger>
+                <SelectContent>
+                  {(roundData?.holes ?? []).map((h) => (
+                    <SelectItem key={h.id} value={h.id.toString()}>
+                      Hole {h.holeNumber} — Par {h.par} (SI {h.strokeIndex})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">
+                Gross Score
+                {selectedHole && (
+                  <span className="ml-2 text-xs text-muted-foreground font-normal">
+                    Par {selectedHole.par} · SI {selectedHole.strokeIndex}
+                  </span>
+                )}
+              </label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={correctGross}
+                onChange={(e) => setCorrectGross(e.target.value)}
+                placeholder="e.g. 5"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCorrectOpen(false); setCorrectPlayer(null); }}>Cancel</Button>
+            <Button
+              disabled={!correctHoleId || !correctGross || !correctPlayer || adminCorrect.isPending || !selectedHole}
+              onClick={() => {
+                if (!correctPlayer || !selectedHole) return;
+                adminCorrect.mutate({
+                  roundId: rId,
+                  userId: correctPlayer.userId,
+                  holeId: selectedHole.id,
+                  holeNumber: selectedHole.holeNumber,
+                  par: selectedHole.par,
+                  strokeIndex: selectedHole.strokeIndex,
+                  grossScore: Number(correctGross),
+                  handicap: correctPlayer.currentHandicap ?? 0,
+                });
+              }}
+            >
+              {adminCorrect.isPending ? "Saving..." : "Save Correction"}
             </Button>
           </DialogFooter>
         </DialogContent>

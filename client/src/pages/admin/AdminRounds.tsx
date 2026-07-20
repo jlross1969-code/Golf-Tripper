@@ -3,10 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target, Pencil, Trash2, AlertTriangle, RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -72,6 +72,11 @@ export default function AdminRounds() {
   const [deleteRound, setDeleteRoundState] = useState<Round | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
 
+  // Complete round confirmation
+  const [completeOpen, setCompleteOpen] = useState(false);
+  const [completeRound, setCompleteRound] = useState<Round | null>(null);
+  const [runRecalc, setRunRecalc] = useState(true);
+
   const createRound = trpc.rounds.create.useMutation({
     onSuccess: () => { toast.success("Round created"); setOpen(false); refetch(); setName(""); setCourseId(""); setRoundDate(""); },
     onError: (e) => toast.error(e.message),
@@ -92,6 +97,19 @@ export default function AdminRounds() {
     onError: (e) => toast.error(e.message),
   });
 
+  async function confirmComplete() {
+    if (!completeRound) return;
+    // Mark round as completed
+    await updateRound.mutateAsync({ id: completeRound.id, status: "completed" });
+    // Optionally run HC recalculation
+    if (runRecalc) {
+      recalcHandicap.mutate({ roundId: completeRound.id, tripId: id });
+    }
+    setCompleteOpen(false);
+    setCompleteRound(null);
+    refetch();
+  }
+
   function openEdit(round: Round) {
     setEditRound(round);
     setEditName(round.name);
@@ -109,6 +127,12 @@ export default function AdminRounds() {
     setDeleteRoundState(round);
     setDeleteConfirm("");
     setDeleteOpen(true);
+  }
+
+  function openComplete(round: Round) {
+    setCompleteRound(round);
+    setRunRecalc(true);
+    setCompleteOpen(true);
   }
 
   return (
@@ -171,19 +195,19 @@ export default function AdminRounds() {
                 {round.status === "active" && (
                   <>
                     <Button size="sm" variant="outline" className="gap-1 text-xs"
-                      onClick={() => updateRound.mutate({ id: round.id, status: "completed" })}>
+                      onClick={() => openComplete(round as Round)}>
                       <CheckCircle className="w-3 h-3" /> Complete
                     </Button>
                     <Button size="sm" variant="outline" className="gap-1 text-xs"
                       onClick={() => recalcHandicap.mutate({ roundId: round.id, tripId: id })}>
-                      Recalc HCP
+                      <RefreshCw className="w-3 h-3" /> Recalc HCP
                     </Button>
                   </>
                 )}
                 {round.status === "completed" && (
                   <Button size="sm" variant="outline" className="gap-1 text-xs"
                     onClick={() => recalcHandicap.mutate({ roundId: round.id, tripId: id })}>
-                    Recalc HCP
+                    <RefreshCw className="w-3 h-3" /> Recalc HCP
                   </Button>
                 )}
                 <Link href={`/admin/trips/${id}/rounds/${round.id}/groups`}>
@@ -358,6 +382,46 @@ export default function AdminRounds() {
               onClick={() => deleteRound && deleteRoundMutation.mutate({ id: deleteRound.id })}
             >
               {deleteRoundMutation.isPending ? "Deleting..." : "Delete Round"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Round Confirmation Dialog */}
+      <Dialog open={completeOpen} onOpenChange={(o) => { if (!o) { setCompleteOpen(false); setCompleteRound(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-primary" />
+              Complete Round
+            </DialogTitle>
+            <DialogDescription>
+              Mark <strong>{completeRound?.name}</strong> as completed. You can optionally run handicap recalculation now so players' handicaps are updated for the next round.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="flex items-center justify-between p-3 bg-muted/40 rounded-lg border border-border">
+              <div>
+                <p className="text-sm font-medium text-foreground">Run handicap recalculation now</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Updates all players' handicaps based on their scores in this round.
+                </p>
+              </div>
+              <Switch checked={runRecalc} onCheckedChange={setRunRecalc} />
+            </div>
+            {!runRecalc && (
+              <p className="text-xs text-amber-400 mt-2">
+                ⚠️ You can run handicap recalculation later from the round's "Recalc HCP" button.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCompleteOpen(false); setCompleteRound(null); }}>Cancel</Button>
+            <Button
+              disabled={updateRound.isPending || recalcHandicap.isPending}
+              onClick={confirmComplete}
+            >
+              {updateRound.isPending ? "Completing..." : runRecalc ? "Complete & Recalc HCP" : "Complete Round"}
             </Button>
           </DialogFooter>
         </DialogContent>

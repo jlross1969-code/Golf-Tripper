@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +14,23 @@ function positionBadge(pos: number) {
   return <span className="text-muted-foreground font-semibold w-6 text-center">{pos}</span>;
 }
 
+function PlayerAvatar({ name, photoUrl }: { name: string | null; photoUrl?: string | null }) {
+  const initials = (name ?? "?")
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <Avatar className="w-8 h-8 flex-shrink-0">
+      {photoUrl && <AvatarImage src={photoUrl} alt={name ?? ""} />}
+      <AvatarFallback className="text-xs font-semibold bg-primary/20 text-primary">
+        {initials}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
 function PlayerRow({ player, mode }: { player: any; mode: "stroke" | "stableford" }) {
   const [expanded, setExpanded] = useState(false);
   const score = mode === "stroke" ? player.cumulativeNet : player.cumulativeStableford;
@@ -21,10 +39,11 @@ function PlayerRow({ player, mode }: { player: any; mode: "stroke" | "stableford
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div
-        className="px-4 py-3 flex items-center gap-4 cursor-pointer hover:bg-accent/50 transition-colors"
+        className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-accent/50 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(player.position)}</div>
+        <PlayerAvatar name={player.userName} photoUrl={player.photoUrl} />
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-foreground truncate">{player.userName ?? "Unknown"}</p>
           <p className="text-xs text-muted-foreground">{player.rounds.length} rounds</p>
@@ -80,10 +99,10 @@ export default function TripLeaderboard() {
           </div>
         </div>
         <div className="flex gap-2">
-          <a href={`/api/pdf/trip/${id}`} target="_blank" rel="noopener noreferrer">
+          <a href={`/api/pdf/trip-results/${id}`} target="_blank" rel="noopener noreferrer">
             <Button variant="outline" size="sm" className="gap-2">
               <Download className="w-3 h-3" />
-              Export PDF
+              PDF
             </Button>
           </a>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-2">
@@ -99,19 +118,19 @@ export default function TripLeaderboard() {
             {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
           </div>
         ) : !data ? (
-          <div className="text-center py-12 text-muted-foreground">No data available.</div>
+          <div className="text-center py-12 text-muted-foreground">No leaderboard data.</div>
         ) : (
           <Tabs defaultValue="stroke">
             <TabsList className="mb-6 w-full">
-              <TabsTrigger value="stroke" className="flex-1">Stroke Play (Net)</TabsTrigger>
-              <TabsTrigger value="stableford" className="flex-1">Stableford</TabsTrigger>
+              <TabsTrigger value="stroke" className="flex-1 gap-2"><Trophy className="w-4 h-4" />Net Stroke</TabsTrigger>
+              <TabsTrigger value="stableford" className="flex-1 gap-2">⭐ Stableford</TabsTrigger>
             </TabsList>
 
             <TabsContent value="stroke">
               <div className="space-y-2">
                 {data.strokePlay.length === 0 ? (
                   <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">
-                    No completed rounds yet.
+                    No scores yet.
                   </div>
                 ) : (
                   data.strokePlay.map((p) => (
@@ -125,7 +144,7 @@ export default function TripLeaderboard() {
               <div className="space-y-2">
                 {data.stableford.length === 0 ? (
                   <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">
-                    No completed rounds yet.
+                    No scores yet.
                   </div>
                 ) : (
                   data.stableford.map((p) => (

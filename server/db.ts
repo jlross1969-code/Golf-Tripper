@@ -433,14 +433,16 @@ export async function getGroupPlayers(groupId: number, tripId?: number): Promise
   // Also fetch nicknames and handicaps from trip_players if tripId is provided
   let nicknameMap = new Map<number, string | null>();
   let handicapMap = new Map<number, number>();
+  let photoUrlMap = new Map<number, string | null>();
   if (tripId) {
-    const tpList = await db.select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap })
+    const tpList = await db.select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap, photoUrl: tripPlayers.photoUrl })
       .from(tripPlayers)
       .where(and(eq(tripPlayers.tripId, tripId), inArray(tripPlayers.userId, userIds)));
     nicknameMap = new Map(tpList.map((tp) => [tp.userId, tp.nickname ?? null]));
     handicapMap = new Map(tpList.map((tp) => [tp.userId, tp.currentHandicap]));
+    photoUrlMap = new Map(tpList.map((tp) => [tp.userId, tp.photoUrl ?? null]));
   }
-  return players.map((p) => ({ ...p, user: userMap.get(p.userId), nickname: nicknameMap.get(p.userId) ?? null, currentHandicap: handicapMap.get(p.userId) ?? null }));
+  return players.map((p) => ({ ...p, user: userMap.get(p.userId), nickname: nicknameMap.get(p.userId) ?? null, currentHandicap: handicapMap.get(p.userId) ?? null, photoUrl: photoUrlMap.get(p.userId) ?? null }));
 }
 
 export async function deleteGroup(groupId: number): Promise<void> {
@@ -666,6 +668,7 @@ export async function getRoundScorecard(roundId: number): Promise<
     userId: number;
     userName: string | null;
     handicap: number;
+    photoUrl: string | null;
     scores: Score[];
     totalGross: number;
     totalNet: number;
@@ -694,6 +697,7 @@ export async function getRoundScorecard(roundId: number): Promise<
       userId: tp.userId,
       userName: tp.nickname ?? tp.user?.name ?? null,
       handicap: tp.currentHandicap,
+      photoUrl: tp.photoUrl ?? null,
       scores: playerScores,
       totalGross: playerScores.reduce((sum, s) => sum + s.grossScore, 0),
       totalNet: playerScores.reduce((sum, s) => sum + s.netScore, 0),
@@ -707,6 +711,7 @@ export async function getTripLeaderboard(tripId: number): Promise<
   {
     userId: number;
     userName: string | null;
+    photoUrl: string | null;
     rounds: { roundId: number; roundName: string; totalGross: number; totalNet: number; totalStableford: number; holesPlayed: number }[];
     cumulativeGross: number;
     cumulativeNet: number;
@@ -738,6 +743,7 @@ export async function getTripLeaderboard(tripId: number): Promise<
       return {
         userId: tp.userId,
         userName: tp.nickname ?? tp.user?.name ?? null,
+        photoUrl: tp.photoUrl ?? null,
         rounds: roundBreakdown,
         cumulativeGross: roundBreakdown.reduce((s, r) => s + r.totalGross, 0),
         cumulativeNet: roundBreakdown.reduce((s, r) => s + r.totalNet, 0),

@@ -301,3 +301,14 @@
 - [x] Frontend: Push notification subscription prompt on Trip Dashboard (ask permission, save subscription)
 - [x] Frontend: Service worker handles push events and shows notification
 - [x] Tests and checkpoint
+
+## Session - Photo Avatars, Admin Score Correction, HC Recalc Prompt
+
+- [x] Backend: expose photoUrl in leaderboard (daily + trip) responses
+- [x] Backend: expose photoUrl in getGroupPlayers response
+- [x] Backend: scores.adminCorrect procedure (admin only) — update any player's score for any hole
+- [x] Frontend: leaderboard rows show small avatar circle with photo or initial fallback
+- [x] Frontend: group player chips show avatar with photo or initial fallback
+- [x] Frontend: Admin score correction UI — accessible from AdminGroups or a dedicated scorecard view
+- [x] Frontend: end-of-round recalculation prompt — when admin marks round complete, show dialog asking to run HC recalculation now
+- [x] Tests and checkpoint
