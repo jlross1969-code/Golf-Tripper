@@ -1,10 +1,11 @@
 import { trpc } from "@/lib/trpc";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download, Target, Star } from "lucide-react";
+import { ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download, Target, Star, Share2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -114,20 +115,28 @@ export default function DailyLeaderboard() {
                       No scores entered yet.
                     </div>
                   ) : (
-                    data.strokePlay.map((p) => (
-                      <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
-                        <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
-                        <PlayerAvatar name={p.userName} photoUrl={(p as any).photoUrl} />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
-                          <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
+                    data.strokePlay.map((p) => {
+                      const ach = (p as any).achievements as { hio: number; eagle: number; birdie: number } | undefined;
+                      return (
+                        <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                          <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
+                          <PlayerAvatar name={p.userName} photoUrl={(p as any).photoUrl} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
+                              {ach && ach.hio > 0 && <span className="text-xs bg-yellow-400/20 text-yellow-400 px-1.5 py-0.5 rounded-full font-bold">🕳️ {ach.hio}</span>}
+                              {ach && ach.eagle > 0 && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">🦅 {ach.eagle}</span>}
+                              {ach && ach.birdie > 0 && <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">🐦 {ach.birdie}</span>}
+                            </div>
+                            <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
+                            <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
-                          <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </TabsContent>
@@ -189,6 +198,40 @@ export default function DailyLeaderboard() {
             {/* Highlights Tab */}
             <TabsContent value="highlights">
               <div className="space-y-6">
+                {/* Share Button */}
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => {
+                      const top3 = data.strokePlay.slice(0, 3);
+                      const pairs = data.fourBBB.slice(0, 3);
+                      const medals = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"];
+                      let text = `\uD83C\uDFCC\uFE0F ${data.round.name} \u2014 Highlights\n\n`;
+                      text += "\uD83C\uDFC6 Top 3 Individual:\n";
+                      top3.forEach((p, i) => {
+                        text += `${medals[i]} ${p.userName ?? "Unknown"} \u2014 ${p.totalNet} net\n`;
+                      });
+                      if (data.round.fourBBBEnabled && pairs.length > 0) {
+                        text += "\n\uD83E\uDDD1\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1 Top 3 Pairs (4BBB):\n";
+                        pairs.forEach((t, i) => {
+                          text += `${medals[i]} ${t.teamName} \u2014 ${t.totalBestBall} best ball\n`;
+                        });
+                      }
+                      if (navigator.share) {
+                        navigator.share({ title: `${data.round.name} Highlights`, text });
+                      } else {
+                        navigator.clipboard.writeText(text).then(() => {
+                          alert("Results copied to clipboard!");
+                        });
+                      }
+                    }}
+                  >
+                    <Share2 className="w-3 h-3" />
+                    Share
+                  </Button>
+                </div>
                 {/* Top 3 Individual */}
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">

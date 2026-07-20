@@ -19,6 +19,7 @@ import {
   deleteGroup,
   getAchievementsByTrip,
   getAchievementsByPlayer,
+  getAchievementsByRound,
   getAllCourses,
   getAllTrips,
   getAllUsers,
@@ -36,6 +37,7 @@ import {
   getSideMatchesByRound,
   getTrip,
   getTripLeaderboard,
+  getTripFourBBBLeaderboard,
   getTripPlayer,
   getTripPlayers,
   markAchievementBroadcast,
@@ -992,23 +994,35 @@ export const appRouter = router({
           skinsResults.sort((a, b) => b.skinsWon - a.skinsWon);
         }
 
-        return { round, trip, strokePlay, fourBBB: fourBBBResults, skins: skinsResults, effectiveBaseline };
+        // Achievement counts per player for this round
+        const roundAchievements = await getAchievementsByRound(input.roundId);
+        const achievementCounts: Record<number, { hio: number; eagle: number; birdie: number }> = {};
+        for (const a of roundAchievements) {
+          if (!achievementCounts[a.userId]) achievementCounts[a.userId] = { hio: 0, eagle: 0, birdie: 0 };
+          if (a.type === "hole_in_one") achievementCounts[a.userId].hio++;
+          else if (a.type === "eagle") achievementCounts[a.userId].eagle++;
+          else if (a.type === "birdie") achievementCounts[a.userId].birdie++;
+        }
+        const strokePlayWithAch = strokePlay.map((p) => ({
+          ...p,
+          achievements: achievementCounts[p.userId] ?? { hio: 0, eagle: 0, birdie: 0 },
+        }));
+
+        return { round, trip, strokePlay: strokePlayWithAch, fourBBB: fourBBBResults, skins: skinsResults, effectiveBaseline };
       }),
 
-    trip: publicProcedure
+        trip: publicProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         const leaderboard = await getTripLeaderboard(input.tripId);
-
         const strokePlay = [...leaderboard]
           .sort((a, b) => a.cumulativeNet - b.cumulativeNet)
           .map((p, i) => ({ ...p, position: i + 1 }));
-
         const stableford = [...leaderboard]
           .sort((a, b) => b.cumulativeStableford - a.cumulativeStableford)
           .map((p, i) => ({ ...p, position: i + 1 }));
-
-        return { strokePlay, stableford };
+        const fourBBB = await getTripFourBBBLeaderboard(input.tripId);
+        return { strokePlay, stableford, fourBBB };
       }),
   }),
 

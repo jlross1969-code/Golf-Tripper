@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download } from "lucide-react";
+import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download, Star, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 
@@ -124,6 +124,7 @@ export default function TripLeaderboard() {
             <TabsList className="mb-6 w-full">
               <TabsTrigger value="stroke" className="flex-1 gap-2"><Trophy className="w-4 h-4" />Net Stroke</TabsTrigger>
               <TabsTrigger value="stableford" className="flex-1 gap-2">⭐ Stableford</TabsTrigger>
+              <TabsTrigger value="highlights" className="flex-1 gap-2"><Star className="w-4 h-4" />Highlights</TabsTrigger>
             </TabsList>
 
             <TabsContent value="stroke">
@@ -153,6 +154,71 @@ export default function TripLeaderboard() {
                 )}
               </div>
             </TabsContent>
+            <TabsContent value="highlights">
+              <div className="space-y-6">
+                {/* Top 3 Individual (Stableford) */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-primary" /> Top 3 Individual (Stableford)
+                  </h3>
+                  {data.stableford.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground bg-card border border-border rounded-xl text-sm">
+                      No scores yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {data.stableford.slice(0, 3).map((p) => (
+                        <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                          <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
+                          <PlayerAvatar name={p.userName} photoUrl={p.photoUrl} />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
+                            <p className="text-xs text-muted-foreground">{p.rounds.length} rounds</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-primary">{p.cumulativeStableford}</p>
+                            <p className="text-xs text-muted-foreground">Total pts</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Top 3 4BBB Pairs */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-primary" /> Top 3 Pairs (4BBB Cumulative)
+                  </h3>
+                  {data.fourBBB.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground bg-card border border-border rounded-xl text-sm">
+                      No 4BBB pair data yet. Pairs must be set up in 4BBB-enabled rounds.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {data.fourBBB.slice(0, 3).map((t) => (
+                        <div key={t.teamKey} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4">
+                          <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(t.position)}</div>
+                          <div className="flex -space-x-2 flex-shrink-0">
+                            <PlayerAvatar name={t.player1Name} photoUrl={t.player1PhotoUrl} />
+                            <PlayerAvatar name={t.player2Name} photoUrl={t.player2PhotoUrl} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-foreground truncate">{t.player1Name} & {t.player2Name}</p>
+                            <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
+                            <p className="text-xs text-muted-foreground">Best Ball Net</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
           </Tabs>
         )}
       </div>

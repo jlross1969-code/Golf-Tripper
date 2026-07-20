@@ -579,6 +579,18 @@ export async function getAchievementsByTrip(tripId: number): Promise<(Achievemen
   return rows.map((r) => ({ ...r.ach, playerName: r.userNickname ?? r.userName ?? null }));
 }
 
+
+export async function getAchievementsByRound(
+  roundId: number
+): Promise<{ userId: number; type: "hole_in_one" | "eagle" | "birdie" }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ userId: achievements.userId, type: achievements.type })
+    .from(achievements)
+    .where(and(eq(achievements.roundId, roundId), eq(achievements.confirmed, true)));
+  return rows;
+}
 // ─── Notifications ────────────────────────────────────────────────────────────
 
 export async function createNotification(data: {
@@ -792,6 +804,106 @@ export async function getTripLeaderboard(tripId: number): Promise<
   );
 
   return result;
+}
+
+export async function getTripFourBBBLeaderboard(
+  tripId: number
+): Promise<
+  {
+    teamKey: string;
+    player1Name: string;
+    player2Name: string;
+    player1PhotoUrl: string | null;
+    player2PhotoUrl: string | null;
+    roundsPlayed: number;
+    cumulativeBestBall: number;
+    position: number;
+  }[]
+> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const tripRounds = await getRoundsByTrip(tripId);
+  const fourBBBRounds = tripRounds.filter(
+    (r) => r.fourBBBEnabled && (r.status === "completed" || r.status === "active")
+  );
+  if (fourBBBRounds.length === 0) return [];
+
+  // Map: teamKey (sorted userId pair) -> cumulative data
+  const teamMap = new Map<
+    string,
+    {
+      player1Name: string;
+      player2Name: string;
+      player1PhotoUrl: string | null;
+      player2PhotoUrl: string | null;
+      roundsPlayed: number;
+      cumulativeBestBall: number;
+    }
+  >();
+
+  for (const round of fourBBBRounds) {
+    const groupList = await getGroupsByRound(round.id);
+    const courseHoles = await getHolesByCourse(round.courseId);
+    const scorecard = await getRoundScorecard(round.id);
+
+    for (const group of groupList) {
+      const gPlayers = await getGroupPlayers(group.id);
+      const partnered = new Set<number>();
+
+      for (const gp of gPlayers) {
+        if (partnered.has(gp.userId) || !gp.partnerId) continue;
+        partnered.add(gp.userId);
+        partnered.add(gp.partnerId);
+
+        const p1 = scorecard.find((s) => s.userId === gp.userId);
+        const p2 = scorecard.find((s) => s.userId === gp.partnerId);
+        if (!p1 || !p2) continue;
+
+        let roundBestBall = 0;
+        let holesPlayed = 0;
+
+        for (const hole of courseHoles) {
+          const s1 = p1.scores.find((s) => s.holeId === hole.id);
+          const s2 = p2.scores.find((s) => s.holeId === hole.id);
+          const n1 = s1?.netScore ?? null;
+          const n2 = s2?.netScore ?? null;
+          const best = n1 !== null && n2 !== null ? Math.min(n1, n2) : n1 ?? n2;
+          if (best !== null) {
+            roundBestBall += best;
+            holesPlayed++;
+          }
+        }
+
+        if (holesPlayed === 0) continue;
+
+        const ids = [gp.userId, gp.partnerId].sort((a, b) => a - b);
+        const teamKey = ids.join("-");
+        const existing = teamMap.get(teamKey);
+        if (existing) {
+          existing.cumulativeBestBall += roundBestBall;
+          existing.roundsPlayed += 1;
+        } else {
+          // Look up photo URLs from trip players
+          const tp1 = await getTripPlayer(tripId, gp.userId);
+          const tp2 = await getTripPlayer(tripId, gp.partnerId);
+          teamMap.set(teamKey, {
+            player1Name: p1.userName ?? "Player",
+            player2Name: p2.userName ?? "Player",
+            player1PhotoUrl: tp1?.photoUrl ?? null,
+            player2PhotoUrl: tp2?.photoUrl ?? null,
+            roundsPlayed: 1,
+            cumulativeBestBall: roundBestBall,
+          });
+        }
+      }
+    }
+  }
+
+  const results = Array.from(teamMap.entries()).map(([teamKey, v]) => ({ teamKey, ...v, position: 0 }));
+  results.sort((a, b) => a.cumulativeBestBall - b.cumulativeBestBall);
+  results.forEach((r, i) => (r.position = i + 1));
+  return results;
 }
 
 // ─── Match Play ───────────────────────────────────────────────────────────────

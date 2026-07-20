@@ -336,3 +336,13 @@
 - [x] Backend: leaderboard.getRoundHighlights procedure — top 3 individual (Stableford) + top 3 4BBB pairs
 - [x] Frontend: Highlights tab on Daily Leaderboard page — top 3 individual and top 3 4BBB pair finishes
 - [x] TypeScript check, checkpoint
+
+## Session - Trip Highlights, Achievement Badges & Share Button
+
+- [x] Frontend: Highlights tab on Trip Leaderboard (top 3 cumulative individual + top 3 4BBB pairs)
+- [x] Backend: trip leaderboard to include 4BBB cumulative pairs data
+- [x] Frontend: achievement count badges on Daily Leaderboard rows (eagle/birdie count per round)
+- [x] Frontend: achievement count badges on Trip Leaderboard rows (total across all rounds)
+- [x] Backend: achievements per player per round exposed in daily leaderboard data
+- [x] Frontend: share/screenshot button on Daily Leaderboard Highlights tab (html2canvas or native share)
+- [x] TypeScript check, checkpoint
