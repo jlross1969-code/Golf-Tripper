@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -112,6 +112,20 @@ export default function TripDashboard() {
                 <div>
                   <p className="font-semibold text-foreground text-sm">Trip Leaderboard</p>
                   <p className="text-xs text-muted-foreground">Cumulative standings across all rounds</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </div>
+          </Link>
+
+          {/* My Profile */}
+          <Link href={`/trip/${id}/my-profile`}>
+            <div className="flex items-center justify-between bg-card border border-border rounded-xl px-4 py-3 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors active:scale-[0.97]">
+              <div className="flex items-center gap-3">
+                <User className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-semibold text-foreground text-sm">My Profile</p>
+                  <p className="text-xs text-muted-foreground">Nickname, handicap &amp; history</p>
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />

@@ -10,7 +10,7 @@ import {
   Target, Users, Swords, LayoutGrid, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { calculateNetScore, calculateStablefordPoints, detectAchievement, formatAchievementType } from "../../../shared/scoring";
 import AchievementAlert from "@/components/AchievementAlert";
@@ -139,6 +139,36 @@ export default function ScoreEntry() {
   // Mismatch dialog
   const [mismatchHoles, setMismatchHoles] = useState<number[]>([]);
   const [mismatchOpen, setMismatchOpen] = useState(false);
+
+  // Edit mode: set of "userId-holeId" keys where saved score is being edited
+  const [editingKeys, setEditingKeys] = useState<Set<string>>(new Set());
+  const isEditing = (userId: number, holeId: number) => editingKeys.has(`${userId}-${holeId}`);
+  const startEdit = (userId: number, holeId: number, savedScore: number) => {
+    setScore(userId, holeId, savedScore);
+    setEditingKeys((prev) => { const s = new Set(prev); s.add(`${userId}-${holeId}`); return s; });
+  };
+  const cancelEdit = (userId: number, holeId: number) => {
+    setEditingKeys((prev) => { const s = new Set(prev); s.delete(`${userId}-${holeId}`); return s; });
+  };
+
+  // Swipe gesture state
+  const swipeTouchStartX = useRef<number | null>(null);
+  const handleTouchStart = (e: React.TouchEvent) => {
+    swipeTouchStartX.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (swipeTouchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - swipeTouchStartX.current;
+    swipeTouchStartX.current = null;
+    if (Math.abs(dx) < 50) return; // ignore tiny movements
+    if (dx < 0) {
+      // swipe left → next hole
+      setCurrentHoleIdx((i) => Math.min(holes.length - 1, (i ?? 0) + 1));
+    } else {
+      // swipe right → prev hole
+      setCurrentHoleIdx((i) => Math.max(0, (i ?? 0) - 1));
+    }
+  };
 
   const submitScore = trpc.scores.submit.useMutation();
   const createAchievement = trpc.achievements.create.useMutation();
@@ -510,7 +540,11 @@ export default function ScoreEntry() {
 
       {/* ── HOLE-BY-HOLE MODE ─────────────────────────────────────────────── */}
       {scoreMode === "hole-by-hole" && currentHole && (
-        <div className="max-w-lg mx-auto">
+        <div
+          className="max-w-lg mx-auto"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           {/* Hole navigation header */}
           <div className="flex items-center justify-between px-6 py-4">
             <button
@@ -596,7 +630,7 @@ export default function ScoreEntry() {
 
                   {/* Score input or saved score */}
                   <div className="px-4 py-5">
-                    {saved ? (
+                    {saved && !isEditing(player.userId, currentHole.id) ? (
                       <div className="flex flex-col items-center gap-2">
                         <span className={`text-5xl font-bold ${scoreClass(saved.grossScore, currentHole.par)}`}>
                           {saved.grossScore}
@@ -604,18 +638,33 @@ export default function ScoreEntry() {
                         <p className="text-xs text-muted-foreground">
                           Net {saved.netScore} · {saved.stablefordPoints} pts
                         </p>
-                        <Badge variant="secondary" className="text-xs gap-1">
-                          <CheckCircle className="w-3 h-3" /> Saved
-                        </Badge>
+                        <button
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors border border-border rounded-full px-3 py-1 hover:border-primary"
+                          onClick={() => startEdit(player.userId, currentHole.id, saved.grossScore)}
+                        >
+                          <CheckCircle className="w-3 h-3 text-primary" /> Saved · tap to edit
+                        </button>
                       </div>
                     ) : (
-                      <ScoreStepper
-                        value={currentScore}
-                        onChange={(v) => setScore(player.userId, currentHole.id, v)}
-                        par={currentHole.par}
-                        onPickUp={() => togglePickUp(player.userId, currentHole.id)}
-                        isPickUp={pu}
-                      />
+                      <div>
+                        <ScoreStepper
+                          value={currentScore}
+                          onChange={(v) => setScore(player.userId, currentHole.id, v)}
+                          par={currentHole.par}
+                          onPickUp={() => togglePickUp(player.userId, currentHole.id)}
+                          isPickUp={pu}
+                        />
+                        {saved && isEditing(player.userId, currentHole.id) && (
+                          <div className="flex justify-center mt-2">
+                            <button
+                              className="text-xs text-muted-foreground hover:text-foreground underline"
+                              onClick={() => cancelEdit(player.userId, currentHole.id)}
+                            >
+                              Cancel edit
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 

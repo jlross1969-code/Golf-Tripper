@@ -274,3 +274,13 @@
 - [x] Frontend: TeeSheet page — add "Download PDF" button that fetches and downloads the PDF
 - [x] Frontend: TripDashboard — show Tee Sheet link for completed rounds (not just active round)
 - [x] Tests and checkpoint
+
+## Session - Swipe Gestures, Score Edit, Player Profile
+
+- [x] Score entry: swipe left/right on hole-by-hole view to navigate between holes (touch events)
+- [x] Score entry: tap a saved score badge to re-open stepper and edit the score mid-round
+- [x] Backend: players.getMyProfile procedure — returns nickname, currentHandicap, handicap history for the trip
+- [x] Backend: players.updateMyNickname procedure (player-accessible, updates own nickname)
+- [x] Frontend: /trip/:tripId/my-profile page — nickname edit, current handicap, handicap history chart
+- [x] Frontend: link to My Profile from TripDashboard
+- [x] Tests and checkpoint
