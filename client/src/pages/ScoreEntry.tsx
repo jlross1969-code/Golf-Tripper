@@ -562,6 +562,10 @@ export default function ScoreEntry() {
               // Preview net/points for current unsaved score
               const previewNet = pu ? null : calculateNetScore(currentScore, player.currentHandicap, currentHole.strokeIndex);
               const previewPts = previewNet !== null ? calculateStablefordPoints(previewNet, currentHole.par) : 0;
+              // Handicap strokes received on this hole
+              const fullStrokes = Math.floor(player.currentHandicap / 18);
+              const extraStroke = player.currentHandicap % 18 >= currentHole.strokeIndex ? 1 : 0;
+              const strokesReceived = fullStrokes + extraStroke;
 
               return (
                 <div key={player.userId} className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -575,9 +579,19 @@ export default function ScoreEntry() {
                         {player.nickname ?? player.user?.name ?? `Player ${player.userId}`}
                       </span>
                     </div>
-                    <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
-                      HC: {player.currentHandicap}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
+                        HC: {player.currentHandicap}
+                      </span>
+                      <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
+                        SI {currentHole.strokeIndex}
+                      </span>
+                      {strokesReceived > 0 && (
+                        <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded font-semibold">
+                          +{strokesReceived} shot{strokesReceived > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Score input or saved score */}
@@ -609,13 +623,7 @@ export default function ScoreEntry() {
                   <div className="grid grid-cols-3 border-t border-border">
                     <div className="px-3 py-2 text-center border-r border-border">
                       <p className="text-xs text-muted-foreground">Shots</p>
-                      <p className="font-bold text-foreground text-sm">
-                        {saved
-                          ? totals.shots
-                          : pu
-                            ? totals.shots
-                            : totals.shots + (currentScore > 0 ? currentScore : 0)}
-                      </p>
+                      <p className="font-bold text-foreground text-sm">{strokesReceived}</p>
                     </div>
                     <div className="px-3 py-2 text-center border-r border-border">
                       <p className="text-xs text-muted-foreground">Pts (hole)</p>
