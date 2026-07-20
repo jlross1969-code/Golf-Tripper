@@ -5,10 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target, Pencil, Trash2, AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 type Round = {
   id: number;
@@ -26,8 +27,20 @@ type Round = {
 export default function AdminRounds() {
   const { tripId } = useParams<{ tripId: string }>();
   const id = Number(tripId);
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
 
+  const { data: tripList } = trpc.trips.list.useQuery();
   const { data: trip } = trpc.trips.get.useQuery({ id });
+
+  // Scope guard: must be global admin, trip owner, or co-admin for this trip
+  const isGlobalAdmin = user?.role === "admin";
+  const tripEntry = tripList?.find((t) => t.id === id);
+  const isAuthorized = isGlobalAdmin || (tripEntry && (tripEntry.createdBy === user?.id || (tripEntry as any).isCoAdmin));
+
+  useEffect(() => {
+    if (tripList && user && !isAuthorized) navigate("/");
+  }, [tripList, user, isAuthorized, navigate]);
   const { data: courses } = trpc.courses.list.useQuery();
   const { data: rounds, refetch } = trpc.rounds.list.useQuery({ tripId: id });
 

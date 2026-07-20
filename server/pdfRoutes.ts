@@ -1,7 +1,9 @@
 import { Express, Request, Response } from "express";
-import { generateScorecardPDF, generateTripResultsPDF, ScorecardData, TripResultsData } from "./pdfExport";
+import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer } from "./pdfExport";
 import {
   getAchievementsByTrip,
+  getGroupPlayers,
+  getGroupsByRound,
   getHolesByCourse,
   getRound,
   getRoundsByTrip,
@@ -75,6 +77,69 @@ export function registerPdfRoutes(app: Express) {
     } catch (err) {
       console.error("[PDF] Scorecard error:", err);
       res.status(500).json({ error: "Failed to generate scorecard PDF" });
+    }
+  });
+
+  // ── Tee Sheet PDF ─────────────────────────────────────────────────────────────
+  // GET /api/pdf/teesheet/:tripId/:roundId
+  app.get("/api/pdf/teesheet/:tripId/:roundId", async (req: Request, res: Response) => {
+    try {
+      const tripId = parseInt(req.params.tripId);
+      const roundId = parseInt(req.params.roundId);
+      if (isNaN(tripId) || isNaN(roundId)) {
+        res.status(400).json({ error: "Invalid tripId or roundId" });
+        return;
+      }
+
+      const trip = await getTrip(tripId);
+      if (!trip) { res.status(404).json({ error: "Trip not found" }); return; }
+
+      const round = await getRound(roundId);
+      if (!round) { res.status(404).json({ error: "Round not found" }); return; }
+
+      const groupList = await getGroupsByRound(roundId);
+      const groups = await Promise.all(
+        groupList.map(async (g) => {
+          const players = await getGroupPlayers(g.id, tripId);
+          return {
+            name: g.name,
+            teeTime: g.teeTime ?? null,
+            startingHole: g.startingHole ?? null,
+            players: players.map((p): TeeSheetPlayer => ({
+              name: (p.nickname ?? p.user?.name ?? `Player ${p.userId}`),
+              handicap: (p as any).currentHandicap ?? 0,
+              pairId: p.pairId ?? null,
+            })),
+          };
+        })
+      );
+
+      // Sort by teeTime (nulls last)
+      groups.sort((a, b) => {
+        if (!a.teeTime && !b.teeTime) return 0;
+        if (!a.teeTime) return 1;
+        if (!b.teeTime) return -1;
+        return a.teeTime.localeCompare(b.teeTime);
+      });
+
+      const data: TeeSheetData = {
+        tripName: trip.name,
+        roundName: round.name,
+        roundDate: new Date(round.roundDate).toLocaleDateString("en-AU"),
+        groups,
+      };
+
+      const pdfBuffer = await generateTeeSheetPDF(data);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="teesheet-${round.name.replace(/\s+/g, "-")}.pdf"`
+      );
+      res.send(pdfBuffer);
+    } catch (err) {
+      console.error("[PDF] Tee sheet error:", err);
+      res.status(500).json({ error: "Failed to generate tee sheet PDF" });
     }
   });
 

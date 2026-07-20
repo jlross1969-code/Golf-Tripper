@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Clock, Flag, MapPin, Users, Share2 } from "lucide-react";
+import { ArrowLeft, Clock, Flag, MapPin, Users, Share2, FileDown } from "lucide-react";
 import { toast } from "sonner";
 
 export default function TeeSheet() {
@@ -48,9 +48,21 @@ export default function TeeSheet() {
             <p className="text-xs text-muted-foreground">{trip?.name} — {round?.name ?? ""}</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={shareSheet}>
-          <Share2 className="w-3.5 h-3.5" /> Share
-        </Button>
+        <div className="flex gap-2">
+          <a
+            href={`/api/pdf/teesheet/${tid}/${rid}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+          >
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <FileDown className="w-3.5 h-3.5" /> PDF
+            </Button>
+          </a>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={shareSheet}>
+            <Share2 className="w-3.5 h-3.5" /> Share
+          </Button>
+        </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">

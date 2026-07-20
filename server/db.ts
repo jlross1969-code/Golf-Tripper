@@ -933,6 +933,17 @@ export async function getCoAdminCount(tripId: number): Promise<number> {
   return result.length;
 }
 
+export async function isCoAdminForTrip(userId: number, tripId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db
+    .select()
+    .from(tripPlayers)
+    .where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, userId), eq(tripPlayers.isCoAdmin, true)))
+    .limit(1);
+  return result.length > 0;
+}
+
 // ─── Nearest to Pin ───────────────────────────────────────────────────────────
 
 import { NearestToPin, NtpEntry } from "../drizzle/schema";

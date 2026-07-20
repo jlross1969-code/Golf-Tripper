@@ -233,11 +233,18 @@ export default function TripDashboard() {
                           </>
                         )}
                         {round.status === "completed" && (
-                          <a href={`/api/pdf/scorecard/${round.id}`} target="_blank" rel="noopener noreferrer">
-                            <Button size="sm" variant="ghost" className="gap-1">
-                              <Download className="w-3 h-3" /> PDF
-                            </Button>
-                          </a>
+                          <>
+                            <Link href={`/trip/${id}/round/${round.id}/teesheet`}>
+                              <Button size="sm" variant="ghost" className="gap-1">
+                                <Flag className="w-3 h-3" /> Tee Sheet
+                              </Button>
+                            </Link>
+                            <a href={`/api/pdf/scorecard/${round.id}`} target="_blank" rel="noopener noreferrer">
+                              <Button size="sm" variant="ghost" className="gap-1">
+                                <Download className="w-3 h-3" /> PDF
+                              </Button>
+                            </a>
+                          </>
                         )}
                       </>
                     )}

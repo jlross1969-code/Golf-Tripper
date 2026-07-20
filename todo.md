@@ -260,3 +260,17 @@
 - [x] Frontend: new TeeSheet page at /trip/:tripId/round/:roundId/teesheet — read-only, shareable
 - [x] Frontend: link to Tee Sheet from TripDashboard and AdminGroups
 - [x] Tests and checkpoint
+
+## Session - Co-Admin Scope, PDF Tee Sheet, Past Round Tee Sheets
+
+- [x] Backend: add isCoAdminForTrip(userId, tripId) helper to db.ts
+- [x] Backend: AdminPlayers page — redirect non-admin, non-coAdmin users away from /admin/trips/:tripId/players
+- [x] Backend: AdminRounds page — redirect non-admin, non-coAdmin users away from /admin/trips/:tripId/rounds
+- [x] Backend: AdminGroups page — redirect non-admin, non-coAdmin users away from /admin/trips/:tripId/rounds/:roundId/groups
+- [x] Backend: trips.getTeeSheetPdf procedure — returns PDF buffer of tee sheet (groups, tee times, players, handicaps)
+- [x] Frontend: AdminPlayers — check isCoAdmin for this tripId, redirect if not authorized
+- [x] Frontend: AdminRounds — check isCoAdmin for this tripId, redirect if not authorized
+- [x] Frontend: AdminGroups — check isCoAdmin for this tripId, redirect if not authorized
+- [x] Frontend: TeeSheet page — add "Download PDF" button that fetches and downloads the PDF
+- [x] Frontend: TripDashboard — show Tee Sheet link for completed rounds (not just active round)
+- [x] Tests and checkpoint

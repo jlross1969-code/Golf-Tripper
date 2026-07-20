@@ -3,9 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, Users, Edit2, Mail, Shield, ShieldOff } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 
@@ -13,8 +13,19 @@ export default function AdminPlayers() {
   const { tripId } = useParams<{ tripId: string }>();
   const id = Number(tripId);
   const { user } = useAuth();
+  const [, navigate] = useLocation();
 
+  const { data: tripList } = trpc.trips.list.useQuery();
   const { data: trip } = trpc.trips.get.useQuery({ id });
+
+  // Scope guard: must be global admin, trip owner, or co-admin for this trip
+  const isGlobalAdmin = user?.role === "admin";
+  const tripEntry = tripList?.find((t) => t.id === id);
+  const isAuthorized = isGlobalAdmin || (tripEntry && (tripEntry.createdBy === user?.id || (tripEntry as any).isCoAdmin));
+
+  useEffect(() => {
+    if (tripList && user && !isAuthorized) navigate("/");
+  }, [tripList, user, isAuthorized, navigate]);
   const { data: players, refetch } = trpc.players.tripPlayers.useQuery({ tripId: id });
   const { data: invites, refetch: refetchInvites } = trpc.invites.list.useQuery({ tripId: id });
 
