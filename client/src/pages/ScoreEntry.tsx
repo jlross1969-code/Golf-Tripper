@@ -226,16 +226,23 @@ export default function ScoreEntry() {
   const isPaired = !!myGroup?.partner;
   const isLocked = myGroup?.pairsLocked ?? false;
 
-  // Players to score in hole-by-hole mode: self + partner (whenever a partner is assigned)
+  // Players to score in hole-by-hole mode:
+  // Show ALL group members (self first, then others) so the scorer can enter
+  // scores for the whole group regardless of whether pairs are formally set up.
   const scoringPlayers = (() => {
     if (!players || !user) return [];
-    const me = players.find((p) => p.userId === user.id);
-    if (!me) return [];
-    if (isPaired && myGroup?.partner) {
-      const partner = players.find((p) => p.userId === myGroup.partner!.userId);
-      return partner ? [me, partner] : [me];
+    if (myGroup?.allMembers?.length) {
+      // Build from allMembers so we only show people in this group
+      const groupUserIds = myGroup.allMembers.map((m: any) => m.userId);
+      const groupPlayers = players.filter((p) => groupUserIds.includes(p.userId));
+      // Self first
+      const me = groupPlayers.find((p) => p.userId === user.id);
+      const others = groupPlayers.filter((p) => p.userId !== user.id);
+      return me ? [me, ...others] : groupPlayers;
     }
-    return [me];
+    // Fallback: just self
+    const me = players.find((p) => p.userId === user.id);
+    return me ? [me] : [];
   })();
 
   const myGroupMatch = myGroup
@@ -824,22 +831,23 @@ export default function ScoreEntry() {
       {scoreMode === "grid" && (
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
 
-          {/* When paired: tab switcher between self and partner */}
-          {isPaired && myGroup?.partner && players && user && (() => {
-            const me = players.find((p) => p.userId === user.id);
-            const partner = players.find((p) => p.userId === myGroup.partner!.userId);
-            const gridPlayers = [me, partner].filter(Boolean) as typeof players;
-            // Ensure selectedUserId is set to one of the pair
-            const activeId = selectedUserId && gridPlayers.some((p) => p.userId === selectedUserId)
+          {/* Grid mode: tab switcher for all group members (or all trip players if no group) */}
+          {scoringPlayers.length > 0 && (() => {
+            const activeId = selectedUserId && scoringPlayers.some((p) => p.userId === selectedUserId)
               ? selectedUserId
-              : gridPlayers[0]?.userId ?? null;
+              : scoringPlayers[0]?.userId ?? null;
+            // Sync selectedUserId if it's not in the group
+            if (activeId && activeId !== selectedUserId) {
+              // Use a timeout to avoid setState during render
+              setTimeout(() => setSelectedUserId(activeId), 0);
+            }
             return (
-              <div className="flex gap-1 bg-muted rounded-lg p-1">
-                {gridPlayers.map((p) => (
+              <div className="flex flex-wrap gap-1 bg-muted rounded-lg p-1">
+                {scoringPlayers.map((p) => (
                   <button
                     key={p.userId}
                     onClick={() => setSelectedUserId(p.userId)}
-                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    className={`flex-1 min-w-[80px] flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                       activeId === p.userId ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -853,28 +861,6 @@ export default function ScoreEntry() {
               </div>
             );
           })()}
-
-          {/* Player selector (only when not paired) */}
-          {!isPaired && (
-            <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">Select Player to Score</label>
-              <Select
-                value={selectedUserId?.toString() ?? ""}
-                onValueChange={(v) => setSelectedUserId(Number(v))}
-              >
-                <SelectTrigger className="w-full max-w-xs">
-                  <SelectValue placeholder="Choose a player..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {players?.map((p) => (
-                    <SelectItem key={p.userId} value={p.userId.toString()}>
-                      {p.nickname ?? p.user?.name ?? `Player ${p.userId}`} (HCP {p.currentHandicap})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
 
           {/* Scorecard grid */}
           {selectedUserId && (() => {
@@ -1011,23 +997,18 @@ export default function ScoreEntry() {
             );
           })()}
 
-          {/* Not paired yet */}
+          {/* Pairing reminder (soft, non-blocking) */}
           {!isPaired && myGroup && (
-            <Card className="border-amber-500/30 bg-amber-500/5">
-              <CardContent className="px-4 py-4 flex items-center gap-3">
-                <Users className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-foreground">You haven't paired with a partner yet</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Go to the{" "}
-                    <Link href={`/trip/${round.tripId}/my-group/${id}`} className="text-primary underline">
-                      Group Pairing
-                    </Link>{" "}
-                    page to choose your partner before scoring.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded-lg text-xs text-muted-foreground">
+              <Users className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <span>
+                Pairs not set yet —{" "}
+                <Link href={`/trip/${round.tripId}/my-group/${id}`} className="text-primary underline">
+                  set up pairing
+                </Link>{" "}
+                for 4BBB matchplay scoring.
+              </span>
+            </div>
           )}
         </div>
       )}
