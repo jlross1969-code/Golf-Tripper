@@ -226,12 +226,12 @@ export default function ScoreEntry() {
   const isPaired = !!myGroup?.partner;
   const isLocked = myGroup?.pairsLocked ?? false;
 
-  // Players to score in hole-by-hole mode: self + partner (if paired & locked)
+  // Players to score in hole-by-hole mode: self + partner (whenever a partner is assigned)
   const scoringPlayers = (() => {
     if (!players || !user) return [];
     const me = players.find((p) => p.userId === user.id);
     if (!me) return [];
-    if (isPaired && isLocked && myGroup?.partner) {
+    if (isPaired && myGroup?.partner) {
       const partner = players.find((p) => p.userId === myGroup.partner!.userId);
       return partner ? [me, partner] : [me];
     }
@@ -824,26 +824,40 @@ export default function ScoreEntry() {
       {scoreMode === "grid" && (
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
 
-          {/* Pairing info */}
-          {isPaired && (
-            <div className="flex items-center gap-2 px-4 py-3 bg-primary/10 rounded-xl border border-primary/20 text-sm">
-              <Users className="w-4 h-4 text-primary flex-shrink-0" />
-              <span className="text-foreground">
-                Scoring for partner:{" "}
-                <strong className="text-primary">
-                  {myGroup.partner?.user?.name ?? `Player ${myGroup.partner?.userId}`}
-                </strong>
-                {isLocked && <span className="ml-2 text-xs text-muted-foreground">(pairs locked)</span>}
-              </span>
-            </div>
-          )}
+          {/* When paired: tab switcher between self and partner */}
+          {isPaired && myGroup?.partner && players && user && (() => {
+            const me = players.find((p) => p.userId === user.id);
+            const partner = players.find((p) => p.userId === myGroup.partner!.userId);
+            const gridPlayers = [me, partner].filter(Boolean) as typeof players;
+            // Ensure selectedUserId is set to one of the pair
+            const activeId = selectedUserId && gridPlayers.some((p) => p.userId === selectedUserId)
+              ? selectedUserId
+              : gridPlayers[0]?.userId ?? null;
+            return (
+              <div className="flex gap-1 bg-muted rounded-lg p-1">
+                {gridPlayers.map((p) => (
+                  <button
+                    key={p.userId}
+                    onClick={() => setSelectedUserId(p.userId)}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      activeId === p.userId ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
+                      {(p.nickname ?? p.user?.name ?? "P").charAt(0).toUpperCase()}
+                    </div>
+                    <span className="truncate">{p.nickname ?? p.user?.name ?? `Player ${p.userId}`}</span>
+                    <span className="text-xs text-muted-foreground flex-shrink-0">HC {p.currentHandicap}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
 
-          {/* Player selector */}
-          {(!isPaired || !isLocked) && (
+          {/* Player selector (only when not paired) */}
+          {!isPaired && (
             <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">
-                {isPaired ? "Scoring for (override)" : "Select Player to Score"}
-              </label>
+              <label className="text-sm font-medium text-foreground mb-2 block">Select Player to Score</label>
               <Select
                 value={selectedUserId?.toString() ?? ""}
                 onValueChange={(v) => setSelectedUserId(Number(v))}
