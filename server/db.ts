@@ -1717,3 +1717,175 @@ export async function reseedGroupsByIndividual(
 
   return created;
 }
+
+// ─── Grouping Preview (dry-run) ───────────────────────────────────────────────
+
+export type GroupPreview = {
+  name: string;
+  players: { userId: number; displayName: string; handicap: number; partnerId?: number | null }[];
+};
+
+/** Preview: copy exact groups+pairings from sourceRound to targetRound (no DB writes). */
+export async function previewCopyGroupings(
+  sourceRoundId: number,
+  tripId: number
+): Promise<GroupPreview[]> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  const sourceGroups = await db.select().from(groups).where(eq(groups.roundId, sourceRoundId));
+  const tpList = await db
+    .select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap })
+    .from(tripPlayers)
+    .where(eq(tripPlayers.tripId, tripId));
+  const userIds = tpList.map((t) => t.userId);
+  const userList = userIds.length > 0 ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds)) : [];
+  const nameMap = new Map(userList.map((u) => [u.id, u.name]));
+  const tpMap = new Map(tpList.map((t) => [t.userId, t]));
+
+  const result: GroupPreview[] = [];
+  for (const sg of sourceGroups) {
+    const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, sg.id));
+    result.push({
+      name: sg.name,
+      players: gps.map((gp) => {
+        const tp = tpMap.get(gp.userId);
+        return {
+          userId: gp.userId,
+          displayName: tp?.nickname ?? nameMap.get(gp.userId) ?? `User ${gp.userId}`,
+          handicap: tp?.currentHandicap ?? 0,
+          partnerId: gp.partnerId,
+        };
+      }),
+    });
+  }
+  return result;
+}
+
+/** Preview: re-seed by 4BBB pair standings from sourceRound (no DB writes). */
+export async function previewReseedBy4BBB(
+  sourceRoundId: number,
+  tripId: number,
+  groupSize: number = 4
+): Promise<GroupPreview[]> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  const sourceGroups = await db.select().from(groups).where(eq(groups.roundId, sourceRoundId));
+  const round = await db.select().from(rounds).where(eq(rounds.id, sourceRoundId)).limit(1);
+  if (!round[0]) throw new Error("Source round not found");
+  const courseHolesRows = await db.select().from(holes).where(eq(holes.courseId, round[0].courseId));
+  const allScores = await db.select().from(scores).where(eq(scores.roundId, sourceRoundId));
+  const scoreMap = new Map<string, number>();
+  for (const s of allScores) {
+    if (s.netScore !== null) scoreMap.set(`${s.userId}-${s.holeId}`, s.netScore);
+  }
+
+  const tpList = await db
+    .select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap })
+    .from(tripPlayers)
+    .where(eq(tripPlayers.tripId, tripId));
+  const userIds = tpList.map((t) => t.userId);
+  const userList = userIds.length > 0 ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds)) : [];
+  const nameMap = new Map(userList.map((u) => [u.id, u.name]));
+  const tpMap = new Map(tpList.map((t) => [t.userId, t]));
+
+  type PairEntry = { userId1: number; userId2: number; totalBestBall: number };
+  const pairEntries: PairEntry[] = [];
+  const seenPairs = new Set<string>();
+
+  for (const sg of sourceGroups) {
+    const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, sg.id));
+    for (const gp of gps) {
+      if (!gp.partnerId) continue;
+      const key = [gp.userId, gp.partnerId].sort().join("-");
+      if (seenPairs.has(key)) continue;
+      seenPairs.add(key);
+      let total = 0;
+      for (const h of courseHolesRows) {
+        const s1 = scoreMap.get(`${gp.userId}-${h.id}`);
+        const s2 = scoreMap.get(`${gp.partnerId}-${h.id}`);
+        if (s1 !== undefined && s2 !== undefined) total += Math.min(s1, s2);
+        else if (s1 !== undefined) total += s1;
+        else if (s2 !== undefined) total += s2;
+      }
+      pairEntries.push({ userId1: gp.userId, userId2: gp.partnerId, totalBestBall: total });
+    }
+  }
+  pairEntries.sort((a, b) => a.totalBestBall - b.totalBestBall);
+
+  const pairsPerGroup = Math.max(1, Math.floor(groupSize / 2));
+  const groupBuckets: { userId1: number; userId2: number }[][] = [];
+  let currentBucket: { userId1: number; userId2: number }[] = [];
+
+  for (const pair of pairEntries) {
+    if (currentBucket.length >= pairsPerGroup) {
+      groupBuckets.push(currentBucket);
+      currentBucket = [];
+    }
+    currentBucket.push({ userId1: pair.userId1, userId2: pair.userId2 });
+  }
+  if (currentBucket.length > 0) groupBuckets.push(currentBucket);
+
+  return groupBuckets.map((bucket, gi) => ({
+    name: `Group ${gi + 1}`,
+    players: bucket.flatMap((pair) => [
+      { userId: pair.userId1, displayName: tpMap.get(pair.userId1)?.nickname ?? nameMap.get(pair.userId1) ?? `User ${pair.userId1}`, handicap: tpMap.get(pair.userId1)?.currentHandicap ?? 0, partnerId: pair.userId2 },
+      { userId: pair.userId2, displayName: tpMap.get(pair.userId2)?.nickname ?? nameMap.get(pair.userId2) ?? `User ${pair.userId2}`, handicap: tpMap.get(pair.userId2)?.currentHandicap ?? 0, partnerId: pair.userId1 },
+    ]),
+  }));
+}
+
+/** Preview: re-seed by individual cumulative net trip standings (snake draft, no DB writes). */
+export async function previewReseedByIndividual(
+  tripId: number,
+  groupSize: number = 4
+): Promise<GroupPreview[]> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  const tripPlayerList = await db
+    .select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap })
+    .from(tripPlayers)
+    .where(eq(tripPlayers.tripId, tripId));
+  const userIds = tripPlayerList.map((t) => t.userId);
+  const userList = userIds.length > 0 ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds)) : [];
+  const nameMap = new Map(userList.map((u) => [u.id, u.name]));
+  const tpMap = new Map(tripPlayerList.map((t) => [t.userId, t]));
+
+  const tripRounds = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.tripId, tripId));
+  const roundIds = tripRounds.map((r) => r.id);
+  const cumulativeNet = new Map<number, number>();
+  for (const tp of tripPlayerList) cumulativeNet.set(tp.userId, 0);
+  if (roundIds.length > 0) {
+    const allScoresForTrip = await db.select().from(scores).where(inArray(scores.roundId, roundIds));
+    for (const s of allScoresForTrip) {
+      if (s.netScore !== null) cumulativeNet.set(s.userId, (cumulativeNet.get(s.userId) ?? 0) + s.netScore);
+    }
+  }
+
+  const sorted = tripPlayerList
+    .map((tp) => ({ userId: tp.userId, net: cumulativeNet.get(tp.userId) ?? 999 }))
+    .sort((a, b) => a.net - b.net);
+
+  const numGroups = Math.max(1, Math.ceil(sorted.length / groupSize));
+  const groupBuckets: number[][] = Array.from({ length: numGroups }, () => []);
+  for (let i = 0; i < sorted.length; i++) {
+    const r = Math.floor(i / numGroups);
+    const posInRound = i % numGroups;
+    const groupIdx = r % 2 === 0 ? posInRound : numGroups - 1 - posInRound;
+    groupBuckets[groupIdx].push(sorted[i].userId);
+  }
+
+  return groupBuckets
+    .filter((b) => b.length > 0)
+    .map((bucket, gi) => ({
+      name: `Group ${gi + 1}`,
+      players: bucket.map((userId) => ({
+        userId,
+        displayName: tpMap.get(userId)?.nickname ?? nameMap.get(userId) ?? `User ${userId}`,
+        handicap: tpMap.get(userId)?.currentHandicap ?? 0,
+        partnerId: null,
+      })),
+    }));
+}

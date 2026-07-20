@@ -4,9 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag, Pencil, Copy } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag, Pencil, Copy, ClipboardList } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -68,6 +69,16 @@ export default function AdminGroups() {
   const [reseedMode, setReseedMode] = useState<"copy" | "4bbb" | "individual">("copy");
   const [reseedSourceRoundId, setReseedSourceRoundId] = useState("");
   const [reseedGroupSize, setReseedGroupSize] = useState("4");
+  const [reseedStep, setReseedStep] = useState<"configure" | "preview">("configure");
+  const [reseedPreviewEnabled, setReseedPreviewEnabled] = useState(false);
+
+  // Admin scorecard drawer state
+  const [scorecardPlayer, setScorecardPlayer] = useState<GroupPlayer | null>(null);
+  const [scorecardOpen, setScorecardOpen] = useState(false);
+  const { data: scorecardData, refetch: refetchScorecard } = trpc.scores.getPlayerScorecard.useQuery(
+    { roundId: rId, userId: scorecardPlayer?.userId ?? 0 },
+    { enabled: scorecardOpen && !!scorecardPlayer }
+  );
 
   // Score correction state
   const [correctOpen, setCorrectOpen] = useState(false);
@@ -172,6 +183,26 @@ export default function AdminGroups() {
   const { data: tripRounds } = trpc.rounds.list.useQuery({ tripId: tId });
   const otherRounds = (tripRounds ?? []).filter((r) => r.id !== rId);
 
+  // Preview queries (dry-run, only enabled when user clicks Preview)
+  const srcId = Number(reseedSourceRoundId) || 0;
+  const gSize = Number(reseedGroupSize) || 4;
+  const { data: previewCopyData, isFetching: previewCopyFetching } = trpc.groups.previewCopy.useQuery(
+    { sourceRoundId: srcId, tripId: tId },
+    { enabled: reseedPreviewEnabled && reseedMode === "copy" && srcId > 0 }
+  );
+  const { data: preview4BBBData, isFetching: preview4BBBFetching } = trpc.groups.previewBy4BBB.useQuery(
+    { sourceRoundId: srcId, tripId: tId, groupSize: gSize },
+    { enabled: reseedPreviewEnabled && reseedMode === "4bbb" && srcId > 0 }
+  );
+  const { data: previewIndivData, isFetching: previewIndivFetching } = trpc.groups.previewByIndividual.useQuery(
+    { tripId: tId, groupSize: gSize },
+    { enabled: reseedPreviewEnabled && reseedMode === "individual" }
+  );
+  const previewGroups = reseedMode === "copy" ? previewCopyData?.groups
+    : reseedMode === "4bbb" ? preview4BBBData?.groups
+    : previewIndivData?.groups;
+  const previewFetching = previewCopyFetching || preview4BBBFetching || previewIndivFetching;
+
   const createAchievement = trpc.achievements.create.useMutation();
   const confirmAchievement = trpc.achievements.confirm.useMutation();
 
@@ -179,6 +210,7 @@ export default function AdminGroups() {
     onSuccess: async (d, variables) => {
       toast.success(`Score corrected — Net: ${d.netScore}, Pts: ${d.stablefordPoints}`);
       setCorrectOpen(false);
+      if (scorecardOpen) refetchScorecard();
       const correctedPlayer = correctPlayer;
       setCorrectPlayer(null);
       setCorrectHoleId("");
@@ -236,6 +268,11 @@ export default function AdminGroups() {
     setCorrectOpen(true);
   }
 
+  function openScorecard(p: GroupPlayer) {
+    setScorecardPlayer(p);
+    setScorecardOpen(true);
+  }
+
   function renderGroupPlayers(group: { id: number; name: string; pairsLocked: boolean; players: GroupPlayer[] }) {
     const pairA = group.players.filter((p) => p.pairId === 1);
     const pairB = group.players.filter((p) => p.pairId === 2);
@@ -256,6 +293,13 @@ export default function AdminGroups() {
           )}
           <button
             className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+            title="View scorecard"
+            onClick={() => openScorecard(p)}
+          >
+            <ClipboardList className="w-3 h-3" />
+          </button>
+          <button
+            className="opacity-60 hover:opacity-100 transition-opacity"
             title="Correct score"
             onClick={() => openCorrect(p)}
           >
@@ -725,110 +769,150 @@ export default function AdminGroups() {
       </Dialog>
 
       {/* Copy / Re-seed Groupings Dialog */}
-      <Dialog open={reseedOpen} onOpenChange={setReseedOpen}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={reseedOpen} onOpenChange={(open) => { if (!open) { setReseedOpen(false); setReseedStep("configure"); setReseedPreviewEnabled(false); } }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Copy className="w-4 h-4 text-primary" />
-              Copy / Re-seed Groupings
+              {reseedStep === "preview" ? "Preview Proposed Groups" : "Copy / Re-seed Groupings"}
             </DialogTitle>
             <DialogDescription>
-              Import groupings from another round into this one. Existing groups will be cleared first.
+              {reseedStep === "preview"
+                ? "Review the proposed groups below. Click Apply to commit, or Back to change settings."
+                : "Import groupings from another round into this one. Existing groups will be cleared first."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-5 py-2">
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300">
-              ⚠️ This will delete all existing groups for this round and replace them.
+
+          {reseedStep === "configure" ? (
+            <div className="space-y-5 py-2">
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-300">
+                ⚠️ This will delete all existing groups for this round and replace them.
+              </div>
+
+              {/* Mode selector */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Method</label>
+                <div className="grid grid-cols-1 gap-2">
+                  {([
+                    { value: "copy", label: "Copy exact groupings & pairings", desc: "Same groups, same partners — ideal when partnerships carry over unchanged." },
+                    { value: "4bbb", label: "Re-seed by 4BBB pair standings", desc: "Best pair from the source round goes into Group 1, second pair into Group 2, etc." },
+                    { value: "individual", label: "Re-seed by individual trip standings", desc: "Snake draft by cumulative net score — top and bottom players in the same group for competitive balance." },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setReseedMode(opt.value)}
+                      className={`text-left rounded-lg border px-4 py-3 transition-colors ${
+                        reseedMode === opt.value
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border bg-card text-muted-foreground hover:border-primary/50"
+                      }`}
+                    >
+                      <p className="font-medium text-sm">{opt.label}</p>
+                      <p className="text-xs mt-0.5 opacity-75">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Source round selector (copy + 4bbb) */}
+              {(reseedMode === "copy" || reseedMode === "4bbb") && (
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1 block">Source Round</label>
+                  <Select value={reseedSourceRoundId} onValueChange={setReseedSourceRoundId}>
+                    <SelectTrigger><SelectValue placeholder="Select source round..." /></SelectTrigger>
+                    <SelectContent>
+                      {otherRounds.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">No other rounds in this trip.</div>
+                      ) : (
+                        otherRounds.map((r) => (
+                          <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Group size (4bbb + individual) */}
+              {(reseedMode === "4bbb" || reseedMode === "individual") && (
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-1 block">Players per Group</label>
+                  <Select value={reseedGroupSize} onValueChange={setReseedGroupSize}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">2 players (pairs only)</SelectItem>
+                      <SelectItem value="4">4 players (standard)</SelectItem>
+                      <SelectItem value="6">6 players</SelectItem>
+                      <SelectItem value="8">8 players</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
-
-            {/* Mode selector */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Method</label>
-              <div className="grid grid-cols-1 gap-2">
-                {([
-                  { value: "copy", label: "Copy exact groupings & pairings", desc: "Same groups, same partners — ideal when partnerships carry over unchanged." },
-                  { value: "4bbb", label: "Re-seed by 4BBB pair standings", desc: "Best pair from the source round goes into Group 1, second pair into Group 2, etc." },
-                  { value: "individual", label: "Re-seed by individual trip standings", desc: "Snake draft by cumulative net score — top and bottom players in the same group for competitive balance." },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setReseedMode(opt.value)}
-                    className={`text-left rounded-lg border px-4 py-3 transition-colors ${
-                      reseedMode === opt.value
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border bg-card text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >
-                    <p className="font-medium text-sm">{opt.label}</p>
-                    <p className="text-xs mt-0.5 opacity-75">{opt.desc}</p>
-                  </button>
-                ))}
-              </div>
+          ) : (
+            /* Preview step */
+            <div className="py-2 space-y-3">
+              {previewFetching ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">Loading preview...</div>
+              ) : previewGroups && previewGroups.length > 0 ? (
+                previewGroups.map((g, gi) => (
+                  <div key={gi} className="rounded-lg border border-border bg-card p-3">
+                    <p className="text-sm font-semibold text-foreground mb-2">{g.name}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {g.players.map((p) => (
+                        <span key={p.userId} className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 text-primary px-2 py-0.5 text-xs">
+                          <span className="font-medium">{p.displayName}</span>
+                          <span className="opacity-60">HC:{p.handicap}</span>
+                          {p.partnerId && <span className="opacity-50 text-[10px]">paired</span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground text-sm">No groups to preview.</div>
+              )}
             </div>
+          )}
 
-            {/* Source round selector (copy + 4bbb) */}
-            {(reseedMode === "copy" || reseedMode === "4bbb") && (
-              <div>
-                <label className="text-sm font-medium text-foreground mb-1 block">
-                  Source Round
-                </label>
-                <Select value={reseedSourceRoundId} onValueChange={setReseedSourceRoundId}>
-                  <SelectTrigger><SelectValue placeholder="Select source round..." /></SelectTrigger>
-                  <SelectContent>
-                    {otherRounds.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">No other rounds in this trip.</div>
-                    ) : (
-                      otherRounds.map((r) => (
-                        <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Group size (4bbb + individual) */}
-            {(reseedMode === "4bbb" || reseedMode === "individual") && (
-              <div>
-                <label className="text-sm font-medium text-foreground mb-1 block">
-                  Players per Group
-                </label>
-                <Select value={reseedGroupSize} onValueChange={setReseedGroupSize}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2">2 players (pairs only)</SelectItem>
-                    <SelectItem value="4">4 players (standard)</SelectItem>
-                    <SelectItem value="6">6 players</SelectItem>
-                    <SelectItem value="8">8 players</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReseedOpen(false)}>Cancel</Button>
-            <Button
-              disabled={
-                (reseedMode !== "individual" && !reseedSourceRoundId) ||
-                copyToRound.isPending || reseedBy4BBB.isPending || reseedByIndividual.isPending
-              }
-              onClick={() => {
-                const srcId = Number(reseedSourceRoundId);
-                const gSize = Number(reseedGroupSize);
-                if (reseedMode === "copy") {
-                  copyToRound.mutate({ sourceRoundId: srcId, targetRoundId: rId, tripId: tId });
-                } else if (reseedMode === "4bbb") {
-                  reseedBy4BBB.mutate({ sourceRoundId: srcId, targetRoundId: rId, tripId: tId, groupSize: gSize });
-                } else {
-                  reseedByIndividual.mutate({ targetRoundId: rId, tripId: tId, groupSize: gSize });
-                }
-              }}
-            >
-              {(copyToRound.isPending || reseedBy4BBB.isPending || reseedByIndividual.isPending)
-                ? "Applying..."
-                : reseedMode === "copy" ? "Copy Groupings" : reseedMode === "4bbb" ? "Re-seed by 4BBB" : "Re-seed by Standings"}
-            </Button>
+            {reseedStep === "configure" ? (
+              <>
+                <Button variant="outline" onClick={() => setReseedOpen(false)}>Cancel</Button>
+                <Button
+                  disabled={(reseedMode !== "individual" && !reseedSourceRoundId)}
+                  onClick={() => {
+                    setReseedPreviewEnabled(true);
+                    setReseedStep("preview");
+                  }}
+                >
+                  Preview
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => { setReseedStep("configure"); setReseedPreviewEnabled(false); }}>← Back</Button>
+                <Button
+                  disabled={previewFetching || copyToRound.isPending || reseedBy4BBB.isPending || reseedByIndividual.isPending}
+                  onClick={() => {
+                    const applyGroupSize = Number(reseedGroupSize);
+                    const applySrcId = Number(reseedSourceRoundId);
+                    if (reseedMode === "copy") {
+                      copyToRound.mutate({ sourceRoundId: applySrcId, targetRoundId: rId, tripId: tId });
+                    } else if (reseedMode === "4bbb") {
+                      reseedBy4BBB.mutate({ sourceRoundId: applySrcId, targetRoundId: rId, tripId: tId, groupSize: applyGroupSize });
+                    } else {
+                      reseedByIndividual.mutate({ targetRoundId: rId, tripId: tId, groupSize: applyGroupSize });
+                    }
+                  }}
+                >
+                  {(copyToRound.isPending || reseedBy4BBB.isPending || reseedByIndividual.isPending)
+                    ? "Applying..."
+                    : reseedMode === "copy" ? "Apply — Copy Groupings" : reseedMode === "4bbb" ? "Apply — Re-seed by 4BBB" : "Apply — Re-seed by Standings"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -885,6 +969,103 @@ export default function AdminGroups() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Admin Per-Player Scorecard Drawer */}
+      <Sheet open={scorecardOpen} onOpenChange={(open) => { setScorecardOpen(open); if (!open) setScorecardPlayer(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-primary" />
+              {scorecardPlayer ? (scorecardPlayer.nickname ?? scorecardPlayer.user?.name ?? `Player ${scorecardPlayer.userId}`) : "Scorecard"}
+            </SheetTitle>
+            <SheetDescription>
+              Full 18-hole scorecard · HC: {scorecardPlayer?.currentHandicap ?? "—"}
+            </SheetDescription>
+          </SheetHeader>
+
+          {!scorecardData ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">Loading scorecard...</div>
+          ) : (
+            <div className="space-y-1">
+              {/* Header row */}
+              <div className="grid grid-cols-[2rem_3rem_3rem_3rem_3rem_3rem_2.5rem] gap-1 text-xs font-semibold text-muted-foreground px-2 pb-1 border-b border-border">
+                <span>Hole</span>
+                <span className="text-center">Par</span>
+                <span className="text-center">SI</span>
+                <span className="text-center">Gross</span>
+                <span className="text-center">Net</span>
+                <span className="text-center">Pts</span>
+                <span className="text-center">Fix</span>
+              </div>
+              {scorecardData.map(({ hole, score }) => (
+                <div
+                  key={hole.id}
+                  className={`grid grid-cols-[2rem_3rem_3rem_3rem_3rem_3rem_2.5rem] gap-1 items-center text-sm px-2 py-1.5 rounded ${
+                    score ? "bg-card" : "bg-muted/30"
+                  }`}
+                >
+                  <span className="font-bold text-foreground">{hole.holeNumber}</span>
+                  <span className="text-center text-muted-foreground">{hole.par}</span>
+                  <span className="text-center text-muted-foreground">{hole.strokeIndex}</span>
+                  {score ? (
+                    <>
+                      <span className={`text-center font-semibold ${
+                        score.grossScore <= hole.par - 2 ? "text-yellow-400" :
+                        score.grossScore === hole.par - 1 ? "text-green-400" :
+                        score.grossScore === hole.par ? "text-foreground" :
+                        "text-red-400"
+                      }`}>{score.grossScore}</span>
+                      <span className="text-center text-muted-foreground">{score.netScore ?? "—"}</span>
+                      <span className={`text-center font-medium ${
+                        (score.stablefordPoints ?? 0) >= 3 ? "text-green-400" :
+                        (score.stablefordPoints ?? 0) === 2 ? "text-foreground" :
+                        "text-muted-foreground"
+                      }`}>{score.stablefordPoints ?? 0}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-center text-muted-foreground/40">—</span>
+                      <span className="text-center text-muted-foreground/40">—</span>
+                      <span className="text-center text-muted-foreground/40">—</span>
+                    </>
+                  )}
+                  <div className="flex justify-center">
+                    <button
+                      title="Correct this score"
+                      className="opacity-60 hover:opacity-100 transition-opacity p-0.5 rounded"
+                      onClick={() => {
+                        if (!scorecardPlayer) return;
+                        setCorrectPlayer(scorecardPlayer);
+                        setCorrectHoleId(hole.id.toString());
+                        setCorrectGross(score?.grossScore?.toString() ?? "");
+                        setCorrectOpen(true);
+                      }}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Totals row */}
+              {(() => {
+                const saved = scorecardData.filter((r) => r.score);
+                const totalGross = saved.reduce((s, r) => s + (r.score?.grossScore ?? 0), 0);
+                const totalPts = saved.reduce((s, r) => s + (r.score?.stablefordPoints ?? 0), 0);
+                return saved.length > 0 ? (
+                  <div className="grid grid-cols-[2rem_3rem_3rem_3rem_3rem_3rem_2.5rem] gap-1 items-center text-sm px-2 py-2 border-t border-border mt-2 font-semibold">
+                    <span className="text-muted-foreground text-xs">Total</span>
+                    <span /><span />
+                    <span className="text-center">{totalGross}</span>
+                    <span />
+                    <span className="text-center text-primary">{totalPts}</span>
+                    <span />
+                  </div>
+                ) : null;
+              })()}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

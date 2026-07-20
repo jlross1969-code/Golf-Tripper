@@ -99,6 +99,9 @@ import {
   copyGroupingsToRound,
   reseedGroupsBy4BBB,
   reseedGroupsByIndividual,
+  previewCopyGroupings,
+  previewReseedBy4BBB,
+  previewReseedByIndividual,
 } from "./db";
 import { TRPCError } from "@trpc/server";
 import { sendPushToTrip } from "./webPush";
@@ -479,19 +482,58 @@ export const appRouter = router({
                 .filter((p) => p.holesPlayed > 0)
                 .sort((a, b) => b.totalStableford - a.totalStableford)
                 .slice(0, 3);
-              const lines = top3.map((p, i) =>
+              const indivLines = top3.map((p, i) =>
                 `${["\ud83e\udd47","\ud83e\udd48","\ud83e\udd49"][i]} ${p.userName ?? "Player"} \u2014 ${p.totalStableford} pts`
               );
-              const body = lines.length > 0
-                ? `Top 3:\n${lines.join("\n")}`
-                : "Scores are in — check the leaderboard!";
+
+              // 4BBB top 3 pairs (when enabled)
+              let fourBBBLines: string[] = [];
+              if (round.fourBBBEnabled) {
+                try {
+                  const groupList = await getGroupsByRound(id);
+                  const courseHoles = await getHolesByCourse(round.courseId);
+                  type PairResult = { teamName: string; totalBestBall: number };
+                  const pairResults: PairResult[] = [];
+                  const seenPairs = new Set<string>();
+                  for (const group of groupList) {
+                    const gPlayers = await getGroupPlayers(group.id);
+                    for (const gp of gPlayers) {
+                      if (!gp.partnerId) continue;
+                      const key = [gp.userId, gp.partnerId].sort().join("-");
+                      if (seenPairs.has(key)) continue;
+                      seenPairs.add(key);
+                      const p1 = scorecard.find((s) => s.userId === gp.userId);
+                      const p2 = scorecard.find((s) => s.userId === gp.partnerId);
+                      if (!p1 || !p2) continue;
+                      let totalBestBall = 0;
+                      for (const hole of courseHoles) {
+                        const s1 = p1.scores.find((s) => s.holeId === hole.id);
+                        const s2 = p2.scores.find((s) => s.holeId === hole.id);
+                        const best = calculate4BBBScore(s1?.netScore ?? null, s2?.netScore ?? null);
+                        if (best !== null) totalBestBall += best;
+                      }
+                      pairResults.push({ teamName: `${p1.userName ?? "P"} & ${p2.userName ?? "P"}`, totalBestBall });
+                    }
+                  }
+                  pairResults.sort((a, b) => a.totalBestBall - b.totalBestBall);
+                  fourBBBLines = pairResults.slice(0, 3).map((r, i) =>
+                    `${["\ud83e\udd47","\ud83e\udd48","\ud83e\udd49"][i]} ${r.teamName} \u2014 ${r.totalBestBall} net`
+                  );
+                } catch { /* ignore 4BBB errors */ }
+              }
+
+              const sections: string[] = [];
+              if (indivLines.length > 0) sections.push(`Individual:\n${indivLines.join("\n")}`);
+              if (fourBBBLines.length > 0) sections.push(`4BBB Pairs:\n${fourBBBLines.join("\n")}`);
+              const body = sections.length > 0 ? sections.join("\n\n") : "Scores are in \u2014 check the leaderboard!";
+
               await createNotification({
                 tripId: round.tripId,
                 message: `${round.name} is complete! ${body}`,
                 type: "round_complete",
               });
               sendPushToTrip(round.tripId, {
-                title: `⛳ ${round.name} Complete!`,
+                title: `\u26f3 ${round.name} Complete!`,
                 body,
                 tag: `round-complete-${id}`,
                 url: `/trip/${round.tripId}/round/${id}/leaderboard`,
@@ -678,6 +720,30 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const count = await reseedGroupsByIndividual(input.targetRoundId, input.tripId, input.groupSize);
         return { groupsCreated: count };
+      }),
+
+    // Admin: preview copy groupings (dry-run, no writes)
+    previewCopy: adminProcedure
+      .input(z.object({ sourceRoundId: z.number(), tripId: z.number() }))
+      .query(async ({ input }) => {
+        const preview = await previewCopyGroupings(input.sourceRoundId, input.tripId);
+        return { groups: preview };
+      }),
+
+    // Admin: preview re-seed by 4BBB (dry-run, no writes)
+    previewBy4BBB: adminProcedure
+      .input(z.object({ sourceRoundId: z.number(), tripId: z.number(), groupSize: z.number().min(2).max(8).optional() }))
+      .query(async ({ input }) => {
+        const preview = await previewReseedBy4BBB(input.sourceRoundId, input.tripId, input.groupSize);
+        return { groups: preview };
+      }),
+
+    // Admin: preview re-seed by individual trip standings (dry-run, no writes)
+    previewByIndividual: adminProcedure
+      .input(z.object({ tripId: z.number(), groupSize: z.number().min(2).max(8).optional() }))
+      .query(async ({ input }) => {
+        const preview = await previewReseedByIndividual(input.tripId, input.groupSize);
+        return { groups: preview };
       }),
 
     // Admin: set tee time and starting hole for a group

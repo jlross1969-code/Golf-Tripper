@@ -357,3 +357,12 @@
 - [x] Backend: groups.reseedByIndividual procedure — re-seed groups by individual net trip ranking (top players together)
 - [x] Frontend: Copy/Re-seed Groupings dialog on AdminGroups page (3 options + preview + confirm)
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Re-seed Preview, 4BBB Notification, Admin Scorecard
+
+- [x] Backend: groups.previewCopy, groups.preview4BBB, groups.previewIndividual dry-run procedures (return proposed groups without writing)
+- [x] Backend: extend round-complete notification to include 4BBB winning pair when fourBBBEnabled
+- [x] Frontend: re-seed preview step in Copy/Re-seed dialog — show proposed groups before committing
+- [x] Backend: admin scorecard query — all 18 holes for a player in a round with hole details
+- [x] Frontend: admin per-player scorecard drawer/page from AdminGroups (read-only + correction pencil per hole)
+- [x] TypeScript check, checkpoint
