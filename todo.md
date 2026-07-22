@@ -489,3 +489,9 @@
 - [x] Frontend: Premium Feature badge/tooltip on Long Drive and Custom Awards in admin settings (Zap icon + "Premium Feature" label)
 - [x] Frontend: AdminPlanManagement — "Simulate Billing Enabled" toggle that temporarily sets BILLING_ENABLED=true in session storage so admins can preview feature gates
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Player Scorecard Drawer on Daily Leaderboard
+
+- [x] Frontend: DailyLeaderboard — clicking a player row on Stroke Play tab opens a bottom sheet/drawer showing their hole-by-hole scorecard (hole, par, SI, gross, net, Stableford pts) using the existing scores.getPlayerScorecard tRPC procedure
+- [x] Frontend: Scorecard drawer shows totals row (gross/net/pts), color-codes scores (eagle/birdie/par/bogey/double+), and handles holes not yet played
+- [x] TypeScript check, tests, checkpoint

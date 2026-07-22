@@ -1,13 +1,19 @@
 import { trpc } from "@/lib/trpc";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Link, useParams } from "wouter";
-import { ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download, Target, Star, Share2 } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Link, useParams } from "wouter";
+import {
+  ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download,
+  Target, Star, Share2, ChevronRight,
+} from "lucide-react";
 import AchievementAlert from "@/components/AchievementAlert";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function positionBadge(pos: number) {
   if (pos === 1) return <span className="text-yellow-400 font-bold text-lg">🥇</span>;
@@ -32,6 +38,120 @@ function PlayerAvatar({ name, photoUrl }: { name: string | null; photoUrl?: stri
     </Avatar>
   );
 }
+
+/** Returns a Tailwind class for the score cell background based on score vs par */
+function scoreCellClass(gross: number | null, par: number | null): string {
+  if (gross === null || par === null) return "text-muted-foreground/40";
+  const diff = gross - par;
+  if (diff <= -2) return "bg-yellow-400/20 text-yellow-300 font-bold"; // eagle or better
+  if (diff === -1) return "bg-primary/20 text-primary font-semibold";  // birdie
+  if (diff === 0) return "text-foreground";                             // par
+  if (diff === 1) return "text-rose-400";                               // bogey
+  return "text-rose-600 font-semibold";                                 // double+
+}
+
+// ─── Scorecard Drawer ─────────────────────────────────────────────────────────
+
+interface ScorecardDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  roundId: number;
+  userId: number;
+  playerName: string | null;
+  handicap: number;
+}
+
+function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap }: ScorecardDrawerProps) {
+  const { data, isLoading } = trpc.scores.getPlayerScorecard.useQuery(
+    { roundId, userId },
+    { enabled: open && userId > 0 }
+  );
+
+  const played = data?.filter((r) => r.score !== null) ?? [];
+  const totalGross = played.reduce((s, r) => s + (r.score?.grossScore ?? 0), 0);
+  const totalNet = played.reduce((s, r) => s + (r.score?.netScore ?? 0), 0);
+  const totalPts = played.reduce((s, r) => s + (r.score?.stablefordPoints ?? 0), 0);
+  const totalPar = played.reduce((s, r) => s + (r.hole.par ?? 0), 0);
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl px-0">
+        <SheetHeader className="px-5 pb-3 border-b border-border">
+          <SheetTitle className="flex items-center gap-2">
+            <span>{playerName ?? "Player"}</span>
+            <Badge variant="secondary" className="text-xs font-normal">HCP {handicap}</Badge>
+          </SheetTitle>
+        </SheetHeader>
+
+        {isLoading ? (
+          <div className="px-5 py-4 space-y-2">
+            {[...Array(9)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded" />)}
+          </div>
+        ) : !data || data.length === 0 ? (
+          <div className="px-5 py-8 text-center text-muted-foreground text-sm">No scorecard data available.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[420px]">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  <th className="text-left px-4 py-2 font-medium text-muted-foreground w-10">Hole</th>
+                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-10">Par</th>
+                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-10">SI</th>
+                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-14">Gross</th>
+                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-14">Net</th>
+                  <th className="text-center px-4 py-2 font-medium text-muted-foreground w-14">Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((row) => {
+                  const { hole, score } = row;
+                  const gross = score?.grossScore ?? null;
+                  const net = score?.netScore ?? null;
+                  const pts = score?.stablefordPoints ?? null;
+                  return (
+                    <tr key={hole.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-2.5 font-semibold text-foreground">{hole.holeNumber}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{hole.par}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{hole.strokeIndex}</td>
+                      <td className={`px-2 py-2.5 text-center rounded ${scoreCellClass(gross, hole.par)}`}>
+                        {gross !== null ? gross : <span className="text-muted-foreground/30">—</span>}
+                      </td>
+                      <td className="px-2 py-2.5 text-center text-foreground/80">
+                        {net !== null ? net : <span className="text-muted-foreground/30">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-center font-semibold text-primary">
+                        {pts !== null ? pts : <span className="text-muted-foreground/30">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {played.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/40 font-semibold">
+                    <td className="px-4 py-2.5 text-foreground">Total</td>
+                    <td className="px-2 py-2.5 text-center text-muted-foreground">{totalPar}</td>
+                    <td className="px-2 py-2.5" />
+                    <td className="px-2 py-2.5 text-center text-foreground">{totalGross}</td>
+                    <td className="px-2 py-2.5 text-center text-foreground">{totalNet}</td>
+                    <td className="px-4 py-2.5 text-center text-primary">{totalPts}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+            {played.length < (data?.length ?? 0) && (
+              <p className="text-xs text-muted-foreground text-center py-3">
+                {played.length} of {data?.length} holes played
+              </p>
+            )}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ─── Award display ────────────────────────────────────────────────────────────
 
 const POSITION_LABELS: Record<string, string> = {
   top1: "1st 🥇", top2: "2nd 🥈", top3: "3rd 🥉", top4: "4th", top5: "5th", last: "Last 🐢",
@@ -68,6 +188,8 @@ function AwardDisplayCard({ award }: { award: { id: number; name: string; descri
   );
 }
 
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function DailyLeaderboard() {
   const { roundId } = useParams<{ roundId: string }>();
   const id = Number(roundId);
@@ -81,9 +203,19 @@ export default function DailyLeaderboard() {
     { tripId },
     { enabled: tripId > 0, refetchInterval: 30000 }
   );
-  // Awards for this specific round (daily scope) or overall
   const roundAwards = awardsData?.filter((a) => a.scope === "daily" && a.roundId === id) ?? [];
   const overallAwards = awardsData?.filter((a) => a.scope === "overall") ?? [];
+
+  // Scorecard drawer state
+  const [drawerPlayer, setDrawerPlayer] = useState<{
+    userId: number;
+    userName: string | null;
+    handicap: number;
+  } | null>(null);
+
+  function openScorecard(userId: number, userName: string | null, handicap: number) {
+    setDrawerPlayer({ userId, userName, handicap });
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -152,6 +284,7 @@ export default function DailyLeaderboard() {
             {/* Stroke Play Tab */}
             {data.round.strokePlayEnabled && (
               <TabsContent value="stroke">
+                <p className="text-xs text-muted-foreground mb-3 text-center">Tap a player to see their scorecard</p>
                 <div className="space-y-2">
                   {data.strokePlay.length === 0 ? (
                     <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">
@@ -161,7 +294,12 @@ export default function DailyLeaderboard() {
                     data.strokePlay.map((p) => {
                       const ach = (p as any).achievements as { hio: number; eagle: number; birdie: number } | undefined;
                       return (
-                        <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                        <button
+                          key={p.userId}
+                          type="button"
+                          className="w-full text-left bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3 hover:border-primary/50 hover:bg-accent transition-colors cursor-pointer active:scale-[0.99]"
+                          onClick={() => openScorecard(p.userId, p.userName, p.handicap)}
+                        >
                           <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
                           <PlayerAvatar name={p.userName} photoUrl={(p as any).photoUrl} />
                           <div className="flex-1 min-w-0">
@@ -173,11 +311,14 @@ export default function DailyLeaderboard() {
                             </div>
                             <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
-                            <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                          <div className="text-right flex items-center gap-2">
+                            <div>
+                              <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
+                              <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
                           </div>
-                        </div>
+                        </button>
                       );
                     })
                   )}
@@ -238,6 +379,7 @@ export default function DailyLeaderboard() {
                 </div>
               </TabsContent>
             )}
+
             {/* Highlights Tab */}
             <TabsContent value="highlights">
               <div className="space-y-6">
@@ -250,16 +392,16 @@ export default function DailyLeaderboard() {
                     onClick={() => {
                       const top3 = data.strokePlay.slice(0, 3);
                       const pairs = data.fourBBB.slice(0, 3);
-                      const medals = ["\uD83E\uDD47", "\uD83E\uDD48", "\uD83E\uDD49"];
-                      let text = `\uD83C\uDFCC\uFE0F ${data.round.name} \u2014 Highlights\n\n`;
-                      text += "\uD83C\uDFC6 Top 3 Individual:\n";
+                      const medals = ["🥇", "🥈", "🥉"];
+                      let text = `🏌️ ${data.round.name} — Highlights\n\n`;
+                      text += "🏆 Top 3 Individual:\n";
                       top3.forEach((p, i) => {
-                        text += `${medals[i]} ${p.userName ?? "Unknown"} \u2014 ${p.totalNet} net\n`;
+                        text += `${medals[i]} ${p.userName ?? "Unknown"} — ${p.totalNet} net\n`;
                       });
                       if (data.round.fourBBBEnabled && pairs.length > 0) {
-                        text += "\n\uD83E\uDDD1\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1 Top 3 Pairs (4BBB):\n";
+                        text += "\n🧑‍🤝‍🧑 Top 3 Pairs (4BBB):\n";
                         pairs.forEach((t, i) => {
-                          text += `${medals[i]} ${t.teamName} \u2014 ${t.totalBestBall} best ball\n`;
+                          text += `${medals[i]} ${t.teamName} — ${t.totalBestBall} best ball\n`;
                         });
                       }
                       if (navigator.share) {
@@ -275,6 +417,7 @@ export default function DailyLeaderboard() {
                     Share
                   </Button>
                 </div>
+
                 {/* Top 3 Individual */}
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
@@ -287,18 +430,26 @@ export default function DailyLeaderboard() {
                   ) : (
                     <div className="space-y-2">
                       {data.strokePlay.slice(0, 3).map((p) => (
-                        <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                        <button
+                          key={p.userId}
+                          type="button"
+                          className="w-full text-left bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3 hover:border-primary/50 hover:bg-accent transition-colors cursor-pointer"
+                          onClick={() => openScorecard(p.userId, p.userName, p.handicap)}
+                        >
                           <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
                           <PlayerAvatar name={p.userName} photoUrl={(p as any).photoUrl} />
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
                             <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
-                            <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                          <div className="text-right flex items-center gap-2">
+                            <div>
+                              <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
+                              <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
                           </div>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -354,7 +505,7 @@ export default function DailyLeaderboard() {
                   </div>
                 )}
 
-                {/* Overall Trip Awards (shown on every daily leaderboard for reference) */}
+                {/* Overall Trip Awards */}
                 {overallAwards.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
@@ -373,6 +524,18 @@ export default function DailyLeaderboard() {
           </Tabs>
         )}
       </div>
+
+      {/* Scorecard Drawer */}
+      {drawerPlayer && (
+        <ScorecardDrawer
+          open={drawerPlayer !== null}
+          onClose={() => setDrawerPlayer(null)}
+          roundId={id}
+          userId={drawerPlayer.userId}
+          playerName={drawerPlayer.userName}
+          handicap={drawerPlayer.handicap}
+        />
+      )}
     </div>
   );
 }
