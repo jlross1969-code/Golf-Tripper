@@ -1912,5 +1912,86 @@ export const appRouter = router({
         return enriched;
       }),
   }),
+
+  // ─── Plans / Billing ────────────────────────────────────────────────────────
+  // These procedures expose plan information to the frontend.
+  // All gates currently return 'open' (BILLING_ENABLED = false in shared/plans.ts).
+  // When billing goes live, update shared/plans.ts and wire Stripe webhooks.
+  plans: router({
+    // Returns the current user's plan tier and subscription status.
+    getMyPlan: protectedProcedure.query(async ({ ctx }) => {
+      const { getDb } = await import("./db");
+      const database = await getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { users: usersTable } = await import("../drizzle/schema");
+      const { eq: eqOp } = await import("drizzle-orm");
+      const user = await database.select({
+        planTier: usersTable.planTier,
+        subscriptionStatus: usersTable.subscriptionStatus,
+      }).from(usersTable).where(eqOp(usersTable.id, ctx.user.id)).limit(1);
+      return user[0] ?? { planTier: "free" as const, subscriptionStatus: "none" as const };
+    }),
+
+    // Returns the plan tier for a specific trip.
+    getTripPlan: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const database = await getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { trips: tripsTable } = await import("../drizzle/schema");
+        const { eq: eqOp } = await import("drizzle-orm");
+        const trip = await database.select({
+          tripPlanTier: tripsTable.tripPlanTier,
+          planActivatedAt: tripsTable.planActivatedAt,
+        }).from(tripsTable).where(eqOp(tripsTable.id, input.tripId)).limit(1);
+        return trip[0] ?? { tripPlanTier: "free" as const, planActivatedAt: null };
+      }),
+
+    // Admin-only: manually override a trip's plan tier (for testing / comps).
+    adminSetTripPlan: protectedProcedure
+      .input(z.object({
+        tripId: z.number(),
+        tier: z.enum(["free", "tripPass", "clubPlan"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Admin only" });
+        }
+        const { getDb } = await import("./db");
+        const database = await getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { trips: tripsTable } = await import("../drizzle/schema");
+        const { eq: eqOp } = await import("drizzle-orm");
+        await database.update(tripsTable)
+          .set({
+            tripPlanTier: input.tier,
+            planActivatedAt: input.tier !== "free" ? new Date() : null,
+          })
+          .where(eqOp(tripsTable.id, input.tripId));
+        return { success: true };
+      }),
+
+    // Admin-only: manually override a user's plan tier (for testing / gifting).
+    adminSetUserPlan: protectedProcedure
+      .input(z.object({
+        userId: z.number(),
+        tier: z.enum(["free", "playerPremium", "clubPlan"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Admin only" });
+        }
+        const { getDb } = await import("./db");
+        const database = await getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        const { users: usersTable } = await import("../drizzle/schema");
+        const { eq: eqOp } = await import("drizzle-orm");
+        await database.update(usersTable)
+          .set({ planTier: input.tier })
+          .where(eqOp(usersTable.id, input.userId));
+        return { success: true };
+      }),
+  }),
 });
 export type AppRouter = typeof appRouter;

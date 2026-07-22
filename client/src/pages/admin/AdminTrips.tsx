@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "wouter";
-import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle, Copy, MapPin, Link2Off } from "lucide-react";
+import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle, Copy, MapPin, Link2Off, CreditCard } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -161,11 +161,18 @@ export default function AdminTrips() {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-foreground">{isGlobalAdmin ? "All Trips" : "Your Trips"}</h2>
           {isGlobalAdmin && (
-          <Link href="/admin/courses">
-            <Button variant="outline" size="sm" className="gap-2">
-              <Settings className="w-4 h-4" /> Manage Courses
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/admin/plans">
+              <Button variant="outline" size="sm" className="gap-2">
+                <CreditCard className="w-4 h-4" /> Plans
+              </Button>
+            </Link>
+            <Link href="/admin/courses">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Settings className="w-4 h-4" /> Manage Courses
+              </Button>
+            </Link>
+          </div>
           )}
         </div>
 

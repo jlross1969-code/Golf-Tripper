@@ -460,3 +460,25 @@
 - [x] Backend: longDrive.submitEntry rejects if calculated drive distance does not beat the current round leader's best drive (return descriptive error with current leader's distance)
 - [x] Frontend: LongDriveResults entry form — add "Must be on the fairway" rule notice; show friendly toast when server rejects a non-beating drive (include current leader distance in message)
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Billing Scaffold (Future Payment Ready)
+
+### DB Schema
+- [x] Add `planTier` enum to users table: free | playerPremium | clubPlan
+- [x] Add `subscriptionStatus` to users: active | trialing | cancelled | none
+- [x] Add `stripeCustomerId` (nullable) to users table
+- [x] Add `planTier` to trips table: free | tripPass | clubPlan
+- [x] Add `planActivatedAt` (nullable timestamp) to trips table
+- [x] Apply DB migrations
+
+### Backend
+- [x] shared/plans.ts — BILLING_ENABLED flag, plan tier enums, feature-gate helpers (canTripAccessFeature, canUserAccessFeature), upgrade prompt copy, FREE_PLAYER_LIMIT constant
+- [x] Backend: plans router — getMyPlan, getTripPlan, adminSetTripPlan, adminSetUserPlan procedures
+
+### Frontend
+- [x] PlanBadge component (TripPlanBadge + UserPlanBadge)
+- [x] UpgradePrompt component (renders nothing when BILLING_ENABLED = false)
+- [x] AdminPlanManagement page — list all trips + users with current plan tier, dropdown to override tier, feature access reference table
+- [x] Plans link in AdminTrips header (global admin only)
+
+- [x] TypeScript check, tests, checkpoint

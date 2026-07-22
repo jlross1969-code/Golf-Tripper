@@ -18,6 +18,18 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  // ─── Billing ──────────────────────────────────────────────────────────────
+  // planTier controls which features the user can access across all trips.
+  // All users default to 'free'. Upgrade to 'playerPremium' or 'clubPlan'
+  // when a Stripe subscription is confirmed via webhook.
+  planTier: mysqlEnum("planTier", ["free", "playerPremium", "clubPlan"]).default("free").notNull(),
+  // subscriptionStatus mirrors the Stripe subscription state.
+  // 'none' = never subscribed; 'active' = paid; 'trialing' = trial period;
+  // 'cancelled' = lapsed. Gate checks use planTier, not this field directly.
+  subscriptionStatus: mysqlEnum("subscriptionStatus", ["none", "active", "trialing", "cancelled"]).default("none").notNull(),
+  // Stripe customer ID — set when the user first initiates a payment.
+  stripeCustomerId: varchar("stripeCustomerId", { length: 64 }),
+  // ──────────────────────────────────────────────────────────────────────────
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -63,6 +75,16 @@ export const trips = mysqlTable("trips", {
   description: text("description"),
   shareToken: varchar("shareToken", { length: 64 }),
   createdBy: int("createdBy").notNull(),
+  // ─── Billing ──────────────────────────────────────────────────────────────
+  // planTier for this trip. 'free' = up to 8 players, core features only.
+  // 'tripPass' = all premium features unlocked for this trip.
+  // 'clubPlan' = inherited from organiser's club plan (no per-trip charge).
+  tripPlanTier: mysqlEnum("tripPlanTier", ["free", "tripPass", "clubPlan"]).default("free").notNull(),
+  // Set when the trip is upgraded — used for audit and expiry logic.
+  planActivatedAt: timestamp("planActivatedAt"),
+  // Stripe PaymentIntent ID for the trip pass purchase.
+  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 128 }),
+  // ──────────────────────────────────────────────────────────────────────────
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

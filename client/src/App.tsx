@@ -32,6 +32,7 @@ import MyProfile from "./pages/MyProfile";
 import NTPResults from "./pages/NTPResults";
 import LongDriveResults from "./pages/LongDriveResults";
 import AdminLongDrive from "./pages/admin/AdminLongDrive";
+import AdminPlanManagement from "./pages/admin/AdminPlanManagement";
 import GroupPairing from "./pages/GroupPairing";
 import TeeSheet from "./pages/TeeSheet";
 
@@ -66,6 +67,7 @@ function Router() {
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />
+      <Route path="/admin/plans" component={AdminPlanManagement} />
       <Route path="/join/:token" component={JoinTrip} />
       <Route path="/join-trip/:tripId" component={JoinTripShare} />
       <Route path="/404" component={NotFound} />
