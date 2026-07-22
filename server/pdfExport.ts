@@ -379,3 +379,202 @@ export async function generateTeeSheetPDF(data: TeeSheetData): Promise<Buffer> {
 
   return bufferFromDoc(doc);
 }
+
+// ─── Round Summary PDF ────────────────────────────────────────────────────────
+
+export interface RoundSummaryHole {
+  holeNumber: number;
+  par: number;
+  strokeIndex: number;
+  grossScore: number | null;
+  netScore: number | null;
+  stablefordPoints: number | null;
+  mercyCapped: boolean;
+}
+
+export interface RoundSummaryPlayer {
+  name: string;
+  handicap: number;
+  position: number;
+  totalGross: number;
+  totalNet: number;
+  totalStableford: number;
+  holesPlayed: number;
+  holes: RoundSummaryHole[];
+  achievements: { type: string; holeNumber: number }[];
+}
+
+export interface RoundSummaryData {
+  tripName: string;
+  roundName: string;
+  courseName: string;
+  roundDate: string;
+  scoringMode: string;
+  mercyRuleEnabled: boolean;
+  mercyRuleStrokes: number;
+  players: RoundSummaryPlayer[];
+}
+
+export async function generateRoundSummaryPDF(data: RoundSummaryData): Promise<Buffer> {
+  const doc = new PDFDocument({ margin: 40, size: "A4", layout: "landscape" });
+
+  // ── Header ──
+  doc.rect(0, 0, doc.page.width, 70).fill(GREEN);
+  doc.fillColor(WHITE).fontSize(22).font("Helvetica-Bold").text(data.tripName, 40, 14);
+  doc.fontSize(13).font("Helvetica").text(
+    `${data.roundName}  •  ${data.courseName}  •  ${data.roundDate}`,
+    40, 40
+  );
+  doc.fontSize(10).text(
+    `Format: ${data.scoringMode}${data.mercyRuleEnabled ? `  •  Mercy Rule: max par+${data.mercyRuleStrokes}` : ""}`,
+    40, 56
+  );
+
+  let y = 90;
+  const pageW = doc.page.width;
+  const contentW = pageW - 80;
+
+  // ── Leaderboard summary table ──
+  doc.fillColor(GREEN).fontSize(14).font("Helvetica-Bold").text("Leaderboard", 40, y);
+  y += 20;
+
+  const lbCols = [40, 60, 200, 290, 370, 450, 530];
+  const lbHeaders = ["Pos", "Player", "HCP", "Gross", "Net", "Pts", "Holes"];
+  doc.rect(40, y, contentW, 20).fill(DARK_GREY);
+  lbHeaders.forEach((h, i) => {
+    doc.fillColor(WHITE).fontSize(9).font("Helvetica-Bold")
+      .text(h, lbCols[i], y + 5, { width: i === 1 ? 135 : 80, align: i === 1 ? "left" : "center" });
+  });
+  y += 22;
+
+  for (const p of data.players) {
+    if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
+    const bg = data.players.indexOf(p) % 2 === 0 ? WHITE : LIGHT_GREY;
+    doc.rect(40, y, contentW, 18).fill(bg);
+    const achLabel = p.achievements.length > 0
+      ? "  " + p.achievements.map((a) => {
+          if (a.type === "hole_in_one") return `HIO H${a.holeNumber}`;
+          if (a.type === "eagle") return `Eagle H${a.holeNumber}`;
+          return `Birdie H${a.holeNumber}`;
+        }).join(", ")
+      : "";
+    doc.fillColor(DARK_GREY).fontSize(9).font("Helvetica")
+      .text(String(p.position), lbCols[0], y + 4, { width: 18, align: "center" })
+      .text(`${p.name}${achLabel}`, lbCols[1], y + 4, { width: 135 })
+      .text(String(p.handicap), lbCols[2], y + 4, { width: 80, align: "center" })
+      .text(String(p.totalGross), lbCols[3], y + 4, { width: 80, align: "center" })
+      .text(String(p.totalNet), lbCols[4], y + 4, { width: 80, align: "center" })
+      .text(String(p.totalStableford), lbCols[5], y + 4, { width: 80, align: "center" })
+      .text(String(p.holesPlayed), lbCols[6], y + 4, { width: 80, align: "center" });
+    y += 18;
+  }
+  y += 20;
+
+  // ── Per-player hole-by-hole scorecards ──
+  for (const player of data.players) {
+    if (y > doc.page.height - 160) { doc.addPage(); y = 40; }
+
+    // Player header
+    doc.rect(40, y, contentW, 22).fill(LIGHT_GREEN);
+    doc.fillColor(GREEN).fontSize(11).font("Helvetica-Bold")
+      .text(`${player.name}  (HCP ${player.handicap})  —  Pos: ${player.position}  |  Gross: ${player.totalGross}  Net: ${player.totalNet}  Pts: ${player.totalStableford}`, 48, y + 6, { width: contentW - 16 });
+    y += 24;
+
+    // Column headers
+    const cols = [40, 90, 140, 190, 240, 295, 350];
+    const headers = ["Hole", "Par", "SI", "Gross", "Net", "Pts", ""];
+    doc.rect(40, y, contentW, 18).fill(DARK_GREY);
+    headers.forEach((h, i) => {
+      doc.fillColor(WHITE).fontSize(9).font("Helvetica-Bold")
+        .text(h, cols[i], y + 4, { width: 48, align: "center" });
+    });
+    y += 20;
+
+    // Front 9
+    const front9 = player.holes.filter((h) => h.holeNumber <= 9);
+    const back9 = player.holes.filter((h) => h.holeNumber > 9);
+
+    const renderHoles = (holes: RoundSummaryHole[], startY: number) => {
+      let hy = startY;
+      holes.forEach((hole, idx) => {
+        const bg = idx % 2 === 0 ? WHITE : LIGHT_GREY;
+        doc.rect(40, hy, contentW, 16).fill(bg);
+        const grossLabel = hole.grossScore !== null
+          ? `${hole.grossScore}${hole.mercyCapped ? " M" : ""}`
+          : "-";
+        const values = [
+          hole.holeNumber,
+          hole.par,
+          hole.strokeIndex,
+          grossLabel,
+          hole.netScore !== null ? hole.netScore : "-",
+          hole.stablefordPoints !== null ? hole.stablefordPoints : "-",
+        ];
+        values.forEach((v, i) => {
+          doc.fillColor(DARK_GREY).fontSize(9).font("Helvetica")
+            .text(String(v), cols[i], hy + 3, { width: 48, align: "center" });
+        });
+        hy += 16;
+      });
+      return hy;
+    };
+
+    y = renderHoles(front9, y);
+
+    // Front 9 subtotals
+    const f9Gross = front9.reduce((s, h) => s + (h.grossScore ?? 0), 0);
+    const f9Net = front9.reduce((s, h) => s + (h.netScore ?? 0), 0);
+    const f9Pts = front9.reduce((s, h) => s + (h.stablefordPoints ?? 0), 0);
+    const f9Par = front9.reduce((s, h) => s + h.par, 0);
+    doc.rect(40, y, contentW, 18).fill(LIGHT_GREEN);
+    doc.fillColor(GREEN).fontSize(9).font("Helvetica-Bold")
+      .text("OUT", cols[0], y + 4, { width: 48, align: "center" })
+      .text(String(f9Par), cols[1], y + 4, { width: 48, align: "center" })
+      .text("", cols[2], y + 4, { width: 48, align: "center" })
+      .text(String(f9Gross), cols[3], y + 4, { width: 48, align: "center" })
+      .text(String(f9Net), cols[4], y + 4, { width: 48, align: "center" })
+      .text(String(f9Pts), cols[5], y + 4, { width: 48, align: "center" });
+    y += 20;
+
+    y = renderHoles(back9, y);
+
+    // Back 9 + totals
+    const b9Gross = back9.reduce((s, h) => s + (h.grossScore ?? 0), 0);
+    const b9Net = back9.reduce((s, h) => s + (h.netScore ?? 0), 0);
+    const b9Pts = back9.reduce((s, h) => s + (h.stablefordPoints ?? 0), 0);
+    const b9Par = back9.reduce((s, h) => s + h.par, 0);
+    const totalPar = f9Par + b9Par;
+    const totalGross = f9Gross + b9Gross;
+    const totalNet = f9Net + b9Net;
+    const totalPts = f9Pts + b9Pts;
+
+    doc.rect(40, y, contentW, 18).fill(LIGHT_GREEN);
+    doc.fillColor(GREEN).fontSize(9).font("Helvetica-Bold")
+      .text("IN", cols[0], y + 4, { width: 48, align: "center" })
+      .text(String(b9Par), cols[1], y + 4, { width: 48, align: "center" })
+      .text("", cols[2], y + 4, { width: 48, align: "center" })
+      .text(String(b9Gross), cols[3], y + 4, { width: 48, align: "center" })
+      .text(String(b9Net), cols[4], y + 4, { width: 48, align: "center" })
+      .text(String(b9Pts), cols[5], y + 4, { width: 48, align: "center" });
+    y += 20;
+
+    doc.rect(40, y, contentW, 20).fill(GREEN);
+    doc.fillColor(WHITE).fontSize(10).font("Helvetica-Bold")
+      .text("TOTAL", cols[0], y + 5, { width: 48, align: "center" })
+      .text(String(totalPar), cols[1], y + 5, { width: 48, align: "center" })
+      .text("", cols[2], y + 5, { width: 48, align: "center" })
+      .text(String(totalGross), cols[3], y + 5, { width: 48, align: "center" })
+      .text(String(totalNet), cols[4], y + 5, { width: 48, align: "center" })
+      .text(String(totalPts), cols[5], y + 5, { width: 48, align: "center" });
+    y += 30;
+  }
+
+  // ── Footer ──
+  doc.fontSize(8).fillColor(MID_GREY).font("Helvetica")
+    .text(`Generated by Golf Trip App  •  ${new Date().toLocaleDateString()}  •  M = Score capped by mercy rule`, 40, doc.page.height - 30, {
+      align: "center",
+      width: contentW,
+    });
+
+  return bufferFromDoc(doc);
+}

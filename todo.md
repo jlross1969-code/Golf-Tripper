@@ -529,3 +529,11 @@
 - [x] Frontend: AdminRoundSettings — mercy rule toggle + stroke adjuster (min 4, max 6) in round settings
 - [x] Backend: scores.submit — apply mercy rule cap (par + mercyRuleStrokes) to grossScore before saving when mercyRuleEnabled
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Mercy Indicator, Stroke Count, Round PDF
+
+- [x] Frontend: DailyLeaderboard — show a small asterisk (*) or amber "M" badge next to any score that was mercy-capped (requires mercyCapped flag on scorecard data)
+- [x] Backend: getRoundScorecard — add mercyCapped boolean per score so the leaderboard can detect capped scores
+- [x] Frontend: ScoreEntry — show total gross stroke count right next to the vs-par badge (e.g. "+3 · 39 shots")
+- [x] Backend + Frontend: Round summary PDF — leaderboard table + per-player hole-by-hole scorecard with mercy M marker, downloadable from leaderboard page
+- [x] TypeScript check, tests, checkpoint

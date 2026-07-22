@@ -974,6 +974,7 @@ export const appRouter = router({
           grossScore: effectiveGross,
           netScore,
           stablefordPoints,
+          mercyCapped: effectiveGross !== input.grossScore,
         });
 
         // Detect achievement (use original gross so eagles/HIO aren't suppressed)
@@ -1300,6 +1301,7 @@ export const appRouter = router({
         const strokePlayWithAch = strokePlay.map((p) => ({
           ...p,
           achievements: achievementCounts[p.userId] ?? { hio: 0, eagle: 0, birdie: 0 },
+          hasMercyCappedScore: p.scores.some((s) => s.mercyCapped),
         }));
 
         return { round, trip, strokePlay: strokePlayWithAch, fourBBB: fourBBBResults, skins: skinsResults, effectiveBaseline };

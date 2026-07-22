@@ -108,13 +108,21 @@ function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap 
                   const gross = score?.grossScore ?? null;
                   const net = score?.netScore ?? null;
                   const pts = score?.stablefordPoints ?? null;
+                  const capped = score?.mercyCapped ?? false;
                   return (
                     <tr key={hole.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-2.5 font-semibold text-foreground">{hole.holeNumber}</td>
                       <td className="px-2 py-2.5 text-center text-muted-foreground">{hole.par}</td>
                       <td className="px-2 py-2.5 text-center text-muted-foreground">{hole.strokeIndex}</td>
                       <td className={`px-2 py-2.5 text-center rounded ${scoreCellClass(gross, hole.par)}`}>
-                        {gross !== null ? gross : <span className="text-muted-foreground/30">—</span>}
+                        {gross !== null ? (
+                          <span className="inline-flex items-center gap-0.5">
+                            {gross}
+                            {capped && (
+                              <span className="text-amber-400 font-bold text-[10px] leading-none" title="Score capped by mercy rule">M</span>
+                            )}
+                          </span>
+                        ) : <span className="text-muted-foreground/30">—</span>}
                       </td>
                       <td className="px-2 py-2.5 text-center text-foreground/80">
                         {net !== null ? net : <span className="text-muted-foreground/30">—</span>}
@@ -238,12 +246,20 @@ export default function DailyLeaderboard() {
               NTP
             </Button>
           </Link>
-          <a href={`/api/pdf/scorecard/${id}`} target="_blank" rel="noopener noreferrer">
-            <Button variant="outline" size="sm" className="gap-2">
-              <Download className="w-3 h-3" />
-              PDF
-            </Button>
-          </a>
+          <div className="flex gap-1">
+            <a href={`/api/pdf/scorecard/${id}`} target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" size="sm" className="gap-2 text-xs">
+                <Download className="w-3 h-3" />
+                Scorecard
+              </Button>
+            </a>
+            <a href={`/api/pdf/round-summary/${id}`} target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" size="sm" className="gap-2 text-xs">
+                <Download className="w-3 h-3" />
+                Summary
+              </Button>
+            </a>
+          </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-2">
             <RefreshCw className={`w-3 h-3 ${isFetching ? "animate-spin" : ""}`} />
             Refresh
@@ -306,8 +322,11 @@ export default function DailyLeaderboard() {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
                               {ach && ach.hio > 0 && <span className="text-xs bg-yellow-400/20 text-yellow-400 px-1.5 py-0.5 rounded-full font-bold">🕳️ {ach.hio}</span>}
-                              {ach && ach.eagle > 0 && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">🦅 {ach.eagle}</span>}
+                              {ach && ach.eagle > 0 && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">🦥 {ach.eagle}</span>}
                               {ach && ach.birdie > 0 && <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">🐦 {ach.birdie}</span>}
+                              {(p as any).hasMercyCappedScore && (
+                                <span className="text-[10px] bg-amber-400/15 text-amber-400 border border-amber-400/30 px-1.5 py-0.5 rounded-full font-semibold" title="One or more scores capped by mercy rule">M</span>
+                              )}
                             </div>
                             <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
                           </div>

@@ -794,6 +794,11 @@ export default function ScoreEntry() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {totals.shots > 0 && (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded bg-muted text-foreground/70">
+                          {totals.shots}
+                        </span>
+                      )}
                       {scoreToParLabel !== null && (
                         <span className={`text-xs font-bold px-2 py-0.5 rounded bg-muted ${scoreToParColor}`}>
                           {scoreToParLabel}

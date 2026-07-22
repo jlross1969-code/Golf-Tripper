@@ -184,6 +184,7 @@ export const scores = mysqlTable("scores", {
   grossScore: int("grossScore").notNull(),
   netScore: int("netScore").notNull(),
   stablefordPoints: int("stablefordPoints").notNull(),
+  mercyCapped: boolean("mercyCapped").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

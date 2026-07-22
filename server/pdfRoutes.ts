@@ -1,13 +1,15 @@
 import { Express, Request, Response } from "express";
-import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer } from "./pdfExport";
+import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
 import {
   getAchievementsByTrip,
+  getAchievementsByRound,
   getGroupPlayers,
   getGroupsByRound,
   getHolesByCourse,
   getRound,
   getRoundsByTrip,
   getRoundScorecard,
+  getScoresByRoundAndUser,
   getTrip,
   getTripPlayers,
 } from "./db";
@@ -140,6 +142,104 @@ export function registerPdfRoutes(app: Express) {
     } catch (err) {
       console.error("[PDF] Tee sheet error:", err);
       res.status(500).json({ error: "Failed to generate tee sheet PDF" });
+    }
+  });
+
+  // ── Round Summary PDF ─────────────────────────────────────────────────────────
+  // GET /api/pdf/round-summary/:roundId
+  app.get("/api/pdf/round-summary/:roundId", async (req: Request, res: Response) => {
+    try {
+      const roundId = parseInt(req.params.roundId);
+      if (isNaN(roundId)) {
+        res.status(400).json({ error: "Invalid roundId" });
+        return;
+      }
+
+      const round = await getRound(roundId);
+      if (!round) {
+        res.status(404).json({ error: "Round not found" });
+        return;
+      }
+
+      const trip = await getTrip(round.tripId);
+      if (!trip) {
+        res.status(404).json({ error: "Trip not found" });
+        return;
+      }
+
+      const holes = await getHolesByCourse(round.courseId);
+      const scorecard = await getRoundScorecard(roundId);
+      const roundAchievements = await getAchievementsByRound(roundId);
+
+      // Build achievement map: userId -> [{type, holeNumber}]
+      const achMap = new Map<number, { type: string; holeNumber: number }[]>();
+      for (const a of roundAchievements) {
+        if (!achMap.has(a.userId)) achMap.set(a.userId, []);
+        achMap.get(a.userId)!.push({ type: a.type, holeNumber: 0 });
+      }
+
+      // Sort by net score ascending (Stableford: totalStableford desc)
+      const sorted = [...scorecard]
+        .filter((p) => p.holesPlayed > 0)
+        .sort((a, b) => a.totalNet - b.totalNet);
+
+      const players = await Promise.all(
+        sorted.map(async (tp, idx) => {
+          const playerScores = await getScoresByRoundAndUser(roundId, tp.userId);
+          const scoreMap = new Map(playerScores.map((s) => [s.holeId, s]));
+          const holeData: import("./pdfExport").RoundSummaryHole[] = holes.map((h) => {
+            const s = scoreMap.get(h.id);
+            return {
+              holeNumber: h.holeNumber,
+              par: h.par,
+              strokeIndex: h.strokeIndex,
+              grossScore: s?.grossScore ?? null,
+              netScore: s?.netScore ?? null,
+              stablefordPoints: s?.stablefordPoints ?? null,
+              mercyCapped: s?.mercyCapped ?? false,
+            };
+          });
+          return {
+            name: tp.userName ?? `Player ${tp.userId}`,
+            handicap: tp.handicap,
+            position: idx + 1,
+            totalGross: tp.totalGross,
+            totalNet: tp.totalNet,
+            totalStableford: tp.totalStableford,
+            holesPlayed: tp.holesPlayed,
+            holes: holeData,
+            achievements: achMap.get(tp.userId) ?? [],
+          };
+        })
+      );
+
+      const formats: string[] = [];
+      if (round.strokePlayEnabled) formats.push("Stroke Play");
+      if (round.fourBBBEnabled) formats.push("4BBB");
+      if (round.skinsEnabled) formats.push("Skins");
+
+      const data: RoundSummaryData = {
+        tripName: trip.name,
+        roundName: round.name,
+        courseName: `Course #${round.courseId}`,
+        roundDate: new Date(round.roundDate).toLocaleDateString("en-AU"),
+        scoringMode: formats.join(" / ") || "Stroke Play",
+        mercyRuleEnabled: round.mercyRuleEnabled,
+        mercyRuleStrokes: round.mercyRuleStrokes,
+        players,
+      };
+
+      const pdfBuffer = await generateRoundSummaryPDF(data);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="round-summary-${round.name.replace(/\s+/g, "-")}.pdf"`
+      );
+      res.send(pdfBuffer);
+    } catch (err) {
+      console.error("[PDF] Round summary error:", err);
+      res.status(500).json({ error: "Failed to generate round summary PDF" });
     }
   });
 

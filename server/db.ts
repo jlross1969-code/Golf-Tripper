@@ -468,17 +468,19 @@ export async function upsertScore(data: {
   grossScore: number;
   netScore: number;
   stablefordPoints: number;
+  mercyCapped?: boolean;
 }): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db
     .insert(scores)
-    .values(data)
+    .values({ ...data, mercyCapped: data.mercyCapped ?? false })
     .onDuplicateKeyUpdate({
       set: {
         grossScore: data.grossScore,
         netScore: data.netScore,
         stablefordPoints: data.stablefordPoints,
+        mercyCapped: data.mercyCapped ?? false,
       },
     });
 }
