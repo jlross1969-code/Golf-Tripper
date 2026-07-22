@@ -537,3 +537,7 @@
 - [x] Frontend: ScoreEntry — show total gross stroke count right next to the vs-par badge (e.g. "+3 · 39 shots")
 - [x] Backend + Frontend: Round summary PDF — leaderboard table + per-player hole-by-hole scorecard with mercy M marker, downloadable from leaderboard page
 - [x] TypeScript check, tests, checkpoint
+
+## Session - ScoreEntry SI Relocation
+
+- [x] Frontend: ScoreEntry — remove SI badge from player card header; add "Stroke Index" as 4th column in the Shots / Pts / Total pts footer row

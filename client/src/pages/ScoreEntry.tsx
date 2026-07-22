@@ -807,9 +807,6 @@ export default function ScoreEntry() {
                       <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
                         HC: {player.currentHandicap}
                       </span>
-                      <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
-                        SI {currentHole.strokeIndex}
-                      </span>
                       {strokesReceived > 0 && (
                         <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded font-semibold">
                           +{strokesReceived} shot{strokesReceived > 1 ? "s" : ""}
@@ -870,8 +867,8 @@ export default function ScoreEntry() {
                     )}
                   </div>
 
-                  {/* Shots / Points / Total footer */}
-                  <div className="grid grid-cols-3 border-t border-border">
+                  {/* Shots / Points / Total / Stroke Index footer */}
+                  <div className="grid grid-cols-4 border-t border-border">
                     <div className="px-3 py-2 text-center border-r border-border">
                       <p className="text-xs text-muted-foreground">Shots</p>
                       <p className="font-bold text-foreground text-sm">{strokesReceived}</p>
@@ -880,11 +877,15 @@ export default function ScoreEntry() {
                       <p className="text-xs text-muted-foreground">Pts (hole)</p>
                       <p className="font-bold text-primary text-sm">{pu ? 0 : (saved ? (scorecard?.find((sc) => sc.userId === player.userId)?.scores.find((s) => s.holeId === currentHole.id)?.stablefordPoints ?? 0) : previewPts)}</p>
                     </div>
-                    <div className="px-3 py-2 text-center bg-muted/30">
+                    <div className="px-3 py-2 text-center border-r border-border bg-muted/30">
                       <p className="text-xs text-muted-foreground">Total pts</p>
                       <p className="font-bold text-foreground text-sm">
                         {saved ? totals.points : totals.points + (pu ? 0 : previewPts)}
                       </p>
+                    </div>
+                    <div className="px-3 py-2 text-center">
+                      <p className="text-xs text-muted-foreground">Stroke Index</p>
+                      <p className="font-bold text-foreground text-sm">{currentHole.strokeIndex}</p>
                     </div>
                   </div>
                 </div>
