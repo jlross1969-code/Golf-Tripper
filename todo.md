@@ -513,3 +513,9 @@
 - [x] Frontend: ScoreEntry mismatch dialog — show the partner's existing gross score next to the missing player's name for context (e.g. "Whitty missing — John Ross scored 5")
 - [x] Frontend: ScoreEntry score entry — after submitting a score while the mismatch flow is active, re-check for remaining mismatches and auto-reopen the dialog if any remain
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Scorer Card Ordering
+
+- [x] Frontend: ScoreEntry — reorder scoringPlayers so the current user (scorer) is always first (top card)
+- [x] Frontend: ScoreEntry — add a subtle "You" badge or "Marking" label on the current user's card so it's clear who is scoring
+- [x] TypeScript check, tests, checkpoint

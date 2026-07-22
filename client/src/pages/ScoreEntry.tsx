@@ -312,7 +312,7 @@ export default function ScoreEntry() {
   const isPaired = !!myGroup?.partner;
   const isLocked = myGroup?.pairsLocked ?? false;
 
-  // Players to score in hole-by-hole mode: self + paired partner only
+  // Players to score in hole-by-hole mode: current user (scorer) always first, then partner
   const scoringPlayers = (() => {
     if (!players || !user) return [];
     const me = players.find((p) => p.userId === user.id);
@@ -754,14 +754,22 @@ export default function ScoreEntry() {
               return (
                 <div key={player.userId} className="bg-card border border-border rounded-2xl overflow-hidden">
                   {/* Player header */}
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                  {(() => {
+                    const isMe = player.userId === user?.id;
+                    return (
+                  <div className={`flex items-center justify-between px-4 py-3 border-b border-border ${isMe ? "bg-primary/5" : ""}`}>
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${isMe ? "bg-primary text-primary-foreground" : "bg-primary/20 text-primary"}`}>
                         {(player.nickname ?? player.user?.name ?? "P").charAt(0).toUpperCase()}
                       </div>
-                      <span className="font-semibold text-foreground text-sm">
-                        {player.nickname ?? player.user?.name ?? `Player ${player.userId}`}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-foreground text-sm leading-tight">
+                          {player.nickname ?? player.user?.name ?? `Player ${player.userId}`}
+                        </span>
+                        {isMe && (
+                          <span className="text-[10px] text-primary font-semibold uppercase tracking-wide leading-tight">You · Marking</span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
@@ -777,6 +785,8 @@ export default function ScoreEntry() {
                       )}
                     </div>
                   </div>
+                    );
+                  })()}
 
                   {/* Score input or saved score */}
                   <div className="px-4 py-5">
