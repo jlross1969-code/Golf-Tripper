@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target, Pencil, Trash2, AlertTriangle, RefreshCw, Zap } from "lucide-react";
+import { PremiumFeatureBadge } from "@/components/PremiumFeatureBadge";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -223,6 +224,7 @@ export default function AdminRounds() {
                 <Link href={`/admin/trips/${id}/rounds/${round.id}/long-drive`}>
                   <Button size="sm" variant="outline" className="gap-1 text-xs">
                     <Zap className="w-3 h-3" /> Long Drive
+                    <PremiumFeatureBadge tier="tripPass" label="" tooltip="Long Drive will require a Trip Pass when billing is enabled" className="ml-0.5" />
                   </Button>
                 </Link>
                 <Button size="sm" variant="outline" className="gap-1 text-xs"

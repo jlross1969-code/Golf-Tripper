@@ -5,10 +5,14 @@
  * All overrides are currently cosmetic (BILLING_ENABLED = false) but
  * the data model is live — this page will drive real access gates when
  * billing is activated.
+ *
+ * Simulate Billing toggle: lets admins preview what the UpgradePrompt
+ * UI looks like without flipping BILLING_ENABLED in code. State is
+ * stored in sessionStorage so it resets on tab close.
  */
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, CreditCard, RefreshCw, Users, Zap } from "lucide-react";
+import { ArrowLeft, CreditCard, RefreshCw, Users, Zap, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -17,10 +21,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { BILLING_ENABLED, FREE_PLAYER_LIMIT, TRIP_PLAN_LABELS, USER_PLAN_LABELS } from "@shared/plans";
+import { UpgradePrompt } from "@/components/UpgradePrompt";
 
 export default function AdminPlanManagement() {
   const [, navigate] = useLocation();
+
+  // Simulate Billing toggle — persisted to sessionStorage so it resets on tab close
+  const [simulateBilling, setSimulateBilling] = useState<boolean>(
+    () => sessionStorage.getItem("simulateBilling") === "true"
+  );
+
+  function handleSimulateToggle(checked: boolean) {
+    setSimulateBilling(checked);
+    if (checked) {
+      sessionStorage.setItem("simulateBilling", "true");
+    } else {
+      sessionStorage.removeItem("simulateBilling");
+    }
+  }
 
   // Fetch all trips and users for the admin view
   const { data: trips, isLoading: tripsLoading, refetch: refetchTrips } = trpc.trips.list.useQuery();
@@ -45,20 +66,51 @@ export default function AdminPlanManagement() {
   return (
     <div className="container max-w-4xl py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <CreditCard className="h-6 w-6" />
-            Plan Management
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            View and override billing plan tiers for trips and users
-          </p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/admin")}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <CreditCard className="h-6 w-6" />
+              Plan Management
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              View and override billing plan tiers for trips and users
+            </p>
+          </div>
+        </div>
+
+        {/* Simulate Billing toggle */}
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-sm">
+          <FlaskConical className={`h-4 w-4 ${simulateBilling ? "text-amber-500" : "text-muted-foreground"}`} />
+          <div className="flex flex-col">
+            <Label htmlFor="simulate-billing" className="text-sm font-medium cursor-pointer">
+              Simulate Billing
+            </Label>
+            <span className="text-[11px] text-muted-foreground">Preview upgrade prompts</span>
+          </div>
+          <Switch
+            id="simulate-billing"
+            checked={simulateBilling}
+            onCheckedChange={handleSimulateToggle}
+            className="ml-1"
+          />
         </div>
       </div>
+
+      {/* Simulate billing active banner */}
+      {simulateBilling && (
+        <Alert className="border-amber-500/40 bg-amber-500/8">
+          <FlaskConical className="h-4 w-4 text-amber-500" />
+          <AlertDescription className="text-amber-500">
+            <strong>Simulate Billing is ON.</strong> The UpgradePrompt preview below shows what players
+            will see when billing is activated. No payment is required — this is for UI preview only.
+            Toggle off to hide the preview.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Billing status banner */}
       {!BILLING_ENABLED ? (
@@ -78,6 +130,26 @@ export default function AdminPlanManagement() {
             override tiers for testing or to gift upgrades.
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* UpgradePrompt preview (only shown when simulateBilling is on) */}
+      {simulateBilling && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FlaskConical className="h-4 w-4 text-amber-500" />
+              Upgrade Prompt Preview
+            </CardTitle>
+            <CardDescription>
+              This is what players see when they try to access a premium feature.
+              Click the card below to open the full plan comparison dialog.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <UpgradePrompt feature="longDrive" simulateBilling />
+            <UpgradePrompt feature="customAwards" simulateBilling />
+          </CardContent>
+        </Card>
       )}
 
       {/* Trip Plans */}

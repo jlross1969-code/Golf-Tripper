@@ -482,3 +482,10 @@
 - [x] Plans link in AdminTrips header (global admin only)
 
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Billing UI Enhancements
+
+- [x] Frontend: UpgradePrompt — sleek tier comparison table showing Free vs Trip Pass vs Premium vs Club benefits (unlimited players, custom awards, long drive, etc.)
+- [x] Frontend: Premium Feature badge/tooltip on Long Drive and Custom Awards in admin settings (Zap icon + "Premium Feature" label)
+- [x] Frontend: AdminPlanManagement — "Simulate Billing Enabled" toggle that temporarily sets BILLING_ENABLED=true in session storage so admins can preview feature gates
+- [x] TypeScript check, tests, checkpoint
