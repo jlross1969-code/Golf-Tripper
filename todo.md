@@ -495,3 +495,8 @@
 - [x] Frontend: DailyLeaderboard — clicking a player row on Stroke Play tab opens a bottom sheet/drawer showing their hole-by-hole scorecard (hole, par, SI, gross, net, Stableford pts) using the existing scores.getPlayerScorecard tRPC procedure
 - [x] Frontend: Scorecard drawer shows totals row (gross/net/pts), color-codes scores (eagle/birdie/par/bogey/double+), and handles holes not yet played
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Mismatch Dialog Player Names
+
+- [x] Frontend: ScoreEntry mismatch dialog — change mismatch state from number[] to {holeNumber, missingPlayer}[] so each hole badge shows which player is missing a score (e.g. "Hole 9 — Whitty missing")
+- [x] TypeScript check, tests, checkpoint

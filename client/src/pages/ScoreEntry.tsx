@@ -139,7 +139,7 @@ export default function ScoreEntry() {
   const [ntpInputs, setNtpInputs] = useState<Record<number, string>>({});
 
   // Mismatch dialog
-  const [mismatchHoles, setMismatchHoles] = useState<number[]>([]);
+  const [mismatchHoles, setMismatchHoles] = useState<{ holeNumber: number; missingPlayer: string }[]>([]);
   const [mismatchOpen, setMismatchOpen] = useState(false);
 
   // Scorecard comparison drawer
@@ -464,12 +464,14 @@ export default function ScoreEntry() {
   const handleFinalSubmit = () => {
     if (!roundData || scoringPlayers.length < 2) return;
     const [p1, p2] = scoringPlayers;
-    const mismatches: number[] = [];
+    const p1Name = p1.nickname ?? p1.user?.name ?? "Player 1";
+    const p2Name = p2.nickname ?? p2.user?.name ?? "Player 2";
+    const mismatches: { holeNumber: number; missingPlayer: string }[] = [];
     for (const hole of roundData.holes) {
       const s1 = scorecard?.find((sc) => sc.userId === p1.userId)?.scores.find((s) => s.holeId === hole.id);
       const s2 = scorecard?.find((sc) => sc.userId === p2.userId)?.scores.find((s) => s.holeId === hole.id);
-      // If one is saved and the other isn't, that's a mismatch
-      if (!!s1 !== !!s2) mismatches.push(hole.holeNumber);
+      if (!s1 && s2) mismatches.push({ holeNumber: hole.holeNumber, missingPlayer: p1Name });
+      else if (s1 && !s2) mismatches.push({ holeNumber: hole.holeNumber, missingPlayer: p2Name });
     }
     if (mismatches.length > 0) {
       setMismatchHoles(mismatches);
@@ -1351,22 +1353,24 @@ export default function ScoreEntry() {
             <p className="text-sm text-muted-foreground">
               The following holes have scores entered for one player but not the other. Please review before finishing:
             </p>
-            <div className="flex flex-wrap gap-2">
-              {mismatchHoles.map((h) => (
-                <span
-                  key={h}
-                  className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-full text-sm font-semibold cursor-pointer hover:bg-amber-500/20"
+            <div className="flex flex-col gap-2">
+              {mismatchHoles.map(({ holeNumber, missingPlayer }) => (
+                <button
+                  key={holeNumber}
+                  type="button"
+                  className="flex items-center justify-between px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg text-sm hover:bg-amber-500/20 transition-colors text-left w-full"
                   onClick={() => {
-                    const idx = holes.findIndex((hole) => hole.holeNumber === h);
+                    const idx = holes.findIndex((hole) => hole.holeNumber === holeNumber);
                     if (idx >= 0) { setCurrentHoleIdx(idx); setScoreMode("hole-by-hole"); }
                     setMismatchOpen(false);
                   }}
                 >
-                  Hole {h}
-                </span>
+                  <span className="font-semibold">Hole {holeNumber}</span>
+                  <span className="text-xs text-amber-300/80 ml-2">{missingPlayer} missing score</span>
+                </button>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">Tap a hole number to jump to it.</p>
+            <p className="text-xs text-muted-foreground">Tap a hole to jump to it.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setMismatchOpen(false)}>Close</Button>
