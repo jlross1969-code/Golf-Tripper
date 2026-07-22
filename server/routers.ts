@@ -471,6 +471,8 @@ export const appRouter = router({
           matchPlayEnabled: z.boolean().optional(),
           alternateShotEnabled: z.boolean().optional(),
           dailyAdjustment: z.number().optional(),
+          mercyRuleEnabled: z.boolean().optional(),
+          mercyRuleStrokes: z.number().min(4).max(6).optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -954,25 +956,35 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
-        const netScore = calculateNetScore(input.grossScore, input.handicap, input.strokeIndex);
+        // Apply mercy rule cap if enabled for this round
+        let effectiveGross = input.grossScore;
+        const round = await getRound(input.roundId);
+        if (round?.mercyRuleEnabled) {
+          const maxScore = input.par + (round.mercyRuleStrokes ?? 5);
+          if (effectiveGross > maxScore) effectiveGross = maxScore;
+        }
+
+        const netScore = calculateNetScore(effectiveGross, input.handicap, input.strokeIndex);
         const stablefordPoints = calculateStablefordPoints(netScore, input.par);
 
         await upsertScore({
           roundId: input.roundId,
           userId: input.userId,
           holeId: input.holeId,
-          grossScore: input.grossScore,
+          grossScore: effectiveGross,
           netScore,
           stablefordPoints,
         });
 
-        // Detect achievement
+        // Detect achievement (use original gross so eagles/HIO aren't suppressed)
         const achievementType = detectAchievement(input.grossScore, input.par);
 
         return {
           netScore,
           stablefordPoints,
           achievementType,
+          mercyCapped: effectiveGross !== input.grossScore,
+          cappedTo: effectiveGross !== input.grossScore ? effectiveGross : undefined,
         };
       }),
 

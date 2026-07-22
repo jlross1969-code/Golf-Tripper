@@ -153,6 +153,8 @@ export default function ScoreEntry() {
   // Track when the overall match score header should flash
   const [flashHeader, setFlashHeader] = useState<"A" | "B" | null>(null);
   const prevMatchStatusRef = useRef<number>(0);
+  // Flash a player card green when their score is saved
+  const [savedFlash, setSavedFlash] = useState<Record<number, boolean>>({});
 
   // Admin score correction dialog
   const [correctOpen, setCorrectOpen] = useState(false);
@@ -387,11 +389,12 @@ export default function ScoreEntry() {
 
   // Running totals for a player
   const getRunningTotals = useCallback((userId: number, upToHoleIdx: number) => {
-    if (!roundData) return { shots: 0, points: 0 };
+    if (!roundData) return { shots: 0, points: 0, parPlayed: 0 };
     const player = players?.find((p) => p.userId === userId);
-    if (!player) return { shots: 0, points: 0 };
+    if (!player) return { shots: 0, points: 0, parPlayed: 0 };
     let shots = 0;
     let points = 0;
+    let parPlayed = 0;
     for (let i = 0; i <= upToHoleIdx; i++) {
       const hole = roundData.holes[i];
       if (!hole) continue;
@@ -400,17 +403,19 @@ export default function ScoreEntry() {
       if (saved) {
         shots += saved.grossScore;
         points += saved.stablefordPoints;
+        parPlayed += hole.par;
         continue;
       }
       if (isPickUp(userId, hole.id)) continue;
       const g = getScore(userId, hole.id);
       if (g > 0) {
         shots += g;
+        parPlayed += hole.par;
         const net = calculateNetScore(g, player.currentHandicap, hole.strokeIndex);
         points += calculateStablefordPoints(net, hole.par);
       }
     }
-    return { shots, points };
+    return { shots, points, parPlayed };
   }, [roundData, players, scorecard, holeScores, pickUps]);
 
   // ── Submit a single hole for a player ────────────────────────────────────
@@ -498,6 +503,11 @@ export default function ScoreEntry() {
         await handleSubmitHole(player.userId, hole);
       }
       toast.success(`Hole ${hole.holeNumber} saved`);
+      // Flash all scoring player cards green briefly
+      const flashMap: Record<number, boolean> = {};
+      scoringPlayers.forEach((p) => { flashMap[p.userId] = true; });
+      setSavedFlash(flashMap);
+      setTimeout(() => setSavedFlash({}), 800);
       await refetchScorecard();
       utils.groupMatch.getByRound.invalidate({ roundId: id });
       await reopenMismatchDialogIfNeeded();
@@ -751,13 +761,25 @@ export default function ScoreEntry() {
               const extraStroke = player.currentHandicap % 18 >= currentHole.strokeIndex ? 1 : 0;
               const strokesReceived = fullStrokes + extraStroke;
 
+              const scoreToPar = totals.parPlayed > 0 ? totals.shots - totals.parPlayed : null;
+              const scoreToParLabel = scoreToPar === null ? null
+                : scoreToPar === 0 ? "E"
+                : scoreToPar > 0 ? `+${scoreToPar}`
+                : `${scoreToPar}`;
+              const scoreToParColor = scoreToPar === null ? ""
+                : scoreToPar < 0 ? "text-emerald-400"
+                : scoreToPar === 0 ? "text-foreground"
+                : scoreToPar <= 3 ? "text-amber-400"
+                : "text-rose-400";
+              const isFlashing = !!savedFlash[player.userId];
+
               return (
-                <div key={player.userId} className="bg-card border border-border rounded-2xl overflow-hidden">
+                <div key={player.userId} className={`bg-card border rounded-2xl overflow-hidden transition-all duration-300 ${isFlashing ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.4)]" : "border-border"}`}>
                   {/* Player header */}
                   {(() => {
                     const isMe = player.userId === user?.id;
                     return (
-                  <div className={`flex items-center justify-between px-4 py-3 border-b border-border ${isMe ? "bg-primary/5" : ""}`}>
+                  <div className={`flex items-center justify-between px-4 py-3 border-b border-border ${isMe ? "bg-primary/5" : ""} ${isFlashing ? "bg-primary/10" : ""}`}>
                     <div className="flex items-center gap-2">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${isMe ? "bg-primary text-primary-foreground" : "bg-primary/20 text-primary"}`}>
                         {(player.nickname ?? player.user?.name ?? "P").charAt(0).toUpperCase()}
@@ -772,6 +794,11 @@ export default function ScoreEntry() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {scoreToParLabel !== null && (
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded bg-muted ${scoreToParColor}`}>
+                          {scoreToParLabel}
+                        </span>
+                      )}
                       <span className="text-xs bg-muted px-2 py-0.5 rounded font-medium text-muted-foreground">
                         HC: {player.currentHandicap}
                       </span>

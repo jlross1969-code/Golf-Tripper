@@ -519,3 +519,13 @@
 - [x] Frontend: ScoreEntry — reorder scoringPlayers so the current user (scorer) is always first (top card)
 - [x] Frontend: ScoreEntry — add a subtle "You" badge or "Marking" label on the current user's card so it's clear who is scoring
 - [x] TypeScript check, tests, checkpoint
+
+## Session - ScoreEntry Enhancements (Running Total, Flash, Mercy Rule)
+
+- [x] Frontend: ScoreEntry — show running score vs par (e.g. "+3" or "-1") next to each player's name in the card header
+- [x] Frontend: ScoreEntry — flash/highlight animation on the player card when a score is successfully saved
+- [x] Schema + DB: Add mercyRuleEnabled (boolean, default false) and mercyRuleStrokes (int, default 5) to rounds table
+- [x] Backend: AdminRound — expose mercy rule fields via rounds.get and rounds.update procedures
+- [x] Frontend: AdminRoundSettings — mercy rule toggle + stroke adjuster (min 4, max 6) in round settings
+- [x] Backend: scores.submit — apply mercy rule cap (par + mercyRuleStrokes) to grossScore before saving when mercyRuleEnabled
+- [x] TypeScript check, tests, checkpoint

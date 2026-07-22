@@ -130,6 +130,9 @@ export const rounds = mysqlTable("rounds", {
   // Long Drive competition settings
   longDriveEnabled: boolean("longDriveEnabled").default(false).notNull(),
   longDriveHole: int("longDriveHole"),
+  // Mercy rule: cap gross score at par + mercyRuleStrokes (default off, 5 over par)
+  mercyRuleEnabled: boolean("mercyRuleEnabled").default(false).notNull(),
+  mercyRuleStrokes: int("mercyRuleStrokes").default(5).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

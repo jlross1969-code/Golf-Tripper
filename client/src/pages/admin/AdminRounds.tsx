@@ -67,6 +67,8 @@ export default function AdminRounds() {
   const [editSkins, setEditSkins] = useState(false);
   const [editMatchPlay, setEditMatchPlay] = useState(false);
   const [editAltShot, setEditAltShot] = useState(false);
+  const [editMercyEnabled, setEditMercyEnabled] = useState(false);
+  const [editMercyStrokes, setEditMercyStrokes] = useState(5);
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -121,6 +123,8 @@ export default function AdminRounds() {
     setEditSkins(round.skinsEnabled);
     setEditMatchPlay(round.matchPlayEnabled ?? false);
     setEditAltShot(round.alternateShotEnabled ?? false);
+    setEditMercyEnabled((round as any).mercyRuleEnabled ?? false);
+    setEditMercyStrokes((round as any).mercyRuleStrokes ?? 5);
     setEditOpen(true);
   }
 
@@ -334,6 +338,27 @@ export default function AdminRounds() {
                 </div>
               ))}
             </div>
+
+            {/* Mercy Rule */}
+            <div className="space-y-3 border-t border-border pt-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-medium text-foreground">Mercy Rule</span>
+                  <p className="text-xs text-muted-foreground">Cap max score at par + N strokes</p>
+                </div>
+                <Switch checked={editMercyEnabled} onCheckedChange={setEditMercyEnabled} />
+              </div>
+              {editMercyEnabled && (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground flex-1">Max over par</span>
+                  <div className="flex items-center gap-2">
+                    <Button size="icon" variant="outline" className="h-7 w-7" disabled={editMercyStrokes <= 4} onClick={() => setEditMercyStrokes((v) => Math.max(4, v - 1))}>-</Button>
+                    <span className="w-6 text-center font-bold text-foreground text-sm">{editMercyStrokes}</span>
+                    <Button size="icon" variant="outline" className="h-7 w-7" disabled={editMercyStrokes >= 6} onClick={() => setEditMercyStrokes((v) => Math.min(6, v + 1))}>+</Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
@@ -349,6 +374,8 @@ export default function AdminRounds() {
                 skinsEnabled: editSkins,
                 matchPlayEnabled: editMatchPlay,
                 alternateShotEnabled: editAltShot,
+                mercyRuleEnabled: editMercyEnabled,
+                mercyRuleStrokes: editMercyStrokes,
               })}
             >
               Save Changes
