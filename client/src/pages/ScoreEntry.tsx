@@ -115,7 +115,9 @@ export default function ScoreEntry() {
     { roundId: id },
     { enabled: !!myGroup }
   );
-  const { data: scorecard } = trpc.scores.getScorecard.useQuery({ roundId: id });
+  const { data: scorecard, refetch: refetchScorecard } = trpc.scores.getScorecard.useQuery({ roundId: id });
+  type MismatchPlayer = { name: string; context: string };
+  type MismatchHole = { holeNumber: number; missingPlayers: MismatchPlayer[] };
   const { data: ntpList } = trpc.ntp.getByRound.useQuery({ roundId: id });
 
   // ── Mode ──────────────────────────────────────────────────────────────────
@@ -138,9 +140,10 @@ export default function ScoreEntry() {
   const [pendingAchievementId, setPendingAchievementId] = useState<number | null>(null);
   const [ntpInputs, setNtpInputs] = useState<Record<number, string>>({});
 
-  // Mismatch dialog — grouped by hole: { holeNumber, missingPlayers: string[] }
-  const [mismatchHoles, setMismatchHoles] = useState<{ holeNumber: number; missingPlayers: string[] }[]>([]);
+  // Mismatch dialog — grouped by hole with missing player context
+  const [mismatchHoles, setMismatchHoles] = useState<MismatchHole[]>([]);
   const [mismatchOpen, setMismatchOpen] = useState(false);
+  const mismatchFlowActiveRef = useRef(false);
 
   // Scorecard comparison drawer
   const [compareOpen, setCompareOpen] = useState(false);
@@ -237,6 +240,52 @@ export default function ScoreEntry() {
   const createAchievement = trpc.achievements.create.useMutation();
   const confirmAchievement = trpc.achievements.confirm.useMutation();
   const recalcMatch = trpc.groupMatch.recalc.useMutation();
+
+  function buildMismatchHoles(scorecardData = scorecard): MismatchHole[] {
+    if (!roundData || scoringPlayers.length < 2) return [];
+    const rows: MismatchHole[] = [];
+
+    for (const hole of roundData.holes) {
+      const playerStates = scoringPlayers.map((player) => ({
+        player,
+        saved: scorecardData?.find((sc) => sc.userId === player.userId)?.scores.find((s) => s.holeId === hole.id),
+      }));
+      const missingStates = playerStates.filter((state) => !state.saved);
+      const savedStates = playerStates.filter((state) => !!state.saved);
+
+      if (missingStates.length > 0 && savedStates.length > 0) {
+        rows.push({
+          holeNumber: hole.holeNumber,
+          missingPlayers: missingStates.map(({ player }) => {
+            const name = player.nickname ?? player.user?.name ?? `Player ${player.userId}`;
+            const context =
+              savedStates.length === 1
+                ? `${savedStates[0].player.nickname ?? savedStates[0].player.user?.name ?? `Player ${savedStates[0].player.userId}`} scored ${savedStates[0].saved!.grossScore}`
+                : `Others scored ${savedStates.map((state) => state.saved!.grossScore).join(", ")}`;
+            return { name, context };
+          }),
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  const reopenMismatchDialogIfNeeded = useCallback(async () => {
+    if (!mismatchFlowActiveRef.current) return;
+    const refreshed = await refetchScorecard();
+    const remaining = buildMismatchHoles(refreshed.data ?? scorecard);
+    if (remaining.length > 0) {
+      setMismatchHoles(remaining);
+      setMismatchOpen(true);
+      mismatchFlowActiveRef.current = true;
+    } else {
+      setMismatchHoles([]);
+      setMismatchOpen(false);
+      mismatchFlowActiveRef.current = false;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refetchScorecard]);
   const submitNtp = trpc.ntp.submitEntry.useMutation({
     onSuccess: () => { toast.success("NTP distance saved!"); utils.ntp.getByRound.invalidate({ roundId: id }); },
     onError: (e) => toast.error(e.message),
@@ -449,8 +498,9 @@ export default function ScoreEntry() {
         await handleSubmitHole(player.userId, hole);
       }
       toast.success(`Hole ${hole.holeNumber} saved`);
-      utils.scores.getScorecard.invalidate({ roundId: id });
+      await refetchScorecard();
       utils.groupMatch.getByRound.invalidate({ roundId: id });
+      await reopenMismatchDialogIfNeeded();
       // Auto-advance
       if (currentHoleIdx < roundData.holes.length - 1) {
         setCurrentHoleIdx(currentHoleIdx + 1);
@@ -463,25 +513,13 @@ export default function ScoreEntry() {
   // ── Mismatch check on final submit ────────────────────────────────────────
   const handleFinalSubmit = () => {
     if (!roundData || scoringPlayers.length < 2) return;
-    // Build a map of holeNumber -> missing player names (supports >2 players in future)
-    const missingMap = new Map<number, string[]>();
-    for (const hole of roundData.holes) {
-      const missing: string[] = [];
-      for (const player of scoringPlayers) {
-        const saved = scorecard?.find((sc) => sc.userId === player.userId)?.scores.find((s) => s.holeId === hole.id);
-        if (!saved) missing.push(player.nickname ?? player.user?.name ?? `Player ${player.userId}`);
-      }
-      // Only flag holes where SOME but not ALL players have scores (true mismatch)
-      if (missing.length > 0 && missing.length < scoringPlayers.length) {
-        missingMap.set(hole.holeNumber, missing);
-      }
-    }
-    if (missingMap.size > 0) {
-      setMismatchHoles(
-        Array.from(missingMap.entries()).map(([holeNumber, missingPlayers]) => ({ holeNumber, missingPlayers }))
-      );
+    const mismatches = buildMismatchHoles();
+    if (mismatches.length > 0) {
+      mismatchFlowActiveRef.current = true;
+      setMismatchHoles(mismatches);
       setMismatchOpen(true);
     } else {
+      mismatchFlowActiveRef.current = false;
       toast.success("All scores submitted!");
     }
   };
@@ -531,9 +569,10 @@ export default function ScoreEntry() {
         });
       } else {
         toast.success(`Hole ${hole.holeNumber} saved — Net: ${result.netScore}, Pts: ${result.stablefordPoints}`);
-        utils.scores.getScorecard.invalidate({ roundId: id });
-        utils.groupMatch.getByRound.invalidate({ roundId: id });
       }
+      await refetchScorecard();
+      utils.groupMatch.getByRound.invalidate({ roundId: id });
+      await reopenMismatchDialogIfNeeded();
     } catch (e: any) {
       toast.error(e.message ?? "Failed to save score");
     }
@@ -1364,25 +1403,24 @@ export default function ScoreEntry() {
                   key={holeNumber}
                   className="flex items-center gap-3 px-3 py-2.5 bg-rose-500/10 border border-rose-500/40 rounded-lg"
                 >
-                  {/* Warning icon */}
                   <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-                  {/* Hole + missing players */}
                   <div className="flex-1 min-w-0">
                     <span className="font-semibold text-foreground text-sm">Hole {holeNumber}</span>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {missingPlayers.map((name) => (
-                        <span key={name} className="text-xs text-rose-400 font-medium">
-                          {name} missing
-                        </span>
+                    <div className="space-y-1 mt-1">
+                      {missingPlayers.map(({ name, context }) => (
+                        <div key={`${holeNumber}-${name}`} className="text-xs leading-relaxed">
+                          <span className="text-rose-400 font-medium">{name} missing</span>
+                          <span className="text-muted-foreground"> — {context}</span>
+                        </div>
                       ))}
                     </div>
                   </div>
-                  {/* Enter Score button */}
                   <Button
                     size="sm"
                     variant="outline"
                     className="flex-shrink-0 text-xs border-rose-500/50 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
                     onClick={() => {
+                      mismatchFlowActiveRef.current = true;
                       const idx = holes.findIndex((hole) => hole.holeNumber === holeNumber);
                       if (idx >= 0) { setCurrentHoleIdx(idx); setScoreMode("hole-by-hole"); }
                       setMismatchOpen(false);

@@ -507,3 +507,9 @@
 - [x] Frontend: ScoreEntry mismatch dialog — red warning icon and red text color for missing player names to make them stand out
 - [x] Frontend: ScoreEntry mismatch dialog — "Enter Score" button per hole row that jumps to that hole in hole-by-hole mode and closes the dialog
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Mismatch Dialog Context & Auto-Reopen
+
+- [x] Frontend: ScoreEntry mismatch dialog — show the partner's existing gross score next to the missing player's name for context (e.g. "Whitty missing — John Ross scored 5")
+- [x] Frontend: ScoreEntry score entry — after submitting a score while the mismatch flow is active, re-check for remaining mismatches and auto-reopen the dialog if any remain
+- [x] TypeScript check, tests, checkpoint
