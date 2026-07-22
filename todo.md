@@ -500,3 +500,10 @@
 
 - [x] Frontend: ScoreEntry mismatch dialog — change mismatch state from number[] to {holeNumber, missingPlayer}[] so each hole badge shows which player is missing a score (e.g. "Hole 9 — Whitty missing")
 - [x] TypeScript check, tests, checkpoint
+
+## Session - Mismatch Dialog Enhancements
+
+- [x] Frontend: ScoreEntry mismatch dialog — group by hole so multiple missing players on the same hole are listed together (e.g. "Hole 9 — Whitty, John Ross missing")
+- [x] Frontend: ScoreEntry mismatch dialog — red warning icon and red text color for missing player names to make them stand out
+- [x] Frontend: ScoreEntry mismatch dialog — "Enter Score" button per hole row that jumps to that hole in hole-by-hole mode and closes the dialog
+- [x] TypeScript check, tests, checkpoint
