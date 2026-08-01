@@ -51,6 +51,7 @@ export default function AdminRounds() {
   const [courseId, setCourseId] = useState("");
   const [roundDate, setRoundDate] = useState("");
   const [strokePlay, setStrokePlay] = useState(true);
+  const [stableford, setStableford] = useState(true);
   const [fourBBB, setFourBBB] = useState(false);
   const [skins, setSkins] = useState(false);
   const [matchPlay, setMatchPlay] = useState(false);
@@ -63,6 +64,7 @@ export default function AdminRounds() {
   const [editCourseId, setEditCourseId] = useState("");
   const [editRoundDate, setEditRoundDate] = useState("");
   const [editStroke, setEditStroke] = useState(true);
+  const [editStableford, setEditStableford] = useState(true);
   const [editFourBBB, setEditFourBBB] = useState(false);
   const [editSkins, setEditSkins] = useState(false);
   const [editMatchPlay, setEditMatchPlay] = useState(false);
@@ -119,6 +121,7 @@ export default function AdminRounds() {
     setEditCourseId(round.courseId?.toString() ?? "");
     setEditRoundDate(round.roundDate ? new Date(round.roundDate).toISOString().split("T")[0] : "");
     setEditStroke(round.strokePlayEnabled);
+    setEditStableford((round as any).stablefordEnabled ?? true);
     setEditFourBBB(round.fourBBBEnabled);
     setEditSkins(round.skinsEnabled);
     setEditMatchPlay(round.matchPlayEnabled ?? false);
@@ -273,6 +276,7 @@ export default function AdminRounds() {
               <label className="text-sm font-medium text-foreground block">Formats</label>
               {[
                 { label: "Stroke Play", value: strokePlay, set: setStrokePlay },
+                { label: "Stableford", value: stableford, set: setStableford },
                 { label: "4BBB", value: fourBBB, set: setFourBBB },
                 { label: "Skins", value: skins, set: setSkins },
                 { label: "Match Play", value: matchPlay, set: setMatchPlay },
@@ -291,7 +295,7 @@ export default function AdminRounds() {
               disabled={!name || !courseId || !roundDate || createRound.isPending}
               onClick={() => createRound.mutate({
                 tripId: id, courseId: Number(courseId), name, roundDate,
-                strokePlayEnabled: strokePlay, fourBBBEnabled: fourBBB, skinsEnabled: skins,
+                strokePlayEnabled: strokePlay, stablefordEnabled: stableford, fourBBBEnabled: fourBBB, skinsEnabled: skins,
                 matchPlayEnabled: matchPlay, alternateShotEnabled: alternateShot,
               })}
             >
@@ -327,6 +331,7 @@ export default function AdminRounds() {
               <label className="text-sm font-medium text-foreground block">Formats</label>
               {[
                 { label: "Stroke Play", value: editStroke, set: setEditStroke },
+                { label: "Stableford", value: editStableford, set: setEditStableford },
                 { label: "4BBB", value: editFourBBB, set: setEditFourBBB },
                 { label: "Skins", value: editSkins, set: setEditSkins },
                 { label: "Match Play", value: editMatchPlay, set: setEditMatchPlay },
@@ -370,6 +375,7 @@ export default function AdminRounds() {
                 ...(editCourseId ? { courseId: Number(editCourseId) } : {}),
                 ...(editRoundDate ? { roundDate: editRoundDate } : {}),
                 strokePlayEnabled: editStroke,
+                stablefordEnabled: editStableford,
                 fourBBBEnabled: editFourBBB,
                 skinsEnabled: editSkins,
                 matchPlayEnabled: editMatchPlay,

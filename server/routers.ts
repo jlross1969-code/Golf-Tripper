@@ -245,6 +245,7 @@ export const appRouter = router({
           handicapAutoAdjust: z.boolean().optional(),
           location: z.string().optional(),
           description: z.string().optional(),
+          individualScoringMode: z.enum(["stableford", "stroke"]).optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -443,6 +444,7 @@ export const appRouter = router({
           name: z.string().min(1),
           roundDate: z.string(),
           strokePlayEnabled: z.boolean().default(true),
+          stablefordEnabled: z.boolean().default(true),
           fourBBBEnabled: z.boolean().default(false),
           skinsEnabled: z.boolean().default(false),
           matchPlayEnabled: z.boolean().default(false),
@@ -466,6 +468,7 @@ export const appRouter = router({
           courseId: z.number().optional(),
           status: z.enum(["scheduled", "active", "completed"]).optional(),
           strokePlayEnabled: z.boolean().optional(),
+          stablefordEnabled: z.boolean().optional(),
           fourBBBEnabled: z.boolean().optional(),
           skinsEnabled: z.boolean().optional(),
           matchPlayEnabled: z.boolean().optional(),

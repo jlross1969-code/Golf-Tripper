@@ -75,6 +75,9 @@ export const trips = mysqlTable("trips", {
   description: text("description"),
   shareToken: varchar("shareToken", { length: 64 }),
   createdBy: int("createdBy").notNull(),
+  // Individual leaderboard scoring display mode: 'stableford' shows Stableford pts, 'stroke' shows net stroke.
+  // Applied consistently across all rounds for this trip.
+  individualScoringMode: mysqlEnum("individualScoringMode", ["stableford", "stroke"]).default("stableford").notNull(),
   // ─── Billing ──────────────────────────────────────────────────────────────
   // planTier for this trip. 'free' = up to 8 players, core features only.
   // 'tripPass' = all premium features unlocked for this trip.
@@ -120,6 +123,7 @@ export const rounds = mysqlTable("rounds", {
   roundDate: timestamp("roundDate").notNull(),
   // Active formats for this round
   strokePlayEnabled: boolean("strokePlayEnabled").default(true).notNull(),
+  stablefordEnabled: boolean("stablefordEnabled").default(true).notNull(),
   fourBBBEnabled: boolean("fourBBBEnabled").default(false).notNull(),
   skinsEnabled: boolean("skinsEnabled").default(false).notNull(),
   matchPlayEnabled: boolean("matchPlayEnabled").default(false).notNull(),

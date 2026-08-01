@@ -541,3 +541,14 @@
 ## Session - ScoreEntry SI Relocation
 
 - [x] Frontend: ScoreEntry — remove SI badge from player card header; add "Stroke Index" as 4th column in the Shots / Pts / Total pts footer row
+
+## Session - Stableford Format & Trip Scoring Mode
+
+- [x] Schema + DB: Add stablefordEnabled (boolean, default true) to rounds table
+- [x] Backend: Expose stablefordEnabled in rounds.create, rounds.update, rounds.get procedures
+- [x] Frontend: AdminRounds — add Stableford toggle to Create Round and Edit Round dialogs
+- [x] Schema + DB: Add individualScoringMode ('stableford' | 'stroke') to trips table (default 'stableford')
+- [x] Backend: Expose individualScoringMode in trips.get and trips.update procedures
+- [x] Frontend: AdminTripDetail — add Individual Scoring Mode setting (Stableford / Stroke Play) in trip settings
+- [x] Frontend: DailyLeaderboard — read trip individualScoringMode and default the Stroke Play tab to show Stableford or Stroke accordingly, removing the per-round tab ambiguity
+- [x] TypeScript check, tests, checkpoint
