@@ -623,3 +623,7 @@
 - [x] Player UI: MatchPlay page — Pennant Team Score panel showing actual vs estimated points, fixture score links
 - [x] Routes: /admin/trips/:tripId/rounds/:roundId/pennant and /round/:roundId/pennant/fixture/:fixtureId added to App.tsx
 - [x] TypeScript check (0 errors), 51 tests passing, checkpoint
+
+## Session - Edit Trip from Sub-Pages
+
+- [x] Add Edit Trip button/link to the admin trip sub-page header (DashboardLayout or shared trip header) so admins can edit trip details without navigating back to the trips list

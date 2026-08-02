@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Users, Calendar, BarChart2, Flag, Mail, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { PremiumFeatureBadge } from "@/components/PremiumFeatureBadge";
+import { EditTripDialog } from "@/components/EditTripDialog";
 
 type NavItem = {
   href: string;
@@ -14,7 +15,7 @@ type NavItem = {
 export default function AdminTripDetail() {
   const { id } = useParams<{ id: string }>();
   const tripId = Number(id);
-  const { data: trip } = trpc.trips.get.useQuery({ id: tripId });
+  const { data: trip, refetch } = trpc.trips.get.useQuery({ id: tripId });
 
   const navItems: NavItem[] = [
     { href: `/admin/trips/${tripId}/roster`, icon: Mail, label: "Invite Players (Roster)" },
@@ -38,10 +39,18 @@ export default function AdminTripDetail() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-6 py-4 flex items-center gap-3">
-        <Link href="/admin"><Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button></Link>
-        <Flag className="w-5 h-5 text-primary" />
-        <h1 className="font-bold text-foreground">{trip?.name ?? "Trip"}</h1>
+      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/admin"><Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button></Link>
+          <Flag className="w-5 h-5 text-primary" />
+          <div>
+            <h1 className="font-bold text-foreground">{trip?.name ?? "Trip"}</h1>
+            {trip?.location && (
+              <p className="text-xs text-muted-foreground">{trip.location}</p>
+            )}
+          </div>
+        </div>
+        <EditTripDialog tripId={tripId} trip={trip} onSuccess={() => refetch()} />
       </header>
       <div className="max-w-2xl mx-auto px-6 py-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
         {navItems.map(({ href, icon: Icon, label, badge }) => (

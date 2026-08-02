@@ -28,6 +28,7 @@ import {
 import { useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { toast } from "sonner";
+import { EditTripDialog } from "@/components/EditTripDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -190,7 +191,9 @@ export default function AdminRoster() {
               <p className="text-muted-foreground text-sm mt-1">{trip.name}</p>
             )}
           </div>
-          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+          <div className="flex gap-2">
+            <EditTripDialog tripId={tripIdNum} trip={trip} />
+            <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
                 <Plus className="w-4 h-4 mr-2" />
@@ -250,6 +253,7 @@ export default function AdminRoster() {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Stats */}

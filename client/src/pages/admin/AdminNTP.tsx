@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Target, Trophy, ToggleLeft, ToggleRight } from "lucide-react";
+import { EditTripDialog } from "@/components/EditTripDialog";
 import { toast } from "sonner";
 
 export default function AdminNTP() {
@@ -15,6 +16,7 @@ export default function AdminNTP() {
   const tId = Number(tripId);
   const rId = Number(roundId);
 
+  const { data: trip } = trpc.trips.get.useQuery({ id: tId });
   const { data: roundData } = trpc.rounds.get.useQuery({ id: rId });
   const round = roundData?.round;
   const holes = roundData?.holes;
@@ -54,15 +56,18 @@ export default function AdminNTP() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-6 py-4 flex items-center gap-3">
-        <Link href={`/admin/trips/${tId}/rounds`}>
-          <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
-        </Link>
-        <Target className="w-5 h-5 text-primary" />
-        <div>
-          <h1 className="font-bold text-foreground">Nearest to Pin</h1>
-          <p className="text-xs text-muted-foreground">{round?.name ?? "Loading..."}</p>
+      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href={`/admin/trips/${tId}/rounds`}>
+            <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
+          </Link>
+          <Target className="w-5 h-5 text-primary" />
+          <div>
+            <h1 className="font-bold text-foreground">Nearest to Pin</h1>
+            <p className="text-xs text-muted-foreground">{round?.name ?? "Loading..."}</p>
+          </div>
         </div>
+        <EditTripDialog tripId={tId} trip={trip} />
       </header>
 
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-3">

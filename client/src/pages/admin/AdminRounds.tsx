@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target, Pencil, Trash2, AlertTriangle, RefreshCw, Zap, Upload, ImageIcon } from "lucide-react";
 import { PremiumFeatureBadge } from "@/components/PremiumFeatureBadge";
+import { EditTripDialog } from "@/components/EditTripDialog";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -221,13 +222,16 @@ export default function AdminRounds() {
             <p className="text-xs text-muted-foreground">{trip?.name}</p>
           </div>
         </div>
-        <Button size="sm" className="gap-2" onClick={() => {
-          // Seed scoring mode from trip's handicapMode
-          setScoringMode((trip as any)?.handicapMode === "net_stroke" ? "net_stroke" : "stableford");
-          setOpen(true);
-        }}>
-          <Plus className="w-4 h-4" /> New Round
-        </Button>
+        <div className="flex gap-2">
+          <EditTripDialog tripId={id} trip={trip} />
+          <Button size="sm" className="gap-2" onClick={() => {
+            // Seed scoring mode from trip's handicapMode
+            setScoringMode((trip as any)?.handicapMode === "net_stroke" ? "net_stroke" : "stableford");
+            setOpen(true);
+          }}>
+            <Plus className="w-4 h-4" /> New Round
+          </Button>
+        </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-4">

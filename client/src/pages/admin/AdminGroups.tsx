@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag, Pencil, Copy, ClipboardList, GripVertical } from "lucide-react";
+import { EditTripDialog } from "@/components/EditTripDialog";
 import { useState, useEffect, useCallback } from "react";
 import {
   DndContext,
@@ -458,7 +459,8 @@ export default function AdminGroups() {
             <p className="text-xs text-muted-foreground">{roundData?.round.name}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <EditTripDialog tripId={tId} trip={tripEntry} />
           <Link href={`/trip/${tId}/round/${rId}/teesheet`}>
             <Button size="sm" variant="outline" className="gap-2">
               <Flag className="w-4 h-4" /> Tee Sheet

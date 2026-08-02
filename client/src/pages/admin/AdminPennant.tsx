@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Plus, Trash2, Users, Swords, Shield } from "lucide-react";
+import { EditTripDialog } from "@/components/EditTripDialog";
 import { toast } from "sonner";
 
 export default function AdminPennant() {
@@ -23,6 +24,7 @@ export default function AdminPennant() {
   // Data
   const { data: teams, refetch: refetchTeams } = trpc.pennant.getTeams.useQuery({ roundId: roundIdNum });
   const { data: fixtures, refetch: refetchFixtures } = trpc.pennant.getFixtures.useQuery({ roundId: roundIdNum });
+  const { data: tripData } = trpc.trips.get.useQuery({ id: tripIdNum });
   const { data: tripPlayers } = trpc.players.tripPlayers.useQuery({ tripId: tripIdNum });
   const { data: roundData } = trpc.rounds.get.useQuery({ id: roundIdNum });
 
@@ -115,16 +117,19 @@ export default function AdminPennant() {
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <Link href={`/admin/trips/${tripId}/rounds`}>
-            <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <Shield className="w-5 h-5 text-blue-400" /> Match Play Setup
-            </h1>
-            <p className="text-sm text-muted-foreground">{roundData?.round?.name ?? `Round ${roundId}`}</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href={`/admin/trips/${tripId}/rounds`}>
+              <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
+            </Link>
+            <div>
+              <h1 className="text-xl font-bold flex items-center gap-2">
+                <Shield className="w-5 h-5 text-blue-400" /> Match Play Setup
+              </h1>
+              <p className="text-sm text-muted-foreground">{roundData?.round?.name ?? `Round ${roundId}`}</p>
+            </div>
           </div>
+          <EditTripDialog tripId={tripIdNum} trip={tripData} />
         </div>
 
         {/* ── Teams Section ── */}

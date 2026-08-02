@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, Trophy, Plus, Pencil, Trash2, UserCheck, X } from "lucide-react";
+import { EditTripDialog } from "@/components/EditTripDialog";
 import { toast } from "sonner";
 
 const POSITION_LABELS: Record<string, string> = {
@@ -160,9 +161,12 @@ export default function AdminAwards() {
           <h1 className="font-bold text-foreground">Custom Awards</h1>
           <p className="text-xs text-muted-foreground">{trip?.name}</p>
         </div>
-        <Button size="sm" className="gap-1" onClick={() => setCreateOpen(true)}>
-          <Plus className="w-4 h-4" /> Add Award
-        </Button>
+        <div className="flex gap-2">
+          <EditTripDialog tripId={id} trip={trip} />
+          <Button size="sm" className="gap-1" onClick={() => setCreateOpen(true)}>
+            <Plus className="w-4 h-4" /> Add Award
+          </Button>
+        </div>
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-6 space-y-8">

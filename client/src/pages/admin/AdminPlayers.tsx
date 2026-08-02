@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, Users, Edit2, Mail, Shield, ShieldOff } from "lucide-react";
+import { EditTripDialog } from "@/components/EditTripDialog";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -85,6 +86,7 @@ export default function AdminPlayers() {
           </div>
         </div>
         <div className="flex gap-2">
+          <EditTripDialog tripId={id} trip={trip} />
           <Link href={`/admin/trips/${id}/roster`}>
             <Button size="sm" variant="outline" className="gap-2">
               <Mail className="w-4 h-4" /> Invite via Link

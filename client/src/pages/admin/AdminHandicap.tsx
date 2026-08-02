@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, BarChart2, Save, History, AlertTriangle, Info } from "lucide-react";
+import { EditTripDialog } from "@/components/EditTripDialog";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { calculateNewHandicap } from "../../../../shared/scoring";
@@ -102,13 +103,16 @@ export default function AdminHandicap() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border px-6 py-4 flex items-center gap-3">
-        <Link href="/admin"><Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button></Link>
-        <BarChart2 className="w-5 h-5 text-primary" />
-        <div>
-          <h1 className="font-bold text-foreground">Handicap Settings</h1>
-          <p className="text-xs text-muted-foreground">{trip?.name}</p>
+      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/admin"><Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button></Link>
+          <BarChart2 className="w-5 h-5 text-primary" />
+          <div>
+            <h1 className="font-bold text-foreground">Handicap Settings</h1>
+            <p className="text-xs text-muted-foreground">{trip?.name}</p>
+          </div>
         </div>
+        <EditTripDialog tripId={id} trip={trip} onSuccess={() => refetchTrip()} />
       </header>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
