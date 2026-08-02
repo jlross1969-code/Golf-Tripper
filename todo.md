@@ -642,3 +642,9 @@
 - [x] Frontend: Trip Dashboard — tournament type badge shown in header
 - [x] Frontend: Trip Leaderboard — default tab respects tournament type (stableford → Stableford tab, stroke → Net Stroke tab)
 - [x] TypeScript check (0 errors), 51 tests passing, checkpoint
+
+## Session - Trip Leaderboard Scorecard Drill-Down
+
+- [x] Trip Leaderboard: tap player row opens a drawer showing hole-by-hole scorecard for each round played
+- [x] Drawer shows round name, date, gross/net/stableford per hole, totals per round (Best Day and Highlights tabs also wired)
+- [x] TypeScript check (0 errors), checkpoint

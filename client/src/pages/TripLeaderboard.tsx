@@ -420,7 +420,11 @@ export default function TripLeaderboard() {
                   <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">No scores yet.</div>
                 ) : (
                   ((data as any).bestDayStableford ?? []).map((p: any) => (
-                    <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                    <div
+                      key={p.userId}
+                      className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-muted/30 transition-colors active:scale-[0.98]"
+                      onClick={() => setDrawerPlayer({ userId: p.userId, userName: p.userName, currentHandicap: p.currentHandicap ?? 0, rounds: p.rounds })}
+                    >
                       <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
                       <PlayerAvatar name={p.userName} photoUrl={p.photoUrl} />
                       <div className="flex-1 min-w-0">
@@ -542,7 +546,11 @@ export default function TripLeaderboard() {
                   ) : (
                     <div className="space-y-2">
                       {data.stableford.slice(0, 3).map((p) => (
-                        <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                        <div
+                          key={p.userId}
+                          className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-muted/30 transition-colors active:scale-[0.98]"
+                          onClick={() => setDrawerPlayer({ userId: p.userId, userName: p.userName, currentHandicap: p.currentHandicap ?? 0, rounds: p.rounds })}
+                        >
                           <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
                           <PlayerAvatar name={p.userName} photoUrl={p.photoUrl} />
                           <div className="flex-1 min-w-0">
