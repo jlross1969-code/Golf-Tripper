@@ -227,3 +227,37 @@ export function alternateShotTeePlayer(
   // Odd holes → first tee player, Even holes → partner (1-indexed)
   return holeNumber % 2 === 1 ? firstTeePlayerId : partnerId;
 }
+
+
+// ─── Ambrose Scoring ─────────────────────────────────────────────────────────
+
+/**
+ * Calculate the Ambrose team handicap allowance.
+ * Combined handicap = sum of all team members' handicaps / team size.
+ * Apply 75% allowance for 2-person teams, 100% for 3-4 person teams.
+ */
+export function calculateAmbroseTeamHandicap(
+  playerHandicaps: number[],
+  teamSize: number
+): number {
+  const sum = playerHandicaps.reduce((a, b) => a + b, 0);
+  const combined = sum / teamSize;
+  const allowanceFactor = teamSize === 2 ? 0.75 : 1.0;
+  const allowance = combined * allowanceFactor;
+  const decimal = allowance - Math.floor(allowance);
+  return decimal <= 0.5 ? Math.floor(allowance) : Math.ceil(allowance);
+}
+
+/**
+ * Calculate net score for an Ambrose team on a hole.
+ */
+export function calculateAmbroseNetScore(
+  grossScore: number,
+  teamHandicap: number,
+  holeStrokeIndex: number
+): number {
+  const fullStrokes = Math.floor(teamHandicap / 18);
+  const extraStrokes = teamHandicap % 18 >= holeStrokeIndex ? 1 : 0;
+  const strokesReceived = fullStrokes + extraStrokes;
+  return grossScore - strokesReceived;
+}

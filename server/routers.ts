@@ -71,11 +71,17 @@ import {
   getLongDriveLeaderboard,
   submitLongDriveEntry,
   markLongDriveBroadcast,
+  upsertAmbroseScore,
+  getAmbroseScoresByGroup,
+  getAmbroseLeaderboard,
+  getTripAmbroseLeaderboard,
 } from "./db";
 import {
   buildAchievementMessage,
   calculate4BBBScore,
   calculateAlternateShotHandicap,
+  calculateAmbroseTeamHandicap,
+  calculateAmbroseNetScore,
   calculateMatchStatus,
   calculateNewHandicap,
   calculateNetScore,
@@ -245,7 +251,6 @@ export const appRouter = router({
           handicapAutoAdjust: z.boolean().optional(),
           location: z.string().optional(),
           description: z.string().optional(),
-          individualScoringMode: z.enum(["stableford", "stroke"]).optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -444,11 +449,12 @@ export const appRouter = router({
           name: z.string().min(1),
           roundDate: z.string(),
           strokePlayEnabled: z.boolean().default(true),
-          stablefordEnabled: z.boolean().default(true),
           fourBBBEnabled: z.boolean().default(false),
           skinsEnabled: z.boolean().default(false),
           matchPlayEnabled: z.boolean().default(false),
           alternateShotEnabled: z.boolean().default(false),
+          ambroseEnabled: z.boolean().default(false),
+          ambroseTeamSize: z.number().min(2).max(4).default(4),
         })
       )
       .mutation(async ({ input }) => {
@@ -468,7 +474,6 @@ export const appRouter = router({
           courseId: z.number().optional(),
           status: z.enum(["scheduled", "active", "completed"]).optional(),
           strokePlayEnabled: z.boolean().optional(),
-          stablefordEnabled: z.boolean().optional(),
           fourBBBEnabled: z.boolean().optional(),
           skinsEnabled: z.boolean().optional(),
           matchPlayEnabled: z.boolean().optional(),
@@ -476,6 +481,8 @@ export const appRouter = router({
           dailyAdjustment: z.number().optional(),
           mercyRuleEnabled: z.boolean().optional(),
           mercyRuleStrokes: z.number().min(4).max(6).optional(),
+          ambroseEnabled: z.boolean().optional(),
+          ambroseTeamSize: z.number().min(2).max(4).optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -1331,7 +1338,37 @@ export const appRouter = router({
           .sort((a, b) => b.cumulativeStableford - a.cumulativeStableford)
           .map((p, i) => ({ ...p, position: i + 1 }));
         const fourBBB = await getTripFourBBBLeaderboard(input.tripId);
-        return { strokePlay, stableford, fourBBB };
+        const ambrose = await getTripAmbroseLeaderboard(input.tripId);
+        const hasAmbroseRound = ambrose.length > 0;
+        const hasFourBBBRound = fourBBB.length > 0;
+
+        // Best Day leaderboard — each player's single best round
+        const bestDayStableford = [...withAch]
+          .filter((p) => p.rounds.length > 0)
+          .map((p) => ({
+            ...p,
+            bestDayStableford: p.rounds.length > 0 ? Math.max(...p.rounds.map((r) => r.totalStableford)) : 0,
+            position: 0,
+          }))
+          .sort((a, b) => b.bestDayStableford - a.bestDayStableford)
+          .map((p, i) => ({ ...p, position: i + 1 }));
+        const bestDayStroke = [...withAch]
+          .filter((p) => p.rounds.some((r) => r.holesPlayed > 0))
+          .map((p) => {
+            const played = p.rounds.filter((r) => r.holesPlayed > 0);
+            return {
+              ...p,
+              bestDayNet: played.length > 0 ? Math.min(...played.map((r) => r.totalNet)) : 9999,
+              position: 0,
+            };
+          })
+          .sort((a, b) => a.bestDayNet - b.bestDayNet)
+          .map((p, i) => ({ ...p, position: i + 1 }));
+
+        const trip = await getTrip(input.tripId);
+        const individualScoringMode = (trip as any)?.handicapMode ?? "stableford";
+
+        return { strokePlay, stableford, fourBBB, ambrose, hasAmbroseRound, hasFourBBBRound, bestDayStableford, bestDayStroke, individualScoringMode };
       }),
   }),
 
@@ -2008,6 +2045,73 @@ export const appRouter = router({
           .set({ planTier: input.tier })
           .where(eqOp(usersTable.id, input.userId));
         return { success: true };
+      }),
+  }),
+
+  // ─── Ambrose ──────────────────────────────────────────────────────────────
+  ambrose: router({
+    // Get the leaderboard for an Ambrose round (team standings)
+    getLeaderboard: publicProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => {
+        return getAmbroseLeaderboard(input.roundId);
+      }),
+
+    // Get Ambrose scores for a specific group in a round
+    getGroupScores: publicProcedure
+      .input(z.object({ roundId: z.number(), groupId: z.number() }))
+      .query(async ({ input }) => {
+        return getAmbroseScoresByGroup(input.roundId, input.groupId);
+      }),
+
+    // Submit a team hole score for Ambrose
+    submitScore: protectedProcedure
+      .input(z.object({
+        roundId: z.number(),
+        groupId: z.number(),
+        holeId: z.number(),
+        holeNumber: z.number(),
+        grossScore: z.number().min(1).max(20),
+        selectedDriveUserId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const round = await getRound(input.roundId);
+        if (!round) throw new TRPCError({ code: "NOT_FOUND", message: "Round not found" });
+        const courseHoles = await getHolesByCourse(round.courseId);
+        const hole = courseHoles.find((h) => h.id === input.holeId);
+        if (!hole) throw new TRPCError({ code: "NOT_FOUND", message: "Hole not found" });
+        const gPlayers = await getGroupPlayers(input.groupId);
+        const tripPlayerList = await getTripPlayers(round.tripId);
+        const playerHandicaps = gPlayers.map((gp) => {
+          const tp = tripPlayerList.find((t) => t.userId === gp.userId);
+          return tp?.currentHandicap ?? 0;
+        });
+        let grossScore = input.grossScore;
+        if ((round as any).mercyRuleEnabled) {
+          const maxScore = hole.par + ((round as any).mercyRuleStrokes ?? 5);
+          grossScore = Math.min(grossScore, maxScore);
+        }
+        const teamHandicap = calculateAmbroseTeamHandicap(playerHandicaps, gPlayers.length || (round as any).ambroseTeamSize || 4);
+        const netScore = calculateAmbroseNetScore(grossScore, teamHandicap, hole.strokeIndex);
+        const stablefordPoints = calculateStablefordPoints(netScore, hole.par);
+        await upsertAmbroseScore({
+          roundId: input.roundId,
+          groupId: input.groupId,
+          holeId: input.holeId,
+          holeNumber: input.holeNumber,
+          grossScore,
+          netScore,
+          stablefordPoints,
+          selectedDriveUserId: input.selectedDriveUserId,
+        });
+        return { grossScore, netScore, stablefordPoints };
+      }),
+
+    // Get trip-level Ambrose leaderboard
+    getTripLeaderboard: publicProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input }) => {
+        return getTripAmbroseLeaderboard(input.tripId);
       }),
   }),
 });

@@ -23,7 +23,6 @@ export default function AdminHandicap() {
   const [factor, setFactor] = useState("");
   const [autoAdjust, setAutoAdjust] = useState(true);
   const [mode, setMode] = useState<"stableford" | "net_stroke">("stableford");
-  const [individualScoringMode, setIndividualScoringMode] = useState<"stableford" | "stroke">("stableford");
 
   // Per-round daily adjustment state: roundId → adjustment string
   const [dailyAdjs, setDailyAdjs] = useState<Record<number, string>>({});
@@ -40,7 +39,6 @@ export default function AdminHandicap() {
       setFactor(trip.handicapFactor.toString());
       setAutoAdjust(trip.handicapAutoAdjust);
       setMode(storedMode);
-      setIndividualScoringMode((trip as any).individualScoringMode ?? "stableford");
     }
   }, [trip]);
 
@@ -193,25 +191,6 @@ export default function AdminHandicap() {
                 <p>Rounding: ≤ .5 → floor, ≥ .6 → ceil</p>
               </div>
 
-              {/* Individual Leaderboard Scoring Mode */}
-              <div>
-                <label className="text-sm font-medium text-foreground mb-1 block">Individual Leaderboard Display</label>
-                <p className="text-xs text-muted-foreground mb-2">Controls how the individual leaderboard ranks players across all rounds in this trip.</p>
-                <div className="flex gap-2">
-                  {(["stableford", "stroke"] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setIndividualScoringMode(m)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                        individualScoringMode === m ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border hover:border-primary/50"
-                      }`}
-                    >
-                      {m === "stableford" ? "Stableford" : "Stroke Play"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <Button
                 className="w-full gap-2"
                 disabled={!baseline || !factor || updateTrip.isPending}
@@ -221,7 +200,6 @@ export default function AdminHandicap() {
                   handicapFactor: parseFloat(factor),
                   handicapAutoAdjust: autoAdjust,
                   handicapMode: mode,
-                  individualScoringMode,
                 })}
               >
                 <Save className="w-4 h-4" /> Save Settings

@@ -35,6 +35,7 @@ import AdminLongDrive from "./pages/admin/AdminLongDrive";
 import AdminPlanManagement from "./pages/admin/AdminPlanManagement";
 import GroupPairing from "./pages/GroupPairing";
 import TeeSheet from "./pages/TeeSheet";
+import AmbroseScoreEntry from "./pages/AmbroseScoreEntry";
 
 function Router() {
   return (
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/round/:roundId/long-drive" component={LongDriveResults} />
       <Route path="/trip/:tripId/my-group/:roundId" component={GroupPairing} />
       <Route path="/trip/:tripId/round/:roundId/teesheet" component={TeeSheet} />
+      <Route path="/round/:roundId/ambrose" component={AmbroseScoreEntry} />
       <Route path="/admin" component={AdminTrips} />
       <Route path="/admin/trips" component={AdminTrips} />
       <Route path="/admin/trips/:id" component={AdminTripDetail} />

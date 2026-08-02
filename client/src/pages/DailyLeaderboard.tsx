@@ -13,6 +13,42 @@ import {
 } from "lucide-react";
 import AchievementAlert from "@/components/AchievementAlert";
 
+// ─── Ambrose Daily Leaderboard ────────────────────────────────────────────────
+function AmbroseLeaderboardTab({ roundId }: { roundId: number }) {
+  const { data: leaderboard, isLoading } = trpc.ambrose.getLeaderboard.useQuery({ roundId }, { refetchInterval: 15000 });
+  if (isLoading) return <div className="space-y-2">{[1,2,3].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>;
+  if (!leaderboard || leaderboard.length === 0) {
+    return <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">No Ambrose scores yet.</div>;
+  }
+  return (
+    <div className="space-y-2">
+      {leaderboard.map((team) => (
+        <div key={team.groupId} className="bg-card border border-purple-800/40 rounded-xl px-4 py-3 flex items-center gap-4">
+          <div className="w-8 flex-shrink-0 flex justify-center">
+            {team.position === 1 ? <span className="text-yellow-400 font-bold text-lg">🥇</span>
+              : team.position === 2 ? <span className="text-slate-300 font-bold text-lg">🥈</span>
+              : team.position === 3 ? <span className="text-amber-600 font-bold text-lg">🥉</span>
+              : <span className="text-muted-foreground font-semibold w-6 text-center">{team.position}</span>}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-foreground truncate">
+              {team.teamEmoji && <span className="mr-1">{team.teamEmoji}</span>}
+              {team.teamName}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {team.players.map((p) => p.name.split(" ")[0]).join(" & ")} · {team.holesPlayed} holes
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-bold text-foreground">{team.totalNet}</p>
+            <p className="text-xs text-muted-foreground">Net ({team.totalStableford} pts)</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function positionBadge(pos: number) {
@@ -289,15 +325,11 @@ export default function DailyLeaderboard() {
         ) : !data ? (
           <div className="text-center py-12 text-muted-foreground">Round not found.</div>
         ) : (
-          <Tabs defaultValue="stroke">
-            <TabsList className="mb-6 w-full">
-              {data.round.strokePlayEnabled && (
-                <TabsTrigger value="stroke" className="flex-1 gap-2">
-                  <Trophy className="w-4 h-4" />
-                  {(data.trip as any).individualScoringMode === "stroke" ? "Stroke Play" : "Stableford"}
-                </TabsTrigger>
-              )}
+          <Tabs defaultValue={(data.round as any).ambroseEnabled ? "ambrose" : data.round.fourBBBEnabled ? "4bbb" : "stroke"}>
+            <TabsList className="mb-6 w-full flex-wrap gap-1">
+              {data.round.strokePlayEnabled && <TabsTrigger value="stroke" className="flex-1 gap-2"><Trophy className="w-4 h-4" />Stroke Play</TabsTrigger>}
               {data.round.fourBBBEnabled && <TabsTrigger value="4bbb" className="flex-1 gap-2"><Users className="w-4 h-4" />4BBB</TabsTrigger>}
+              {(data.round as any).ambroseEnabled && <TabsTrigger value="ambrose" className="flex-1 gap-2">🏌️ Ambrose</TabsTrigger>}
               {data.round.skinsEnabled && <TabsTrigger value="skins" className="flex-1 gap-2"><Layers className="w-4 h-4" />Skins</TabsTrigger>}
               <TabsTrigger value="highlights" className="flex-1 gap-2"><Star className="w-4 h-4" />Highlights</TabsTrigger>
             </TabsList>
@@ -312,57 +344,48 @@ export default function DailyLeaderboard() {
                       No scores entered yet.
                     </div>
                   ) : (
-                    (() => {
-                      const isStableford = (data.trip as any).individualScoringMode !== "stroke";
-                      const sorted = isStableford
-                        ? [...data.strokePlay].sort((a, b) => b.totalStableford - a.totalStableford)
-                        : data.strokePlay;
-                      return sorted.map((p, idx) => {
-                        const ach = (p as any).achievements as { hio: number; eagle: number; birdie: number } | undefined;
-                        const displayPos = isStableford ? idx + 1 : p.position;
-                        return (
-                          <button
-                            key={p.userId}
-                            type="button"
-                            className="w-full text-left bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3 hover:border-primary/50 hover:bg-accent transition-colors cursor-pointer active:scale-[0.99]"
-                            onClick={() => openScorecard(p.userId, p.userName, p.handicap)}
-                          >
-                            <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(displayPos)}</div>
-                            <PlayerAvatar name={p.userName} photoUrl={(p as any).photoUrl} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
-                                {ach && ach.hio > 0 && <span className="text-xs bg-yellow-400/20 text-yellow-400 px-1.5 py-0.5 rounded-full font-bold">🕳️ {ach.hio}</span>}
-                                {ach && ach.eagle > 0 && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">🦥 {ach.eagle}</span>}
-                                {ach && ach.birdie > 0 && <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">🐦 {ach.birdie}</span>}
-                                {(p as any).hasMercyCappedScore && (
-                                  <span className="text-[10px] bg-amber-400/15 text-amber-400 border border-amber-400/30 px-1.5 py-0.5 rounded-full font-semibold" title="One or more scores capped by mercy rule">M</span>
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
+                    data.strokePlay.map((p) => {
+                      const ach = (p as any).achievements as { hio: number; eagle: number; birdie: number } | undefined;
+                      return (
+                        <button
+                          key={p.userId}
+                          type="button"
+                          className="w-full text-left bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3 hover:border-primary/50 hover:bg-accent transition-colors cursor-pointer active:scale-[0.99]"
+                          onClick={() => openScorecard(p.userId, p.userName, p.handicap)}
+                        >
+                          <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
+                          <PlayerAvatar name={p.userName} photoUrl={(p as any).photoUrl} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
+                              {ach && ach.hio > 0 && <span className="text-xs bg-yellow-400/20 text-yellow-400 px-1.5 py-0.5 rounded-full font-bold">🕳️ {ach.hio}</span>}
+                              {ach && ach.eagle > 0 && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">🦥 {ach.eagle}</span>}
+                              {ach && ach.birdie > 0 && <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">🐦 {ach.birdie}</span>}
+                              {(p as any).hasMercyCappedScore && (
+                                <span className="text-[10px] bg-amber-400/15 text-amber-400 border border-amber-400/30 px-1.5 py-0.5 rounded-full font-semibold" title="One or more scores capped by mercy rule">M</span>
+                              )}
                             </div>
-                            <div className="text-right flex items-center gap-2">
-                              <div>
-                                {isStableford ? (
-                                  <>
-                                    <p className="text-lg font-bold text-foreground">{p.totalStableford}</p>
-                                    <p className="text-xs text-muted-foreground">pts ({p.totalGross} gross)</p>
-                                  </>
-                                ) : (
-                                  <>
-                                    <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
-                                    <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
-                                  </>
-                                )}
-                              </div>
-                              <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
+                            <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
+                          </div>
+                          <div className="text-right flex items-center gap-2">
+                            <div>
+                              <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
+                              <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
                             </div>
-                          </button>
-                        );
-                      });
-                    })()
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
+                          </div>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
+              </TabsContent>
+            )}
+
+            {/* Ambrose Tab */}
+            {(data.round as any).ambroseEnabled && (
+              <TabsContent value="ambrose">
+                <AmbroseLeaderboardTab roundId={data.round.id} />
               </TabsContent>
             )}
 

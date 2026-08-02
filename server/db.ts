@@ -44,6 +44,8 @@ import {
   tripAwardWinners,
   LongDriveEntry,
   longDriveEntries,
+  AmbroseScore,
+  ambroseScores,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -336,6 +338,10 @@ export async function createRound(data: {
   strokePlayEnabled?: boolean;
   fourBBBEnabled?: boolean;
   skinsEnabled?: boolean;
+  matchPlayEnabled?: boolean;
+  alternateShotEnabled?: boolean;
+  ambroseEnabled?: boolean;
+  ambroseTeamSize?: number;
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -347,6 +353,10 @@ export async function createRound(data: {
     strokePlayEnabled: data.strokePlayEnabled ?? true,
     fourBBBEnabled: data.fourBBBEnabled ?? false,
     skinsEnabled: data.skinsEnabled ?? false,
+    matchPlayEnabled: data.matchPlayEnabled ?? false,
+    alternateShotEnabled: data.alternateShotEnabled ?? false,
+    ambroseEnabled: data.ambroseEnabled ?? false,
+    ambroseTeamSize: data.ambroseTeamSize ?? 4,
     status: "scheduled",
   });
   return (result[0] as any).insertId;
@@ -2045,4 +2055,268 @@ export async function getLongDriveLeader(roundId: number): Promise<(LongDriveEnt
   const [tp] = await db.select({ nickname: tripPlayers.nickname }).from(tripPlayers).where(eq(tripPlayers.userId, entry.userId)).limit(1);
   const playerName = tp?.nickname ?? player?.name ?? `User ${entry.userId}`;
   return { ...entry, playerName };
+}
+
+// ─── Ambrose DB Helpers ───────────────────────────────────────────────────────
+
+export async function upsertAmbroseScore(data: {
+  roundId: number;
+  groupId: number;
+  holeId: number;
+  holeNumber: number;
+  grossScore: number;
+  netScore: number;
+  stablefordPoints: number;
+  selectedDriveUserId?: number;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // Check if a score already exists for this group/hole/round
+  const existing = await db
+    .select({ id: ambroseScores.id })
+    .from(ambroseScores)
+    .where(
+      and(
+        eq(ambroseScores.roundId, data.roundId),
+        eq(ambroseScores.groupId, data.groupId),
+        eq(ambroseScores.holeId, data.holeId)
+      )
+    )
+    .limit(1);
+  if (existing.length > 0) {
+    await db
+      .update(ambroseScores)
+      .set({
+        grossScore: data.grossScore,
+        netScore: data.netScore,
+        stablefordPoints: data.stablefordPoints,
+        selectedDriveUserId: data.selectedDriveUserId ?? null,
+      })
+      .where(eq(ambroseScores.id, existing[0].id));
+  } else {
+    await db.insert(ambroseScores).values({
+      roundId: data.roundId,
+      groupId: data.groupId,
+      holeId: data.holeId,
+      holeNumber: data.holeNumber,
+      grossScore: data.grossScore,
+      netScore: data.netScore,
+      stablefordPoints: data.stablefordPoints,
+      selectedDriveUserId: data.selectedDriveUserId ?? null,
+    });
+  }
+}
+
+export async function getAmbroseScoresByGroup(
+  roundId: number,
+  groupId: number
+): Promise<AmbroseScore[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(ambroseScores)
+    .where(
+      and(eq(ambroseScores.roundId, roundId), eq(ambroseScores.groupId, groupId))
+    );
+}
+
+export async function getAmbroseLeaderboard(roundId: number): Promise<
+  {
+    groupId: number;
+    teamName: string;
+    teamEmoji: string | null;
+    players: { userId: number; name: string }[];
+    holesPlayed: number;
+    totalGross: number;
+    totalNet: number;
+    totalStableford: number;
+    position: number;
+  }[]
+> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Get all groups for this round
+  const roundGroups = await db
+    .select()
+    .from(groups)
+    .where(eq(groups.roundId, roundId));
+
+  if (roundGroups.length === 0) return [];
+
+  const results = await Promise.all(
+    roundGroups.map(async (g) => {
+      // Get all ambrose scores for this group
+      const groupScores = await db
+        .select()
+        .from(ambroseScores)
+        .where(
+          and(eq(ambroseScores.roundId, roundId), eq(ambroseScores.groupId, g.id))
+        );
+
+      // Get players in this group
+      const gPlayers = await db
+        .select({
+          userId: groupPlayers.userId,
+          teamName: groupPlayers.teamName,
+          teamEmoji: groupPlayers.teamEmoji,
+        })
+        .from(groupPlayers)
+        .where(eq(groupPlayers.groupId, g.id));
+
+      // Get player names
+      const playerIds = gPlayers.map((p) => p.userId);
+      const playerNames =
+        playerIds.length > 0
+          ? await db
+              .select({ id: users.id, name: users.name })
+              .from(users)
+              .where(inArray(users.id, playerIds))
+          : [];
+
+      const teamName =
+        gPlayers.find((p) => p.teamName)?.teamName ?? g.name;
+      const teamEmoji = gPlayers.find((p) => p.teamEmoji)?.teamEmoji ?? null;
+
+      const totalGross = groupScores.reduce((s, r) => s + r.grossScore, 0);
+      const totalNet = groupScores.reduce((s, r) => s + r.netScore, 0);
+      const totalStableford = groupScores.reduce(
+        (s, r) => s + r.stablefordPoints,
+        0
+      );
+
+      return {
+        groupId: g.id,
+        teamName,
+        teamEmoji,
+        players: playerIds.map((uid) => ({
+          userId: uid,
+          name: playerNames.find((u) => u.id === uid)?.name ?? `Player ${uid}`,
+        })),
+        holesPlayed: groupScores.length,
+        totalGross,
+        totalNet,
+        totalStableford,
+      };
+    })
+  );
+
+  // Sort by totalNet ascending (lowest net wins), then assign positions
+  const sorted = results
+    .filter((r) => r.holesPlayed > 0)
+    .sort((a, b) => a.totalNet - b.totalNet);
+  const noScores = results.filter((r) => r.holesPlayed === 0);
+
+  return [
+    ...sorted.map((r, i) => ({ ...r, position: i + 1 })),
+    ...noScores.map((r, i) => ({ ...r, position: sorted.length + i + 1 })),
+  ];
+}
+
+export async function getTripAmbroseLeaderboard(tripId: number): Promise<
+  {
+    teamKey: string;
+    teamName: string;
+    teamEmoji: string | null;
+    players: { userId: number; name: string }[];
+    roundsPlayed: number;
+    cumulativeNet: number;
+    cumulativeStableford: number;
+    position: number;
+  }[]
+> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Get all Ambrose-enabled rounds for this trip
+  const ambroseRounds = await db
+    .select()
+    .from(rounds)
+    .where(and(eq(rounds.tripId, tripId), eq(rounds.ambroseEnabled, true)));
+
+  if (ambroseRounds.length === 0) return [];
+
+  // Aggregate per-group across all rounds
+  const teamMap = new Map<
+    string,
+    {
+      teamName: string;
+      teamEmoji: string | null;
+      players: { userId: number; name: string }[];
+      roundsPlayed: number;
+      cumulativeNet: number;
+      cumulativeStableford: number;
+    }
+  >();
+
+  for (const round of ambroseRounds) {
+    const roundGroups = await db
+      .select()
+      .from(groups)
+      .where(eq(groups.roundId, round.id));
+
+    for (const g of roundGroups) {
+      const groupScores = await db
+        .select()
+        .from(ambroseScores)
+        .where(
+          and(eq(ambroseScores.roundId, round.id), eq(ambroseScores.groupId, g.id))
+        );
+      if (groupScores.length === 0) continue;
+
+      const gPlayers = await db
+        .select({
+          userId: groupPlayers.userId,
+          teamName: groupPlayers.teamName,
+          teamEmoji: groupPlayers.teamEmoji,
+        })
+        .from(groupPlayers)
+        .where(eq(groupPlayers.groupId, g.id));
+
+      const playerIds = gPlayers.map((p) => p.userId).sort((a, b) => a - b);
+      const teamKey = playerIds.join("-");
+      const teamName = gPlayers.find((p) => p.teamName)?.teamName ?? g.name;
+      const teamEmoji = gPlayers.find((p) => p.teamEmoji)?.teamEmoji ?? null;
+
+      const playerNames =
+        playerIds.length > 0
+          ? await db
+              .select({ id: users.id, name: users.name })
+              .from(users)
+              .where(inArray(users.id, playerIds))
+          : [];
+
+      const existing = teamMap.get(teamKey);
+      const totalNet = groupScores.reduce((s, r) => s + r.netScore, 0);
+      const totalStableford = groupScores.reduce(
+        (s, r) => s + r.stablefordPoints,
+        0
+      );
+
+      if (existing) {
+        existing.roundsPlayed += 1;
+        existing.cumulativeNet += totalNet;
+        existing.cumulativeStableford += totalStableford;
+      } else {
+        teamMap.set(teamKey, {
+          teamName,
+          teamEmoji,
+          players: playerIds.map((uid) => ({
+            userId: uid,
+            name: playerNames.find((u) => u.id === uid)?.name ?? `Player ${uid}`,
+          })),
+          roundsPlayed: 1,
+          cumulativeNet: totalNet,
+          cumulativeStableford: totalStableford,
+        });
+      }
+    }
+  }
+
+  const sorted = Array.from(teamMap.entries())
+    .map(([teamKey, v]) => ({ teamKey, ...v }))
+    .sort((a, b) => a.cumulativeNet - b.cumulativeNet);
+
+  return sorted.map((t, i) => ({ ...t, position: i + 1 }));
 }

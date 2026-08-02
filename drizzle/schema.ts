@@ -75,9 +75,6 @@ export const trips = mysqlTable("trips", {
   description: text("description"),
   shareToken: varchar("shareToken", { length: 64 }),
   createdBy: int("createdBy").notNull(),
-  // Individual leaderboard scoring display mode: 'stableford' shows Stableford pts, 'stroke' shows net stroke.
-  // Applied consistently across all rounds for this trip.
-  individualScoringMode: mysqlEnum("individualScoringMode", ["stableford", "stroke"]).default("stableford").notNull(),
   // ─── Billing ──────────────────────────────────────────────────────────────
   // planTier for this trip. 'free' = up to 8 players, core features only.
   // 'tripPass' = all premium features unlocked for this trip.
@@ -123,7 +120,6 @@ export const rounds = mysqlTable("rounds", {
   roundDate: timestamp("roundDate").notNull(),
   // Active formats for this round
   strokePlayEnabled: boolean("strokePlayEnabled").default(true).notNull(),
-  stablefordEnabled: boolean("stablefordEnabled").default(true).notNull(),
   fourBBBEnabled: boolean("fourBBBEnabled").default(false).notNull(),
   skinsEnabled: boolean("skinsEnabled").default(false).notNull(),
   matchPlayEnabled: boolean("matchPlayEnabled").default(false).notNull(),
@@ -137,6 +133,9 @@ export const rounds = mysqlTable("rounds", {
   // Mercy rule: cap gross score at par + mercyRuleStrokes (default off, 5 over par)
   mercyRuleEnabled: boolean("mercyRuleEnabled").default(false).notNull(),
   mercyRuleStrokes: int("mercyRuleStrokes").default(5).notNull(),
+  // Ambrose team scramble format
+  ambroseEnabled: boolean("ambroseEnabled").default(false).notNull(),
+  ambroseTeamSize: int("ambroseTeamSize").default(4).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -435,3 +434,23 @@ export const pushSubscriptions = mysqlTable("push_subscriptions", {
 });
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+// ─── Ambrose Scores ───────────────────────────────────────────────────────────
+// Stores team hole scores for Ambrose (scramble) rounds.
+// One row per group per hole per round.
+
+export const ambroseScores = mysqlTable("ambrose_scores", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  groupId: int("groupId").notNull(),
+  holeId: int("holeId").notNull(),
+  holeNumber: int("holeNumber").notNull(),
+  grossScore: int("grossScore").notNull(),
+  netScore: int("netScore").notNull(),
+  stablefordPoints: int("stablefordPoints").notNull(),
+  // Which player's drive was selected for this hole
+  selectedDriveUserId: int("selectedDriveUserId"),
+  submittedAt: timestamp("submittedAt").defaultNow().notNull(),
+});
+
+export type AmbroseScore = typeof ambroseScores.$inferSelect;

@@ -542,13 +542,20 @@
 
 - [x] Frontend: ScoreEntry — remove SI badge from player card header; add "Stroke Index" as 4th column in the Shots / Pts / Total pts footer row
 
-## Session - Stableford Format & Trip Scoring Mode
+## Session - Ambrose Format & Best Day Leaderboard
 
-- [x] Schema + DB: Add stablefordEnabled (boolean, default true) to rounds table
-- [x] Backend: Expose stablefordEnabled in rounds.create, rounds.update, rounds.get procedures
-- [x] Frontend: AdminRounds — add Stableford toggle to Create Round and Edit Round dialogs
-- [x] Schema + DB: Add individualScoringMode ('stableford' | 'stroke') to trips table (default 'stableford')
-- [x] Backend: Expose individualScoringMode in trips.get and trips.update procedures
-- [x] Frontend: AdminTripDetail — add Individual Scoring Mode setting (Stableford / Stroke Play) in trip settings
-- [x] Frontend: DailyLeaderboard — read trip individualScoringMode and default the Stroke Play tab to show Stableford or Stroke accordingly, removing the per-round tab ambiguity
-- [x] TypeScript check, tests, checkpoint
+- [x] DB: add ambroseEnabled (boolean, default false) and ambroseTeamSize (int, default 4) to rounds table
+- [x] DB: create ambrose_scores table (id, roundId, groupId, holeId, holeNumber, grossScore, netScore, stablefordPoints, selectedDriveUserId, createdAt)
+- [x] Apply DB migration for Ambrose schema changes
+- [x] Backend: shared/scoring.ts — calculateAmbroseTeamHandicap and calculateAmbroseNetScore helpers
+- [x] Backend: db.ts — upsertAmbroseScore, getAmbroseScoresByGroup, getAmbroseLeaderboard, getTripAmbroseLeaderboard helpers
+- [x] Backend: ambrose tRPC router — getLeaderboard, getGroupScores, submitScore, getTripLeaderboard procedures
+- [x] Backend: rounds.create and rounds.update accept ambroseEnabled and ambroseTeamSize
+- [x] Backend: leaderboard.trip returns hasAmbroseRound, hasFourBBBRound, bestDayStableford, bestDayStroke, ambrose data
+- [x] Admin UI: AdminRounds — Ambrose toggle + team size selector (2–4) in create/edit dialogs
+- [x] Admin UI: AdminRounds — Ambrose badge on round cards + "Ambrose Scores" link to /round/:id/ambrose
+- [x] Frontend: AmbroseScoreEntry page — hole-by-hole team score entry with colour-coded score buttons, scorecard summary
+- [x] Frontend: Route /round/:roundId/ambrose added to App.tsx
+- [x] Frontend: DailyLeaderboard — Ambrose tab (auto-selected when ambroseEnabled), 4BBB auto-selected when fourBBBEnabled
+- [x] Frontend: TripLeaderboard — Best Day tab (each player's best single round), 4BBB tab, Ambrose tab (all conditionally shown)
+- [x] TypeScript check (0 errors), all 51 tests passing, checkpoint

@@ -51,7 +51,6 @@ export default function AdminRounds() {
   const [courseId, setCourseId] = useState("");
   const [roundDate, setRoundDate] = useState("");
   const [strokePlay, setStrokePlay] = useState(true);
-  const [stableford, setStableford] = useState(true);
   const [fourBBB, setFourBBB] = useState(false);
   const [skins, setSkins] = useState(false);
   const [matchPlay, setMatchPlay] = useState(false);
@@ -64,13 +63,17 @@ export default function AdminRounds() {
   const [editCourseId, setEditCourseId] = useState("");
   const [editRoundDate, setEditRoundDate] = useState("");
   const [editStroke, setEditStroke] = useState(true);
-  const [editStableford, setEditStableford] = useState(true);
   const [editFourBBB, setEditFourBBB] = useState(false);
   const [editSkins, setEditSkins] = useState(false);
   const [editMatchPlay, setEditMatchPlay] = useState(false);
   const [editAltShot, setEditAltShot] = useState(false);
   const [editMercyEnabled, setEditMercyEnabled] = useState(false);
   const [editMercyStrokes, setEditMercyStrokes] = useState(5);
+  const [editAmbroseEnabled, setEditAmbroseEnabled] = useState(false);
+  const [editAmbroseTeamSize, setEditAmbroseTeamSize] = useState(4);
+  // Create dialog Ambrose state
+  const [ambrose, setAmbrose] = useState(false);
+  const [ambroseTeamSize, setAmbroseTeamSize] = useState(4);
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -121,13 +124,14 @@ export default function AdminRounds() {
     setEditCourseId(round.courseId?.toString() ?? "");
     setEditRoundDate(round.roundDate ? new Date(round.roundDate).toISOString().split("T")[0] : "");
     setEditStroke(round.strokePlayEnabled);
-    setEditStableford((round as any).stablefordEnabled ?? true);
     setEditFourBBB(round.fourBBBEnabled);
     setEditSkins(round.skinsEnabled);
     setEditMatchPlay(round.matchPlayEnabled ?? false);
     setEditAltShot(round.alternateShotEnabled ?? false);
     setEditMercyEnabled((round as any).mercyRuleEnabled ?? false);
     setEditMercyStrokes((round as any).mercyRuleStrokes ?? 5);
+    setEditAmbroseEnabled((round as any).ambroseEnabled ?? false);
+    setEditAmbroseTeamSize((round as any).ambroseTeamSize ?? 4);
     setEditOpen(true);
   }
 
@@ -188,6 +192,7 @@ export default function AdminRounds() {
                     {round.skinsEnabled && <Badge variant="outline" className="text-xs">Skins</Badge>}
                     {(round as any).matchPlayEnabled && <Badge variant="outline" className="text-xs">Match Play</Badge>}
                     {(round as any).alternateShotEnabled && <Badge variant="outline" className="text-xs">Alt Shot</Badge>}
+                    {(round as any).ambroseEnabled && <Badge variant="outline" className="text-xs text-purple-300 border-purple-700">🏌️ Ambrose</Badge>}
                   </div>
                 </div>
               </div>
@@ -234,6 +239,13 @@ export default function AdminRounds() {
                     <PremiumFeatureBadge tier="tripPass" label="" tooltip="Long Drive will require a Trip Pass when billing is enabled" className="ml-0.5" />
                   </Button>
                 </Link>
+                {(round as any).ambroseEnabled && (
+                  <Link href={`/round/${round.id}/ambrose`}>
+                    <Button size="sm" variant="outline" className="gap-1 text-xs text-purple-300 border-purple-700">
+                      🏌️ Ambrose Scores
+                    </Button>
+                  </Link>
+                )}
                 <Button size="sm" variant="outline" className="gap-1 text-xs"
                   onClick={() => openEdit(round as Round)}>
                   <Pencil className="w-3 h-3" /> Edit
@@ -276,17 +288,27 @@ export default function AdminRounds() {
               <label className="text-sm font-medium text-foreground block">Formats</label>
               {[
                 { label: "Stroke Play", value: strokePlay, set: setStrokePlay },
-                { label: "Stableford", value: stableford, set: setStableford },
                 { label: "4BBB", value: fourBBB, set: setFourBBB },
                 { label: "Skins", value: skins, set: setSkins },
                 { label: "Match Play", value: matchPlay, set: setMatchPlay },
                 { label: "Alternate Shot", value: alternateShot, set: setAlternateShot },
+                { label: "🏌️ Ambrose", value: ambrose, set: setAmbrose },
               ].map(({ label, value, set }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-sm text-foreground">{label}</span>
                   <Switch checked={value} onCheckedChange={set} />
                 </div>
               ))}
+              {ambrose && (
+                <div className="flex items-center justify-between pl-4">
+                  <span className="text-sm text-muted-foreground">Team size</span>
+                  <div className="flex items-center gap-2">
+                    {[2, 3, 4].map((n) => (
+                      <Button key={n} size="sm" variant={ambroseTeamSize === n ? "default" : "outline"} className="h-7 w-7 p-0 text-xs" onClick={() => setAmbroseTeamSize(n)}>{n}</Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -295,8 +317,9 @@ export default function AdminRounds() {
               disabled={!name || !courseId || !roundDate || createRound.isPending}
               onClick={() => createRound.mutate({
                 tripId: id, courseId: Number(courseId), name, roundDate,
-                strokePlayEnabled: strokePlay, stablefordEnabled: stableford, fourBBBEnabled: fourBBB, skinsEnabled: skins,
+                strokePlayEnabled: strokePlay, fourBBBEnabled: fourBBB, skinsEnabled: skins,
                 matchPlayEnabled: matchPlay, alternateShotEnabled: alternateShot,
+                ambroseEnabled: ambrose, ambroseTeamSize,
               })}
             >
               Create Round
@@ -331,17 +354,27 @@ export default function AdminRounds() {
               <label className="text-sm font-medium text-foreground block">Formats</label>
               {[
                 { label: "Stroke Play", value: editStroke, set: setEditStroke },
-                { label: "Stableford", value: editStableford, set: setEditStableford },
                 { label: "4BBB", value: editFourBBB, set: setEditFourBBB },
                 { label: "Skins", value: editSkins, set: setEditSkins },
                 { label: "Match Play", value: editMatchPlay, set: setEditMatchPlay },
                 { label: "Alternate Shot", value: editAltShot, set: setEditAltShot },
+                { label: "🏌️ Ambrose", value: editAmbroseEnabled, set: setEditAmbroseEnabled },
               ].map(({ label, value, set }) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="text-sm text-foreground">{label}</span>
                   <Switch checked={value} onCheckedChange={set} />
                 </div>
               ))}
+              {editAmbroseEnabled && (
+                <div className="flex items-center justify-between pl-4">
+                  <span className="text-sm text-muted-foreground">Team size</span>
+                  <div className="flex items-center gap-2">
+                    {[2, 3, 4].map((n) => (
+                      <Button key={n} size="sm" variant={editAmbroseTeamSize === n ? "default" : "outline"} className="h-7 w-7 p-0 text-xs" onClick={() => setEditAmbroseTeamSize(n)}>{n}</Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Mercy Rule */}
@@ -375,13 +408,14 @@ export default function AdminRounds() {
                 ...(editCourseId ? { courseId: Number(editCourseId) } : {}),
                 ...(editRoundDate ? { roundDate: editRoundDate } : {}),
                 strokePlayEnabled: editStroke,
-                stablefordEnabled: editStableford,
                 fourBBBEnabled: editFourBBB,
                 skinsEnabled: editSkins,
                 matchPlayEnabled: editMatchPlay,
                 alternateShotEnabled: editAltShot,
                 mercyRuleEnabled: editMercyEnabled,
                 mercyRuleStrokes: editMercyStrokes,
+                ambroseEnabled: editAmbroseEnabled,
+                ambroseTeamSize: editAmbroseTeamSize,
               })}
             >
               Save Changes

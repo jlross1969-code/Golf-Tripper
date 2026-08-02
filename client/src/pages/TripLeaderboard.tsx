@@ -163,10 +163,13 @@ export default function TripLeaderboard() {
         ) : !data ? (
           <div className="text-center py-12 text-muted-foreground">No leaderboard data.</div>
         ) : (
-          <Tabs defaultValue="stroke">
-            <TabsList className="mb-6 w-full">
+          <Tabs defaultValue={(data as any).hasAmbroseRound ? "ambrose" : (data as any).hasFourBBBRound ? "4bbb" : "stroke"}>
+            <TabsList className="mb-6 w-full flex-wrap gap-1">
               <TabsTrigger value="stroke" className="flex-1 gap-2"><Trophy className="w-4 h-4" />Net Stroke</TabsTrigger>
               <TabsTrigger value="stableford" className="flex-1 gap-2">⭐ Stableford</TabsTrigger>
+              <TabsTrigger value="bestday" className="flex-1 gap-2">🌟 Best Day</TabsTrigger>
+              {(data as any).hasFourBBBRound && <TabsTrigger value="4bbb" className="flex-1 gap-2"><Users className="w-4 h-4" />4BBB</TabsTrigger>}
+              {(data as any).hasAmbroseRound && <TabsTrigger value="ambrose" className="flex-1 gap-2">🏌️ Ambrose</TabsTrigger>}
               <TabsTrigger value="highlights" className="flex-1 gap-2"><Star className="w-4 h-4" />Highlights</TabsTrigger>
             </TabsList>
 
@@ -197,6 +200,90 @@ export default function TripLeaderboard() {
                 )}
               </div>
             </TabsContent>
+            {/* Best Day Tab */}
+            <TabsContent value="bestday">
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground text-center mb-3">Each player's single best round of the trip</p>
+                {((data as any).bestDayStableford ?? []).length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">No scores yet.</div>
+                ) : (
+                  ((data as any).bestDayStableford ?? []).map((p: any) => (
+                    <div key={p.userId} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                      <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(p.position)}</div>
+                      <PlayerAvatar name={p.userName} photoUrl={p.photoUrl} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-foreground truncate">{p.userName ?? "Unknown"}</p>
+                        <p className="text-xs text-muted-foreground">{p.rounds.length} rounds played</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-primary">{p.bestDayStableford}</p>
+                        <p className="text-xs text-muted-foreground">Best Day pts</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+
+            {/* 4BBB Trip Tab */}
+            {(data as any).hasFourBBBRound && (
+              <TabsContent value="4bbb">
+                <div className="space-y-2">
+                  {data.fourBBB.length === 0 ? (
+                    <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">No 4BBB data yet.</div>
+                  ) : (
+                    data.fourBBB.map((t) => (
+                      <div key={t.teamKey} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4">
+                        <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(t.position)}</div>
+                        <div className="flex -space-x-2 flex-shrink-0">
+                          <PlayerAvatar name={t.player1Name} photoUrl={t.player1PhotoUrl} />
+                          <PlayerAvatar name={t.player2Name} photoUrl={t.player2PhotoUrl} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-foreground truncate">{t.player1Name} & {t.player2Name}</p>
+                          <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
+                          <p className="text-xs text-muted-foreground">Best Ball Net</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </TabsContent>
+            )}
+
+            {/* Ambrose Trip Tab */}
+            {(data as any).hasAmbroseRound && (
+              <TabsContent value="ambrose">
+                <div className="space-y-2">
+                  {((data as any).ambrose ?? []).length === 0 ? (
+                    <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">No Ambrose data yet.</div>
+                  ) : (
+                    ((data as any).ambrose ?? []).map((t: any) => (
+                      <div key={t.teamKey} className="bg-card border border-purple-800/40 rounded-xl px-4 py-3 flex items-center gap-4">
+                        <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(t.position)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-foreground truncate">
+                            {t.teamEmoji && <span className="mr-1">{t.teamEmoji}</span>}
+                            {t.teamName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {t.players.map((p: any) => p.name.split(" ")[0]).join(" & ")} · {t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-foreground">{t.cumulativeNet}</p>
+                          <p className="text-xs text-muted-foreground">{t.cumulativeStableford} pts</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </TabsContent>
+            )}
+
             <TabsContent value="highlights">
               <div className="space-y-6">
                 {/* Share Button */}

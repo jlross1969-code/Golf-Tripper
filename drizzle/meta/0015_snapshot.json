@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "5e7c4e75-0f1c-4e38-8977-c2d1a2b39cc2",
+  "id": "f900999b-78a0-493c-ab34-f2eb6558309d",
   "prevId": "a96b89f5-1217-4d51-aa39-af8a3c852cbd",
   "tables": {
     "achievements": {
@@ -93,6 +93,94 @@
       "compositePrimaryKeys": {
         "achievements_id": {
           "name": "achievements_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "ambrose_scores": {
+      "name": "ambrose_scores",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "roundId": {
+          "name": "roundId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "groupId": {
+          "name": "groupId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "holeId": {
+          "name": "holeId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "holeNumber": {
+          "name": "holeNumber",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "grossScore": {
+          "name": "grossScore",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "netScore": {
+          "name": "netScore",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stablefordPoints": {
+          "name": "stablefordPoints",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "selectedDriveUserId": {
+          "name": "selectedDriveUserId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "submittedAt": {
+          "name": "submittedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "ambrose_scores_id": {
+          "name": "ambrose_scores_id",
           "columns": [
             "id"
           ]
@@ -941,14 +1029,6 @@
           "autoincrement": false,
           "default": true
         },
-        "stablefordEnabled": {
-          "name": "stablefordEnabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
         "fourBBBEnabled": {
           "name": "fourBBBEnabled",
           "type": "boolean",
@@ -1027,6 +1107,22 @@
           "notNull": true,
           "autoincrement": false,
           "default": 5
+        },
+        "ambroseEnabled": {
+          "name": "ambroseEnabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "ambroseTeamSize": {
+          "name": "ambroseTeamSize",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 4
         },
         "createdAt": {
           "name": "createdAt",
@@ -1746,14 +1842,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "individualScoringMode": {
-          "name": "individualScoringMode",
-          "type": "enum('stableford','stroke')",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'stableford'"
         },
         "tripPlanTier": {
           "name": "tripPlanTier",

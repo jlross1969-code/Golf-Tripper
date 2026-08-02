@@ -1,2 +1,0 @@
-ALTER TABLE `rounds` ADD `stablefordEnabled` boolean DEFAULT true NOT NULL;--> statement-breakpoint
-ALTER TABLE `trips` ADD `individualScoringMode` enum('stableford','stroke') DEFAULT 'stableford' NOT NULL;
