@@ -8,7 +8,20 @@ import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "wouter";
 import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle, Copy, MapPin, Link2Off, CreditCard, Upload, ImageIcon } from "lucide-react";
 import { useState } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+
+type TournamentType = "stableford" | "stableford_4bbb" | "stroke" | "stroke_4bbb" | "matchplay" | "ambrose" | "alternate_shot";
+
+const TOURNAMENT_OPTIONS: { value: TournamentType; label: string; description: string }[] = [
+  { value: "stableford", label: "Stableford", description: "Individual Stableford points. Trip leaderboard ranks by total points." },
+  { value: "stableford_4bbb", label: "Stableford + 4BBB", description: "Individual Stableford + 4BBB pairs leaderboard." },
+  { value: "stroke", label: "Stroke Play", description: "Net stroke play. Trip leaderboard ranks by total net strokes." },
+  { value: "stroke_4bbb", label: "Stroke + 4BBB", description: "Net stroke play + 4BBB pairs leaderboard." },
+  { value: "matchplay", label: "Match Play (Pennant)", description: "Team pennant match play. Trip leaderboard shows team wins/halves/losses." },
+  { value: "ambrose", label: "Ambrose (Scramble)", description: "Team scramble. Results on daily leaderboard only — no trip total." },
+  { value: "alternate_shot", label: "Alternate Shot (Foursomes)", description: "Pairs alternate shots. Results on daily leaderboard only — no trip total." },
+];
 
 type Trip = {
   id: number;
@@ -34,6 +47,7 @@ export default function AdminTrips() {
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [tournamentType, setTournamentType] = useState<TournamentType>("stableford");
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [rules, setRules] = useState("");
@@ -60,7 +74,7 @@ export default function AdminTrips() {
       toast.success("Trip created");
       setCreateOpen(false);
       refetch();
-      setName(""); setStartDate(""); setEndDate(""); setLocation(""); setDescription("");
+      setName(""); setStartDate(""); setEndDate(""); setTournamentType("stableford"); setLocation(""); setDescription("");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -215,14 +229,21 @@ export default function AdminTrips() {
               const status = (trip as any).status as string | undefined;
               const activeRound = (trip as any).activeRoundName as string | null | undefined;
               const tripLocation = (trip as any).location as string | null | undefined;
+              const tType = (trip as any).tournamentType as TournamentType | undefined;
+              const tTypeLabel = TOURNAMENT_OPTIONS.find((o) => o.value === tType)?.label ?? "Stableford";
               return (
                 <div key={trip.id} className="bg-card border border-border rounded-xl p-5">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-bold text-foreground text-lg truncate">{trip.name}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
-                      </p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
+                        </p>
+                        <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">
+                          {tTypeLabel}
+                        </span>
+                      </div>
                       {tripLocation && (
                         <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                           <MapPin className="w-3 h-3 shrink-0" />{tripLocation}
@@ -332,6 +353,20 @@ export default function AdminTrips() {
               </div>
             </div>
             <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Tournament Type *</label>
+              <Select value={tournamentType} onValueChange={(v) => setTournamentType(v as TournamentType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TOURNAMENT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {TOURNAMENT_OPTIONS.find((o) => o.value === tournamentType) && (
+                <p className="text-xs text-muted-foreground mt-1">{TOURNAMENT_OPTIONS.find((o) => o.value === tournamentType)!.description}</p>
+              )}
+            </div>
+            <div>
               <label className="text-sm font-medium text-foreground mb-1 block">Location</label>
               <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. St Andrews, Scotland" />
             </div>
@@ -349,7 +384,7 @@ export default function AdminTrips() {
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
               disabled={!name || !startDate || !endDate || createTrip.isPending}
-              onClick={() => (createTrip.mutate as any)({ name, startDate, endDate, location: location || undefined, description: description || undefined, rules: rules || undefined })}
+              onClick={() => (createTrip.mutate as any)({ name, startDate, endDate, tournamentType, location: location || undefined, description: description || undefined, rules: rules || undefined })}
             >
               Create Trip
             </Button>

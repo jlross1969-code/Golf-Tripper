@@ -85,6 +85,8 @@ import {
   deletePennantFixture,
   submitPennantHoleScores,
   getPennantTeamScore,
+  syncRoundsToTournamentType,
+  roundFlagsFromTournamentType,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -225,6 +227,7 @@ export const appRouter = router({
           name: z.string().min(1),
           startDate: z.string(),
           endDate: z.string(),
+          tournamentType: z.enum(["stableford", "stableford_4bbb", "stroke", "stroke_4bbb", "matchplay", "ambrose", "alternate_shot"]).default("stableford"),
           handicapMode: z.enum(["stableford", "net_stroke"]).default("stableford"),
           handicapBaseline: z.number().default(0),
           handicapFactor: z.number().default(0.25),
@@ -236,12 +239,15 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
+        // Derive handicapMode from tournamentType for consistency
+        const derivedHandicapMode = (input.tournamentType === "stroke" || input.tournamentType === "stroke_4bbb") ? "net_stroke" : "stableford";
         const tripId = await createTrip({
           name: input.name,
           startDate: new Date(input.startDate),
           endDate: new Date(input.endDate),
           createdBy: ctx.user.id,
-          handicapMode: input.handicapMode,
+          tournamentType: input.tournamentType,
+          handicapMode: derivedHandicapMode,
           handicapBaseline: input.handicapBaseline,
           handicapFactor: input.handicapFactor,
           handicapAutoAdjust: input.handicapAutoAdjust,
@@ -258,6 +264,7 @@ export const appRouter = router({
           name: z.string().min(1).optional(),
           startDate: z.string().optional(),
           endDate: z.string().optional(),
+          tournamentType: z.enum(["stableford", "stableford_4bbb", "stroke", "stroke_4bbb", "matchplay", "ambrose", "alternate_shot"]).optional(),
           handicapMode: z.enum(["stableford", "net_stroke"]).optional(),
           handicapBaseline: z.number().optional(),
           handicapFactor: z.number().optional(),
@@ -269,12 +276,30 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
-        const { id, startDate, endDate, ...rest } = input;
+        const { id, startDate, endDate, tournamentType, ...rest } = input;
+        // Block tournament type change if trip has started (has active or completed rounds)
+        if (tournamentType !== undefined) {
+          const existingRounds = await getRoundsByTrip(id);
+          const hasStarted = existingRounds.some((r) => r.status === "active" || r.status === "completed");
+          if (hasStarted) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot change tournament type after the trip has started. Rounds are already in progress or completed." });
+          }
+        }
+        // Derive handicapMode from tournamentType
+        const derivedHandicapMode = tournamentType
+          ? ((tournamentType === "stroke" || tournamentType === "stroke_4bbb") ? "net_stroke" : "stableford")
+          : undefined;
         await updateTrip(id, {
           ...rest,
+          ...(tournamentType !== undefined ? { tournamentType } : {}),
+          ...(derivedHandicapMode !== undefined ? { handicapMode: derivedHandicapMode } : {}),
           ...(startDate ? { startDate: new Date(startDate) } : {}),
           ...(endDate ? { endDate: new Date(endDate) } : {}),
         } as any);
+        // Sync all scheduled rounds to the new tournament type
+        if (tournamentType !== undefined) {
+          await syncRoundsToTournamentType(id, tournamentType);
+        }
         return { success: true };
       }),
 
@@ -463,21 +488,38 @@ export const appRouter = router({
           courseId: z.number(),
           name: z.string().min(1),
           roundDate: z.string(),
-          strokePlayEnabled: z.boolean().default(true),
-          fourBBBEnabled: z.boolean().default(false),
+          // Format overrides — if not provided, will be inherited from trip tournamentType
+          strokePlayEnabled: z.boolean().optional(),
+          fourBBBEnabled: z.boolean().optional(),
           skinsEnabled: z.boolean().default(false),
-          matchPlayEnabled: z.boolean().default(false),
-          alternateShotEnabled: z.boolean().default(false),
-          ambroseEnabled: z.boolean().default(false),
+          matchPlayEnabled: z.boolean().optional(),
+          alternateShotEnabled: z.boolean().optional(),
+          ambroseEnabled: z.boolean().optional(),
           ambroseTeamSize: z.number().min(2).max(4).default(4),
-          individualScoringMode: z.enum(["stableford", "net_stroke"]).default("stableford"),
+          individualScoringMode: z.enum(["stableford", "net_stroke"]).optional(),
           logoUrl: z.string().optional(),
         })
       )
       .mutation(async ({ input }) => {
+        // Inherit format flags from trip's tournamentType unless explicitly overridden
+        const trip = await getTrip(input.tripId);
+        const inheritedFlags = trip?.tournamentType
+          ? roundFlagsFromTournamentType(trip.tournamentType)
+          : { strokePlayEnabled: true, fourBBBEnabled: false, matchPlayEnabled: false, ambroseEnabled: false, alternateShotEnabled: false, individualScoringMode: "stableford" as const };
         const roundId = await createRound({
-          ...input,
+          tripId: input.tripId,
+          courseId: input.courseId,
+          name: input.name,
           roundDate: new Date(input.roundDate),
+          strokePlayEnabled: input.strokePlayEnabled ?? inheritedFlags.strokePlayEnabled,
+          fourBBBEnabled: input.fourBBBEnabled ?? inheritedFlags.fourBBBEnabled,
+          skinsEnabled: input.skinsEnabled,
+          matchPlayEnabled: input.matchPlayEnabled ?? inheritedFlags.matchPlayEnabled,
+          alternateShotEnabled: input.alternateShotEnabled ?? inheritedFlags.alternateShotEnabled,
+          ambroseEnabled: input.ambroseEnabled ?? inheritedFlags.ambroseEnabled,
+          ambroseTeamSize: input.ambroseTeamSize,
+          individualScoringMode: input.individualScoringMode ?? inheritedFlags.individualScoringMode,
+          ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl } : {}),
         });
         return { roundId };
       }),

@@ -166,6 +166,7 @@ export async function createTrip(data: {
   startDate: Date;
   endDate: Date;
   createdBy: number;
+  tournamentType?: "stableford" | "stableford_4bbb" | "stroke" | "stroke_4bbb" | "matchplay" | "ambrose" | "alternate_shot";
   handicapMode?: "stableford" | "net_stroke";
   handicapBaseline?: number;
   handicapFactor?: number;
@@ -182,6 +183,7 @@ export async function createTrip(data: {
     startDate: data.startDate,
     endDate: data.endDate,
     createdBy: data.createdBy,
+    tournamentType: data.tournamentType ?? "stableford",
     handicapMode: data.handicapMode ?? "stableford",
     handicapBaseline: data.handicapBaseline ?? 0,
     handicapFactor: data.handicapFactor ?? 0.25,
@@ -226,6 +228,51 @@ export async function updateTrip(id: number, data: Partial<Trip>): Promise<void>
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(trips).set(data).where(eq(trips.id, id));
+}
+
+/**
+ * Derive round format flags from a trip-level tournament type.
+ * Used when creating a round or syncing all rounds after a tournament type change.
+ */
+export function roundFlagsFromTournamentType(tournamentType: string): {
+  strokePlayEnabled: boolean;
+  fourBBBEnabled: boolean;
+  matchPlayEnabled: boolean;
+  ambroseEnabled: boolean;
+  alternateShotEnabled: boolean;
+  individualScoringMode: "stableford" | "net_stroke";
+} {
+  switch (tournamentType) {
+    case "stableford":
+      return { strokePlayEnabled: true, fourBBBEnabled: false, matchPlayEnabled: false, ambroseEnabled: false, alternateShotEnabled: false, individualScoringMode: "stableford" };
+    case "stableford_4bbb":
+      return { strokePlayEnabled: true, fourBBBEnabled: true, matchPlayEnabled: false, ambroseEnabled: false, alternateShotEnabled: false, individualScoringMode: "stableford" };
+    case "stroke":
+      return { strokePlayEnabled: true, fourBBBEnabled: false, matchPlayEnabled: false, ambroseEnabled: false, alternateShotEnabled: false, individualScoringMode: "net_stroke" };
+    case "stroke_4bbb":
+      return { strokePlayEnabled: true, fourBBBEnabled: true, matchPlayEnabled: false, ambroseEnabled: false, alternateShotEnabled: false, individualScoringMode: "net_stroke" };
+    case "matchplay":
+      return { strokePlayEnabled: false, fourBBBEnabled: false, matchPlayEnabled: true, ambroseEnabled: false, alternateShotEnabled: false, individualScoringMode: "stableford" };
+    case "ambrose":
+      return { strokePlayEnabled: false, fourBBBEnabled: false, matchPlayEnabled: false, ambroseEnabled: true, alternateShotEnabled: false, individualScoringMode: "stableford" };
+    case "alternate_shot":
+      return { strokePlayEnabled: false, fourBBBEnabled: false, matchPlayEnabled: false, ambroseEnabled: false, alternateShotEnabled: true, individualScoringMode: "stableford" };
+    default:
+      return { strokePlayEnabled: true, fourBBBEnabled: false, matchPlayEnabled: false, ambroseEnabled: false, alternateShotEnabled: false, individualScoringMode: "stableford" };
+  }
+}
+
+/**
+ * Sync all scheduled rounds of a trip to match the new tournament type.
+ * Only updates rounds that have not yet started (status = 'scheduled').
+ */
+export async function syncRoundsToTournamentType(tripId: number, tournamentType: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const flags = roundFlagsFromTournamentType(tournamentType);
+  await db.update(rounds)
+    .set(flags)
+    .where(and(eq(rounds.tripId, tripId), eq(rounds.status, "scheduled")));
 }
 
 /**

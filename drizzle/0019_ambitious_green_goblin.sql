@@ -1,0 +1,1 @@
+ALTER TABLE `trips` ADD `tournamentType` enum('stableford','stableford_4bbb','stroke','stroke_4bbb','matchplay','ambrose','alternate_shot') DEFAULT 'stableford' NOT NULL;

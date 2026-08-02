@@ -53,9 +53,24 @@ export default function TripDashboard() {
           )}
           <div>
             <h1 className="font-bold text-foreground">{trip.name}</h1>
-            <p className="text-xs text-muted-foreground">
-              {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
-            </p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <p className="text-xs text-muted-foreground">
+                {new Date(trip.startDate).toLocaleDateString()} – {new Date(trip.endDate).toLocaleDateString()}
+              </p>
+              {(trip as any).tournamentType && (
+                <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">
+                  {{
+                    stableford: "Stableford",
+                    stableford_4bbb: "Stableford + 4BBB",
+                    stroke: "Stroke Play",
+                    stroke_4bbb: "Stroke + 4BBB",
+                    matchplay: "Match Play",
+                    ambrose: "Ambrose",
+                    alternate_shot: "Alternate Shot",
+                  }[(trip as any).tournamentType as string] ?? "Stableford"}
+                </span>
+              )}
+            </div>
             {(trip as any).location && (
               <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                 <MapPin className="w-3 h-3 shrink-0" />{(trip as any).location}

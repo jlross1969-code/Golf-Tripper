@@ -328,7 +328,24 @@ export default function TripLeaderboard() {
           <Trophy className="w-5 h-5 text-primary" />
           <div>
             <h1 className="font-bold text-foreground">Trip Leaderboard</h1>
-            {trip && <p className="text-xs text-muted-foreground">{trip.name}</p>}
+            {trip && (
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground">{trip.name}</p>
+                {(trip as any).tournamentType && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/20">
+                    {{
+                      stableford: "Stableford",
+                      stableford_4bbb: "Stableford + 4BBB",
+                      stroke: "Stroke Play",
+                      stroke_4bbb: "Stroke + 4BBB",
+                      matchplay: "Match Play",
+                      ambrose: "Ambrose",
+                      alternate_shot: "Alternate Shot",
+                    }[(trip as any).tournamentType as string] ?? "Stableford"}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
@@ -353,7 +370,12 @@ export default function TripLeaderboard() {
         ) : !data ? (
           <div className="text-center py-12 text-muted-foreground">No leaderboard data.</div>
         ) : (
-          <Tabs defaultValue={(data as any).hasAmbroseRound ? "ambrose" : (data as any).hasFourBBBRound ? "4bbb" : "stroke"}>
+          <Tabs defaultValue={
+            (data as any).hasAmbroseRound ? "ambrose"
+            : (trip as any)?.tournamentType === "stableford" || (trip as any)?.tournamentType === "stableford_4bbb" ? "stableford"
+            : (data as any).hasFourBBBRound ? "4bbb"
+            : "stroke"
+          }>
             <TabsList className="mb-6 w-full flex-wrap gap-1">
               <TabsTrigger value="stroke" className="flex-1 gap-2"><Trophy className="w-4 h-4" />Net Stroke</TabsTrigger>
               <TabsTrigger value="stableford" className="flex-1 gap-2">⭐ Stableford</TabsTrigger>

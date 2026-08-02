@@ -627,3 +627,18 @@
 ## Session - Edit Trip from Sub-Pages
 
 - [x] Add Edit Trip button/link to the admin trip sub-page header (DashboardLayout or shared trip header) so admins can edit trip details without navigating back to the trips list
+
+## Session - Trip Tournament Type
+
+- [x] DB: add tournamentType enum column to trips table (stableford | stableford_4bbb | stroke | stroke_4bbb | matchplay | ambrose | alternate_shot), nullable/default null for existing trips
+- [x] DB migration: applied via webdev_execute_sql
+- [x] Backend: trips.create — accepts tournamentType, auto-sets round format flags when creating rounds
+- [x] Backend: trips.update — accepts tournamentType, blocks change if trip has started, syncs all rounds when changed on upcoming trip
+- [x] Backend: rounds.create — inherits format flags from trip.tournamentType when creating a new round
+- [x] Backend: trips.get — returns tournamentType field
+- [x] Frontend: Create Trip dialog — Tournament Type selector (required), shows format description per option
+- [x] Frontend: EditTripDialog — Tournament Type selector, disabled if trip has started with warning
+- [x] Frontend: Trip cards in AdminTrips — tournament type badge shown on each card
+- [x] Frontend: Trip Dashboard — tournament type badge shown in header
+- [x] Frontend: Trip Leaderboard — default tab respects tournament type (stableford → Stableford tab, stroke → Net Stroke tab)
+- [x] TypeScript check (0 errors), 51 tests passing, checkpoint

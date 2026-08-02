@@ -67,6 +67,19 @@ export const trips = mysqlTable("trips", {
   startDate: timestamp("startDate").notNull(),
   endDate: timestamp("endDate").notNull(),
   // Handicap adjustment config
+  // Tournament type — drives round format defaults and trip-level leaderboard behaviour
+  // stableford: individual Stableford | stableford_4bbb: Stableford + 4BBB pairs
+  // stroke: net stroke | stroke_4bbb: net stroke + 4BBB pairs
+  // matchplay: pennant match play (team wins/losses) | ambrose: team scramble | alternate_shot: foursomes
+  tournamentType: mysqlEnum("tournamentType", [
+    "stableford",
+    "stableford_4bbb",
+    "stroke",
+    "stroke_4bbb",
+    "matchplay",
+    "ambrose",
+    "alternate_shot",
+  ]).default("stableford").notNull(),
   handicapMode: mysqlEnum("handicapMode", ["stableford", "net_stroke"]).default("stableford").notNull(),
   handicapBaseline: float("handicapBaseline").default(0).notNull(),
   handicapFactor: float("handicapFactor").default(0.25).notNull(),
