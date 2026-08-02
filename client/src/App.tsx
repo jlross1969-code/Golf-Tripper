@@ -36,6 +36,8 @@ import AdminPlanManagement from "./pages/admin/AdminPlanManagement";
 import GroupPairing from "./pages/GroupPairing";
 import TeeSheet from "./pages/TeeSheet";
 import AmbroseScoreEntry from "./pages/AmbroseScoreEntry";
+import AdminPennant from "./pages/admin/AdminPennant";
+import PennantFixtureScoring from "./pages/PennantFixtureScoring";
 
 function Router() {
   return (
@@ -57,6 +59,7 @@ function Router() {
       <Route path="/trip/:tripId/my-group/:roundId" component={GroupPairing} />
       <Route path="/trip/:tripId/round/:roundId/teesheet" component={TeeSheet} />
       <Route path="/round/:roundId/ambrose" component={AmbroseScoreEntry} />
+      <Route path="/round/:roundId/pennant/fixture/:fixtureId" component={PennantFixtureScoring} />
       <Route path="/admin" component={AdminTrips} />
       <Route path="/admin/trips" component={AdminTrips} />
       <Route path="/admin/trips/:id" component={AdminTripDetail} />
@@ -65,6 +68,7 @@ function Router() {
       <Route path="/admin/trips/:tripId/rounds/:roundId/groups" component={AdminGroups} />
       <Route path="/admin/trips/:tripId/rounds/:roundId/ntp" component={AdminNTP} />
       <Route path="/admin/trips/:tripId/rounds/:roundId/long-drive" component={AdminLongDrive} />
+      <Route path="/admin/trips/:tripId/rounds/:roundId/pennant" component={AdminPennant} />
       <Route path="/admin/trips/:tripId/awards" component={AdminAwards} />
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />

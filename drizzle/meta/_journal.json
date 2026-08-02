@@ -127,6 +127,13 @@
       "when": 1785683944004,
       "tag": "0017_superb_juggernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1785685239834,
+      "tag": "0018_yummy_blue_blade",
+      "breakpoints": true
     }
   ]
 }

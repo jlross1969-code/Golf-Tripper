@@ -8,9 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc";
 import { formatMatchStatus } from "@shared/scoring";
-import { CheckCircle2, Flag, Swords, Trophy } from "lucide-react";
+import { CheckCircle2, Flag, Shield, Swords, Trophy } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "wouter";
+import { Link, useParams } from "wouter";
 
 export default function MatchPlay() {
   const { roundId } = useParams<{ roundId: string }>();
@@ -96,6 +96,9 @@ export default function MatchPlay() {
           <p className="text-sm text-muted-foreground">Round #{parsedRoundId}</p>
         </div>
       </div>
+
+      {/* Pennant Team Score */}
+      <PennantTeamScore roundId={parsedRoundId} />
 
       {isLoading ? (
         <div className="text-muted-foreground text-sm">Loading matches…</div>
@@ -257,5 +260,59 @@ export default function MatchPlay() {
         </>
       )}
     </div>
+  );
+}
+
+function PennantTeamScore({ roundId }: { roundId: number }) {
+  const { data: teamScores } = trpc.pennant.getTeamScore.useQuery({ roundId });
+  const { data: fixtures } = trpc.pennant.getFixtures.useQuery({ roundId });
+
+  if (!teamScores || teamScores.length === 0) return null;
+
+  const hasFixtures = (fixtures ?? []).length > 0;
+  if (!hasFixtures) return null;
+
+  return (
+    <Card className="border-blue-800 bg-blue-950/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Shield className="w-4 h-4 text-blue-400" /> Pennant Team Score
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-4">
+          {teamScores.map((ts) => (
+            <div key={ts.teamId} className="rounded-lg border border-border p-3 text-center space-y-1">
+              <p className="text-lg font-bold">{ts.teamEmoji} {ts.teamName}</p>
+              <p className="text-3xl font-bold text-primary">
+                {ts.actualPoints}
+                {ts.fixturesInProgress > 0 && (
+                  <span className="text-lg text-yellow-400 ml-1">(+{ts.estimatedPoints} est.)</span>
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {ts.fixturesComplete}/{ts.totalFixtures} matches complete
+                {ts.fixturesInProgress > 0 && ` · ${ts.fixturesInProgress} in progress`}
+              </p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground text-center mt-3">
+          Actual points from completed matches · Estimated from in-progress
+        </p>
+        {(fixtures ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {(fixtures ?? []).map((f) => (
+              <Link key={f.id} href={`/round/${roundId}/pennant/fixture/${f.id}`}>
+                <Button variant="outline" size="sm" className="gap-1 text-xs">
+                  <Swords className="w-3 h-3" />
+                  {f.type === "4bbb" ? "4BBB" : "Singles"}: {f.player1AName} vs {f.player1BName}
+                </Button>
+              </Link>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

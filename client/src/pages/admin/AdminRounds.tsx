@@ -316,6 +316,13 @@ export default function AdminRounds() {
                     </Button>
                   </Link>
                 )}
+                {(round as any).matchPlayEnabled && (
+                  <Link href={`/admin/trips/${id}/rounds/${round.id}/pennant`}>
+                    <Button size="sm" variant="outline" className="gap-1 text-xs text-blue-300 border-blue-700">
+                      🏆 Match Play Setup
+                    </Button>
+                  </Link>
+                )}
                 <Button size="sm" variant="outline" className="gap-1 text-xs"
                   onClick={() => openEdit(round as Round)}>
                   <Pencil className="w-3 h-3" /> Edit

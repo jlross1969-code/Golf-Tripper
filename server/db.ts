@@ -46,6 +46,14 @@ import {
   longDriveEntries,
   AmbroseScore,
   ambroseScores,
+  MatchPlayTeam,
+  MatchPlayTeamPlayer,
+  MatchPlayFixture,
+  MatchPlayFixtureHole,
+  matchPlayTeams,
+  matchPlayTeamPlayers,
+  matchPlayFixtures,
+  matchPlayFixtureHoles,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -2329,4 +2337,307 @@ export async function getTripAmbroseLeaderboard(tripId: number): Promise<
     .sort((a, b) => a.cumulativeNet - b.cumulativeNet);
 
   return sorted.map((t, i) => ({ ...t, position: i + 1 }));
+}
+
+// ─── Pennant Match Play Helpers ───────────────────────────────────────────────
+
+/** Compute handicap strokes a player receives on a given hole.
+ *  Uses the standard GA method: if handicap >= strokeIndex, player gets 1 stroke;
+ *  if handicap >= strokeIndex + 18, player gets 2 strokes.
+ */
+function hcpStrokesOnHole(handicap: number, strokeIndex: number): number {
+  let strokes = 0;
+  if (handicap >= strokeIndex) strokes++;
+  if (handicap >= strokeIndex + 18) strokes++;
+  return strokes;
+}
+
+/** Compute net score for a player on a hole. */
+function netScore(gross: number, handicap: number, strokeIndex: number): number {
+  return gross - hcpStrokesOnHole(handicap, strokeIndex);
+}
+
+/** Determine hole winner for a singles or 4BBB fixture hole.
+ *  For 4BBB: best net of the pair is used.
+ *  Returns 'teamA' | 'teamB' | 'halved'.
+ */
+function computeHoleWinner(
+  gross1A: number, gross2A: number | null,
+  gross1B: number, gross2B: number | null,
+  hcp1A: number, hcp2A: number,
+  hcp1B: number, hcp2B: number,
+  strokeIndex: number,
+  useHandicap: boolean,
+  type: "singles" | "4bbb"
+): "teamA" | "teamB" | "halved" {
+  let scoreA: number;
+  let scoreB: number;
+  if (type === "4bbb") {
+    const net1A = useHandicap ? netScore(gross1A, hcp1A, strokeIndex) : gross1A;
+    const net2A = gross2A != null ? (useHandicap ? netScore(gross2A, hcp2A, strokeIndex) : gross2A) : 99;
+    const net1B = useHandicap ? netScore(gross1B, hcp1B, strokeIndex) : gross1B;
+    const net2B = gross2B != null ? (useHandicap ? netScore(gross2B, hcp2B, strokeIndex) : gross2B) : 99;
+    scoreA = Math.min(net1A, net2A);
+    scoreB = Math.min(net1B, net2B);
+  } else {
+    scoreA = useHandicap ? netScore(gross1A, hcp1A, strokeIndex) : gross1A;
+    scoreB = useHandicap ? netScore(gross1B, hcp1B, strokeIndex) : gross1B;
+  }
+  if (scoreA < scoreB) return "teamA";
+  if (scoreB < scoreA) return "teamB";
+  return "halved";
+}
+
+export async function getPennantTeams(roundId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const teams = await db.select().from(matchPlayTeams).where(eq(matchPlayTeams.roundId, roundId));
+  const players = await db.select().from(matchPlayTeamPlayers).where(eq(matchPlayTeamPlayers.roundId, roundId));
+  // Enrich with display names
+  const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
+  const allTripPlayers = await db.select({ id: tripPlayers.id, userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap }).from(tripPlayers);
+  const userMap = new Map(allUsers.map(u => [u.id, u.name]));
+  const tpMap = new Map(allTripPlayers.map(tp => [tp.id, tp]));
+  return teams.map(team => ({
+    ...team,
+    players: players
+      .filter(p => p.teamId === team.id)
+      .map(p => {
+        const tp = tpMap.get(p.tripPlayerId);
+        const name = tp?.nickname ?? userMap.get(p.userId) ?? `Player ${p.userId}`;
+        return { ...p, displayName: name, currentHandicap: tp?.currentHandicap ?? 0 };
+      }),
+  }));
+}
+
+export async function createPennantTeam(roundId: number, name: string, emoji: string) {
+  const db = await getDb();
+  if (!db) throw new Error("No DB");
+  const [result] = await db.insert(matchPlayTeams).values({ roundId, name, emoji });
+  return result.insertId;
+}
+
+export async function deletePennantTeam(teamId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("No DB");
+  await db.delete(matchPlayTeamPlayers).where(eq(matchPlayTeamPlayers.teamId, teamId));
+  await db.delete(matchPlayTeams).where(eq(matchPlayTeams.id, teamId));
+}
+
+export async function assignPlayerToTeam(teamId: number, roundId: number, userId: number, tripPlayerId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("No DB");
+  // Remove from any existing team in this round first
+  await db.delete(matchPlayTeamPlayers).where(
+    and(eq(matchPlayTeamPlayers.roundId, roundId), eq(matchPlayTeamPlayers.userId, userId))
+  );
+  await db.insert(matchPlayTeamPlayers).values({ teamId, roundId, userId, tripPlayerId });
+}
+
+export async function removePlayerFromTeam(roundId: number, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("No DB");
+  await db.delete(matchPlayTeamPlayers).where(
+    and(eq(matchPlayTeamPlayers.roundId, roundId), eq(matchPlayTeamPlayers.userId, userId))
+  );
+}
+
+export async function getPennantFixtures(roundId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const fixtures = await db.select().from(matchPlayFixtures).where(eq(matchPlayFixtures.roundId, roundId));
+  const holeResults = await db.select().from(matchPlayFixtureHoles);
+  const teams = await getPennantTeams(roundId);
+  const teamMap = new Map(teams.map(t => [t.id, t]));
+
+  // Enrich with player names and handicaps
+  const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
+  const allTripPlayers = await db.select({ id: tripPlayers.id, userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap }).from(tripPlayers);
+  const userMap = new Map(allUsers.map(u => [u.id, u.name]));
+  const tpMap = new Map(allTripPlayers.map(tp => [tp.userId, tp]));
+
+  function playerName(userId: number) {
+    const tp = tpMap.get(userId);
+    return tp?.nickname ?? userMap.get(userId) ?? `Player ${userId}`;
+  }
+  function playerHcp(userId: number) {
+    return tpMap.get(userId)?.currentHandicap ?? 0;
+  }
+
+  return fixtures.map(f => {
+    const holes = holeResults.filter(h => h.fixtureId === f.id);
+    const teamA = teamMap.get(f.teamAId);
+    const teamB = teamMap.get(f.teamBId);
+    return {
+      ...f,
+      teamAName: teamA?.name ?? "Team A",
+      teamAEmoji: teamA?.emoji ?? "🏌️",
+      teamBName: teamB?.name ?? "Team B",
+      teamBEmoji: teamB?.emoji ?? "🏌️",
+      player1AName: playerName(f.player1AId),
+      player1AHcp: playerHcp(f.player1AId),
+      player2AName: f.player2AId ? playerName(f.player2AId) : null,
+      player2AHcp: f.player2AId ? playerHcp(f.player2AId) : null,
+      player1BName: playerName(f.player1BId),
+      player1BHcp: playerHcp(f.player1BId),
+      player2BName: f.player2BId ? playerName(f.player2BId) : null,
+      player2BHcp: f.player2BId ? playerHcp(f.player2BId) : null,
+      holes,
+    };
+  });
+}
+
+export async function createPennantFixture(data: {
+  roundId: number;
+  teamAId: number;
+  teamBId: number;
+  type: "singles" | "4bbb";
+  useHandicap: boolean;
+  player1AId: number;
+  player2AId?: number;
+  player1BId: number;
+  player2BId?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("No DB");
+  const [result] = await db.insert(matchPlayFixtures).values({
+    roundId: data.roundId,
+    teamAId: data.teamAId,
+    teamBId: data.teamBId,
+    type: data.type,
+    useHandicap: data.useHandicap,
+    player1AId: data.player1AId,
+    player2AId: data.player2AId ?? null,
+    player1BId: data.player1BId,
+    player2BId: data.player2BId ?? null,
+  });
+  return result.insertId;
+}
+
+export async function deletePennantFixture(fixtureId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("No DB");
+  await db.delete(matchPlayFixtureHoles).where(eq(matchPlayFixtureHoles.fixtureId, fixtureId));
+  await db.delete(matchPlayFixtures).where(eq(matchPlayFixtures.id, fixtureId));
+}
+
+/** Submit gross scores for one hole in a fixture and recompute match status. */
+export async function submitPennantHoleScores(
+  fixtureId: number,
+  holeNumber: number,
+  gross1A: number,
+  gross2A: number | null,
+  gross1B: number,
+  gross2B: number | null,
+  holeStrokeIndex: number,
+  holePar: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("No DB");
+
+  // Fetch fixture to get player IDs, useHandicap, type
+  const [fixture] = await db.select().from(matchPlayFixtures).where(eq(matchPlayFixtures.id, fixtureId));
+  if (!fixture) throw new Error("Fixture not found");
+
+  // Fetch handicaps
+  const allTripPlayers = await db.select({ userId: tripPlayers.userId, currentHandicap: tripPlayers.currentHandicap }).from(tripPlayers);
+  const tpMap = new Map(allTripPlayers.map(tp => [tp.userId, tp.currentHandicap ?? 0]));
+  const hcp1A = tpMap.get(fixture.player1AId) ?? 0;
+  const hcp2A = fixture.player2AId ? (tpMap.get(fixture.player2AId) ?? 0) : 0;
+  const hcp1B = tpMap.get(fixture.player1BId) ?? 0;
+  const hcp2B = fixture.player2BId ? (tpMap.get(fixture.player2BId) ?? 0) : 0;
+
+  const holeWinner = computeHoleWinner(
+    gross1A, gross2A, gross1B, gross2B,
+    hcp1A, hcp2A, hcp1B, hcp2B,
+    holeStrokeIndex, fixture.useHandicap,
+    fixture.type as "singles" | "4bbb"
+  );
+
+  // Upsert hole result
+  const existing = await db.select().from(matchPlayFixtureHoles)
+    .where(and(eq(matchPlayFixtureHoles.fixtureId, fixtureId), eq(matchPlayFixtureHoles.holeNumber, holeNumber)));
+  if (existing.length > 0) {
+    await db.update(matchPlayFixtureHoles)
+      .set({ gross1A, gross2A: gross2A ?? null, gross1B, gross2B: gross2B ?? null, holeWinner })
+      .where(and(eq(matchPlayFixtureHoles.fixtureId, fixtureId), eq(matchPlayFixtureHoles.holeNumber, holeNumber)));
+  } else {
+    await db.insert(matchPlayFixtureHoles).values({ fixtureId, holeNumber, gross1A, gross2A: gross2A ?? null, gross1B, gross2B: gross2B ?? null, holeWinner });
+  }
+
+  // Recompute running match status from all holes
+  const allHoles = await db.select().from(matchPlayFixtureHoles).where(eq(matchPlayFixtureHoles.fixtureId, fixtureId));
+  let status = 0; // positive = teamA up
+  for (const h of allHoles) {
+    if (h.holeWinner === "teamA") status++;
+    else if (h.holeWinner === "teamB") status--;
+  }
+  const holesPlayed = allHoles.length;
+  const holesRemaining = 18 - holesPlayed;
+
+  // Check if match is decided (can't be caught)
+  let result: "teamA" | "teamB" | "halved" | null = null;
+  let endedOnHole: number | null = null;
+  let matchStatus_final = "in_progress" as "pending" | "in_progress" | "complete";
+
+  if (Math.abs(status) > holesRemaining) {
+    result = status > 0 ? "teamA" : "teamB";
+    endedOnHole = holeNumber;
+    matchStatus_final = "complete";
+  } else if (holesPlayed === 18) {
+    result = status > 0 ? "teamA" : status < 0 ? "teamB" : "halved";
+    endedOnHole = 18;
+    matchStatus_final = "complete";
+  } else {
+    matchStatus_final = "in_progress";
+  }
+
+  await db.update(matchPlayFixtures)
+    .set({ matchStatus: status, holesPlayed, result: result ?? undefined, endedOnHole: endedOnHole ?? undefined, status: matchStatus_final })
+    .where(eq(matchPlayFixtures.id, fixtureId));
+}
+
+/** Get team score summary: actual (completed) + estimated (in-progress projected) points. */
+export async function getPennantTeamScore(roundId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const teams = await db.select().from(matchPlayTeams).where(eq(matchPlayTeams.roundId, roundId));
+  const fixtures = await db.select().from(matchPlayFixtures).where(eq(matchPlayFixtures.roundId, roundId));
+
+  return teams.map(team => {
+    let actualPoints = 0;
+    let estimatedPoints = 0;
+    let fixturesComplete = 0;
+    let fixturesInProgress = 0;
+
+    for (const f of fixtures) {
+      const isTeamA = f.teamAId === team.id;
+      const isTeamB = f.teamBId === team.id;
+      if (!isTeamA && !isTeamB) continue;
+
+      if (f.status === "complete" && f.result) {
+        const won = (isTeamA && f.result === "teamA") || (isTeamB && f.result === "teamB");
+        const halved = f.result === "halved";
+        actualPoints += won ? 1 : halved ? 0.5 : 0;
+        fixturesComplete++;
+      } else if (f.status === "in_progress") {
+        // Estimate: project current match status
+        const leading = (isTeamA && f.matchStatus > 0) || (isTeamB && f.matchStatus < 0);
+        const tied = f.matchStatus === 0;
+        estimatedPoints += leading ? 1 : tied ? 0.5 : 0;
+        fixturesInProgress++;
+      }
+    }
+
+    return {
+      teamId: team.id,
+      teamName: team.name,
+      teamEmoji: team.emoji,
+      actualPoints,
+      estimatedPoints,
+      totalFixtures: fixtures.filter(f => f.teamAId === team.id || f.teamBId === team.id).length,
+      fixturesComplete,
+      fixturesInProgress,
+    };
+  });
 }

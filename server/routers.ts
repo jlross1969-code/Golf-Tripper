@@ -75,6 +75,16 @@ import {
   getAmbroseScoresByGroup,
   getAmbroseLeaderboard,
   getTripAmbroseLeaderboard,
+  getPennantTeams,
+  createPennantTeam,
+  deletePennantTeam,
+  assignPlayerToTeam,
+  removePlayerFromTeam,
+  getPennantFixtures,
+  createPennantFixture,
+  deletePennantFixture,
+  submitPennantHoleScores,
+  getPennantTeamScore,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -2167,6 +2177,91 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return getTripAmbroseLeaderboard(input.tripId);
       }),
+  }),
+
+  // ─── Pennant Match Play ─────────────────────────────────────────────────────
+  pennant: router({
+    // Get all teams (with players) for a round
+    getTeams: publicProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => getPennantTeams(input.roundId)),
+
+    // Create a team
+    createTeam: protectedProcedure
+      .input(z.object({ roundId: z.number(), name: z.string().min(1), emoji: z.string().default("🏌️") }))
+      .mutation(async ({ input }) => {
+        const id = await createPennantTeam(input.roundId, input.name, input.emoji);
+        return { id };
+      }),
+
+    // Delete a team (also removes all its players)
+    deleteTeam: protectedProcedure
+      .input(z.object({ teamId: z.number() }))
+      .mutation(async ({ input }) => deletePennantTeam(input.teamId)),
+
+    // Assign a player to a team (moves them from any other team)
+    assignPlayer: protectedProcedure
+      .input(z.object({ teamId: z.number(), roundId: z.number(), userId: z.number(), tripPlayerId: z.number() }))
+      .mutation(async ({ input }) => assignPlayerToTeam(input.teamId, input.roundId, input.userId, input.tripPlayerId)),
+
+    // Remove a player from their team
+    removePlayer: protectedProcedure
+      .input(z.object({ roundId: z.number(), userId: z.number() }))
+      .mutation(async ({ input }) => removePlayerFromTeam(input.roundId, input.userId)),
+
+    // Get all fixtures (with hole results) for a round
+    getFixtures: publicProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => getPennantFixtures(input.roundId)),
+
+    // Create a fixture
+    createFixture: protectedProcedure
+      .input(z.object({
+        roundId: z.number(),
+        teamAId: z.number(),
+        teamBId: z.number(),
+        type: z.enum(["singles", "4bbb"]),
+        useHandicap: z.boolean().default(true),
+        player1AId: z.number(),
+        player2AId: z.number().optional(),
+        player1BId: z.number(),
+        player2BId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const id = await createPennantFixture(input);
+        return { id };
+      }),
+
+    // Delete a fixture
+    deleteFixture: protectedProcedure
+      .input(z.object({ fixtureId: z.number() }))
+      .mutation(async ({ input }) => deletePennantFixture(input.fixtureId)),
+
+    // Submit hole scores for a fixture hole
+    submitHole: protectedProcedure
+      .input(z.object({
+        fixtureId: z.number(),
+        holeNumber: z.number(),
+        gross1A: z.number(),
+        gross2A: z.number().optional(),
+        gross1B: z.number(),
+        gross2B: z.number().optional(),
+        holeStrokeIndex: z.number(),
+        holePar: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        await submitPennantHoleScores(
+          input.fixtureId, input.holeNumber,
+          input.gross1A, input.gross2A ?? null,
+          input.gross1B, input.gross2B ?? null,
+          input.holeStrokeIndex, input.holePar
+        );
+      }),
+
+    // Get team score summary (actual + estimated)
+    getTeamScore: publicProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => getPennantTeamScore(input.roundId)),
   }),
 });
 export type AppRouter = typeof appRouter;

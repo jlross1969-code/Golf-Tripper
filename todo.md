@@ -598,3 +598,28 @@
 - [x] AdminRounds: enforce mutual exclusivity — Match Play / Alternate Shot / Ambrose are exclusive team formats (disable 4BBB, Skins, and each other when one is selected)
 - [x] AdminRounds: show helper text explaining format rules (e.g. "Ambrose cannot be combined with 4BBB or Skins")
 - [x] TypeScript check (0 errors), 51 tests passing, checkpoint
+
+## Session - Pennant Match Play System
+
+- [x] DB: match_play_teams table (id, roundId, name, emoji, createdAt)
+- [x] DB: match_play_fixtures table (id, roundId, teamAId, teamBId, type: singles|4bbb, useHandicap, player1AId, player2AId nullable, player1BId, player2BId nullable, status: pending|in_progress|complete, result: teamA|teamB|halved|null, createdAt)
+- [x] DB: match_play_fixture_holes table (id, fixtureId, holeNumber, gross1A, gross2A nullable, gross1B, gross2B nullable, holeWinner: teamA|teamB|halved|null)
+- [x] DB: match_play_team_players table (id, teamId, roundId, userId, tripPlayerId)
+- [x] Apply DB migration for pennant match play tables
+- [x] Backend: pennant.createTeam (admin) — create a team for a round
+- [x] Backend: pennant.assignPlayer (admin) — assign trip player to a team
+- [x] Backend: pennant.removePlayer (admin) — remove player from team
+- [x] Backend: pennant.createFixture (admin) — create singles or 4BBB fixture between two players/pairs
+- [x] Backend: pennant.submitHole (player/admin) — record gross scores for a hole in a fixture, recompute match status
+- [x] Backend: pennant.getFixtures (public) — list all fixtures for a round with hole-by-hole status, running match score, and team totals
+- [x] Backend: pennant.getTeams (public) — list teams with assigned players
+- [x] Backend: pennant scoring engine — compute running match status per fixture (X Up / AS / X Down / Won / Lost) with and without handicap
+- [x] Backend: pennant.getTeamScore — count fixture wins/halves/losses per team, show actual (completed fixtures) vs estimated (in-progress fixtures projected from current status)
+- [x] Admin UI: AdminPennant page — create two teams, assign players, show team rosters
+- [x] Admin UI: Fixture Builder — select singles or 4BBB, toggle handicap, pick players from each team, create fixture
+- [x] Admin UI: Fixture list — show all fixtures with current status, Score button, allow deletion
+- [x] Admin UI: Match Play Setup link on round cards in AdminRounds (when matchPlayEnabled)
+- [x] Player UI: PennantFixtureScoring page — hole-by-hole gross score entry for a fixture, running match status, hole results table
+- [x] Player UI: MatchPlay page — Pennant Team Score panel showing actual vs estimated points, fixture score links
+- [x] Routes: /admin/trips/:tripId/rounds/:roundId/pennant and /round/:roundId/pennant/fixture/:fixtureId added to App.tsx
+- [x] TypeScript check (0 errors), 51 tests passing, checkpoint

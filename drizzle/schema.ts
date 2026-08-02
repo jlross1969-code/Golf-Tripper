@@ -461,3 +461,81 @@ export const ambroseScores = mysqlTable("ambrose_scores", {
 });
 
 export type AmbroseScore = typeof ambroseScores.$inferSelect;
+
+// ─── Pennant Match Play ───────────────────────────────────────────────────────
+// A round with matchPlayEnabled can have two teams. Admin assigns players to
+// teams, then creates fixtures (singles or 4BBB) between players from each team.
+// Results count toward a team score (wins = 1pt, halved = 0.5pt, loss = 0pt).
+
+export const matchPlayTeams = mysqlTable("match_play_teams", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  emoji: varchar("emoji", { length: 10 }).default("🏌️").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MatchPlayTeam = typeof matchPlayTeams.$inferSelect;
+export type InsertMatchPlayTeam = typeof matchPlayTeams.$inferInsert;
+
+export const matchPlayTeamPlayers = mysqlTable("match_play_team_players", {
+  id: int("id").autoincrement().primaryKey(),
+  teamId: int("teamId").notNull(),
+  roundId: int("roundId").notNull(),
+  userId: int("userId").notNull(),
+  tripPlayerId: int("tripPlayerId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type MatchPlayTeamPlayer = typeof matchPlayTeamPlayers.$inferSelect;
+
+// A fixture is one match: singles (1v1) or 4BBB (pair vs pair)
+export const matchPlayFixtures = mysqlTable("match_play_fixtures", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  // Which team each side belongs to
+  teamAId: int("teamAId").notNull(),
+  teamBId: int("teamBId").notNull(),
+  // Match type
+  type: mysqlEnum("type", ["singles", "4bbb"]).default("singles").notNull(),
+  // Whether handicap strokes are applied
+  useHandicap: boolean("useHandicap").default(true).notNull(),
+  // Side A players (player2AId null for singles)
+  player1AId: int("player1AId").notNull(),
+  player2AId: int("player2AId"),
+  // Side B players (player2BId null for singles)
+  player1BId: int("player1BId").notNull(),
+  player2BId: int("player2BId"),
+  // Running match status: positive = teamA up, negative = teamB up, 0 = AS
+  matchStatus: int("matchStatus").default(0).notNull(),
+  // Holes completed so far
+  holesPlayed: int("holesPlayed").default(0).notNull(),
+  // Final result (null = in progress or not started)
+  result: mysqlEnum("result", ["teamA", "teamB", "halved"]),
+  // Hole the match ended on (e.g. 15 means won 4&3)
+  endedOnHole: int("endedOnHole"),
+  status: mysqlEnum("status", ["pending", "in_progress", "complete"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MatchPlayFixture = typeof matchPlayFixtures.$inferSelect;
+export type InsertMatchPlayFixture = typeof matchPlayFixtures.$inferInsert;
+
+// Hole-by-hole gross scores for each fixture
+export const matchPlayFixtureHoles = mysqlTable("match_play_fixture_holes", {
+  id: int("id").autoincrement().primaryKey(),
+  fixtureId: int("fixtureId").notNull(),
+  holeNumber: int("holeNumber").notNull(),
+  // Gross scores for each player (null = not yet entered)
+  gross1A: int("gross1A"),
+  gross2A: int("gross2A"),
+  gross1B: int("gross1B"),
+  gross2B: int("gross2B"),
+  // Who won this hole after handicap applied (null = not yet determined)
+  holeWinner: mysqlEnum("holeWinner", ["teamA", "teamB", "halved"]),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MatchPlayFixtureHole = typeof matchPlayFixtureHoles.$inferSelect;
