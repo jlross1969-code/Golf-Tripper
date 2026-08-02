@@ -220,6 +220,8 @@ export const appRouter = router({
           handicapAutoAdjust: z.boolean().default(true),
           location: z.string().optional(),
           description: z.string().optional(),
+          rules: z.string().optional(),
+          logoUrl: z.string().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -251,6 +253,8 @@ export const appRouter = router({
           handicapAutoAdjust: z.boolean().optional(),
           location: z.string().optional(),
           description: z.string().optional(),
+          rules: z.string().optional(),
+          logoUrl: z.string().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -455,6 +459,7 @@ export const appRouter = router({
           alternateShotEnabled: z.boolean().default(false),
           ambroseEnabled: z.boolean().default(false),
           ambroseTeamSize: z.number().min(2).max(4).default(4),
+          logoUrl: z.string().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -483,6 +488,7 @@ export const appRouter = router({
           mercyRuleStrokes: z.number().min(4).max(6).optional(),
           ambroseEnabled: z.boolean().optional(),
           ambroseTeamSize: z.number().min(2).max(4).optional(),
+          logoUrl: z.string().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -1470,7 +1476,9 @@ export const appRouter = router({
         if (!db) return results.map(r => ({ ...r, player1Name: `Player ${r.player1Id}`, player2Name: `Player ${r.player2Id}`, player1PartnerName: r.player1PartnerId ? `Player ${r.player1PartnerId}` : null, player2PartnerName: r.player2PartnerId ? `Player ${r.player2PartnerId}` : null }));
         const roundRow = await db.select().from(roundsTable).where(eqOp(roundsTable.id, input.roundId)).limit(1);
         const tripId = roundRow[0]?.tripId;
-        const allIds = Array.from(new Set(results.flatMap(r => [r.player1Id, r.player2Id, r.player1PartnerId, r.player2PartnerId].filter(Boolean) as number[])));
+        const allIdsSet = new Set<number>();
+        for (const r of results) { [r.player1Id, r.player2Id, r.player1PartnerId, r.player2PartnerId].forEach(id => { if (id != null) allIdsSet.add(id); }); }
+        const allIds = Array.from(allIdsSet);
         const userRows = allIds.length > 0 ? await db.select().from(usersTable).where(inArr(usersTable.id, allIds)) : [];
         const userMap = new Map(userRows.map(u => [u.id, u.name ?? `Player ${u.id}`]));
         let nickMap = new Map<number, string>();
@@ -1690,6 +1698,7 @@ export const appRouter = router({
           tripDates,
           startingHandicap: inv.startingHandicap,
           inviteUrl,
+          tripRules: (trip as any).rules ?? undefined,
         });
         if (!result.success) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error ?? "Failed to send email" });
         return { success: true };

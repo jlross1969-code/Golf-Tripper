@@ -74,6 +74,8 @@ export const trips = mysqlTable("trips", {
   location: varchar("location", { length: 255 }),
   description: text("description"),
   shareToken: varchar("shareToken", { length: 64 }),
+  rules: text("rules"),
+  logoUrl: varchar("logoUrl", { length: 512 }),
   createdBy: int("createdBy").notNull(),
   // ─── Billing ──────────────────────────────────────────────────────────────
   // planTier for this trip. 'free' = up to 8 players, core features only.
@@ -136,6 +138,8 @@ export const rounds = mysqlTable("rounds", {
   // Ambrose team scramble format
   ambroseEnabled: boolean("ambroseEnabled").default(false).notNull(),
   ambroseTeamSize: int("ambroseTeamSize").default(4).notNull(),
+  // Optional round-specific logo (falls back to trip logo if not set)
+  logoUrl: varchar("logoUrl", { length: 512 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

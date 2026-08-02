@@ -2,7 +2,7 @@ import express, { Router, Request, Response } from "express";
 import multer from "multer";
 import { storagePut } from "./storage";
 import { getDb } from "./db";
-import { tripPlayers, pushSubscriptions } from "../drizzle/schema";
+import { tripPlayers, pushSubscriptions, trips, rounds } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { createContext } from "./_core/context";
 
@@ -71,6 +71,60 @@ export function registerUploadRoutes(app: express.Application) {
       res.json({ url });
     } catch (err) {
       console.error("Profile photo upload error:", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
+  // POST /api/upload/trip-logo — admin only, updates trips.logoUrl
+  router.post("/api/upload/trip-logo", upload.single("logo"), async (req: Request, res: Response) => {
+    try {
+      const ctx = await createContext({ req, res } as any);
+      if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (ctx.user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
+      if (!req.file) { res.status(400).json({ error: "No file provided" }); return; }
+
+      const tripId = parseInt(req.body.tripId as string);
+      if (!tripId || isNaN(tripId)) { res.status(400).json({ error: "tripId required" }); return; }
+
+      const db = await getDb();
+      if (!db) { res.status(500).json({ error: "Database unavailable" }); return; }
+
+      const ext = req.file.mimetype.split("/")[1] || "jpg";
+      const key = `trip-logos/trip-${tripId}-${Date.now()}.${ext}`;
+      const { url } = await storagePut(key, req.file.buffer, req.file.mimetype);
+
+      await db.update(trips).set({ logoUrl: url } as any).where(eq(trips.id, tripId));
+
+      res.json({ url });
+    } catch (err) {
+      console.error("Trip logo upload error:", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
+  // POST /api/upload/round-logo — admin only, updates rounds.logoUrl
+  router.post("/api/upload/round-logo", upload.single("logo"), async (req: Request, res: Response) => {
+    try {
+      const ctx = await createContext({ req, res } as any);
+      if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (ctx.user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
+      if (!req.file) { res.status(400).json({ error: "No file provided" }); return; }
+
+      const roundId = parseInt(req.body.roundId as string);
+      if (!roundId || isNaN(roundId)) { res.status(400).json({ error: "roundId required" }); return; }
+
+      const db = await getDb();
+      if (!db) { res.status(500).json({ error: "Database unavailable" }); return; }
+
+      const ext = req.file.mimetype.split("/")[1] || "jpg";
+      const key = `round-logos/round-${roundId}-${Date.now()}.${ext}`;
+      const { url } = await storagePut(key, req.file.buffer, req.file.mimetype);
+
+      await db.update(rounds).set({ logoUrl: url } as any).where(eq(rounds.id, roundId));
+
+      res.json({ url });
+    } catch (err) {
+      console.error("Round logo upload error:", err);
       res.status(500).json({ error: "Upload failed" });
     }
   });

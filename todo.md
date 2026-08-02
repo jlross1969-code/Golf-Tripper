@@ -569,3 +569,15 @@
 - [x] Frontend: SideMatches page — show player names instead of raw IDs in "Other Side Matches" section
 - [x] Frontend: TripDashboard — add "Side Matches" link button on active round cards (visible when round is active)
 - [x] TypeScript check (0 errors), 51 tests passing, checkpoint
+
+## Session - Four New Features
+
+- [x] Feature 1: Hide net score column on Stableford trips — leaderboard and scorecard views should not show net stroke score when trip mode is stableford
+- [x] Feature 2: Trip rules — admin can add/edit/delete trip rules; rules shown on trip dashboard for all players; rules included in invite email body
+- [x] Feature 2: Schema migration — rules column added to trips table (text, nullable)
+- [x] Feature 3: Player scorecard viewer — any user can tap another player's name on leaderboard to see their full hole-by-hole scorecard with: gross score, stroke index, net score (gross minus handicap strokes on that hole), and Stableford points per hole
+- [x] Feature 3: Stroke example: show net score = gross - (1 if handicap strokes cover this hole's stroke index, else 0); Stableford: show points = 2 + par - net (capped at 0 min)
+- [x] Feature 4: Trip logo upload — admin can upload a logo image for the trip; stored in S3; displayed on trip dashboard header
+- [x] Feature 4: Round logo upload — admin can upload a logo per round; if not set, falls back to trip logo; displayed on daily leaderboard and scorecard headers
+- [x] Feature 4: Schema migration — add logoUrl column to trips and rounds tables
+- [x] TypeScript check (0 errors), 51 tests passing, checkpoint

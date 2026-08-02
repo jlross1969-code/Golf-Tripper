@@ -164,6 +164,8 @@ export async function createTrip(data: {
   handicapAutoAdjust?: boolean;
   location?: string;
   description?: string;
+  rules?: string;
+  logoUrl?: string;
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -178,6 +180,8 @@ export async function createTrip(data: {
     handicapAutoAdjust: data.handicapAutoAdjust ?? true,
     ...(data.location !== undefined ? { location: data.location } : {}),
     ...(data.description !== undefined ? { description: data.description } : {}),
+    ...(data.rules !== undefined ? { rules: data.rules } : {}),
+    ...(data.logoUrl !== undefined ? { logoUrl: data.logoUrl } : {}),
   });
   return (result[0] as any).insertId;
 }
@@ -342,6 +346,7 @@ export async function createRound(data: {
   alternateShotEnabled?: boolean;
   ambroseEnabled?: boolean;
   ambroseTeamSize?: number;
+  logoUrl?: string;
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -358,6 +363,7 @@ export async function createRound(data: {
     ambroseEnabled: data.ambroseEnabled ?? false,
     ambroseTeamSize: data.ambroseTeamSize ?? 4,
     status: "scheduled",
+    ...(data.logoUrl !== undefined ? { logoUrl: data.logoUrl } : {}),
   });
   return (result[0] as any).insertId;
 }

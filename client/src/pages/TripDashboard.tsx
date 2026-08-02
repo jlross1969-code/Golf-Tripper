@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User, Zap } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User, Zap, BookOpen } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -44,9 +44,13 @@ export default function TripDashboard() {
           <Link href="/">
             <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
           </Link>
-          <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
-            <Flag className="w-4 h-4 text-primary" />
-          </div>
+          {(trip as any).logoUrl ? (
+            <img src={(trip as any).logoUrl} alt="Trip logo" className="w-10 h-10 rounded-lg object-contain border border-border bg-card" />
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+              <Flag className="w-4 h-4 text-primary" />
+            </div>
+          )}
           <div>
             <h1 className="font-bold text-foreground">{trip.name}</h1>
             <p className="text-xs text-muted-foreground">
@@ -82,6 +86,16 @@ export default function TripDashboard() {
           <div className="bg-card border border-border rounded-xl px-5 py-4 flex items-start gap-3">
             <FileText className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
             <p className="text-sm text-muted-foreground leading-relaxed">{(trip as any).description}</p>
+          </div>
+        )}
+        {/* Trip Rules */}
+        {(trip as any).rules && (
+          <div className="bg-amber-950/30 border border-amber-700/40 rounded-xl px-5 py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BookOpen className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="font-semibold text-amber-300 text-sm">Trip Rules</span>
+            </div>
+            <div className="text-sm text-amber-100/80 leading-relaxed whitespace-pre-line">{(trip as any).rules}</div>
           </div>
         )}
         {/* Stats */}
@@ -201,9 +215,15 @@ export default function TripDashboard() {
             </div>
           ) : (
             <div className="space-y-3">
-              {rounds.map((round) => (
+              {rounds.map((round) => {
+                const roundLogoUrl = (round as any).logoUrl || (trip as any).logoUrl;
+                return (
                 <div key={round.id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between">
-                  <div>
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {roundLogoUrl && (
+                      <img src={roundLogoUrl} alt="" className="w-10 h-10 rounded-lg object-contain border border-border bg-card flex-shrink-0" />
+                    )}
+                    <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-foreground">{round.name}</span>
                       <Badge variant={round.status === "active" ? "default" : round.status === "completed" ? "secondary" : "outline"}>
@@ -276,8 +296,10 @@ export default function TripDashboard() {
                       </>
                     )}
                   </div>
+                  </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

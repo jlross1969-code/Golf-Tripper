@@ -10,6 +10,7 @@ export interface InviteEmailParams {
   startingHandicap: number;
   inviteUrl: string;
   adminName?: string;
+  tripRules?: string;
 }
 
 /**
@@ -22,7 +23,23 @@ export async function sendInviteEmail(params: InviteEmailParams): Promise<{ succ
     return { success: false, error: "Email service not configured" };
   }
 
-  const { toName, toEmail, tripName, tripDates, startingHandicap, inviteUrl, adminName } = params;
+  const { toName, toEmail, tripName, tripDates, startingHandicap, inviteUrl, adminName, tripRules } = params;
+
+  // Render rules as HTML rows if present
+  const rulesHtml = tripRules
+    ? `
+              <!-- Rules Card -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0d2b0d;border-radius:8px;margin-bottom:28px;">
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#4ade80;text-transform:uppercase;letter-spacing:0.5px;">📋 Trip Rules</p>
+                    <p style="margin:0;font-size:14px;color:#f0fdf4;white-space:pre-line;line-height:1.7;">${tripRules.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+                  </td>
+                </tr>
+              </table>`
+    : "";
+
+  const rulesText = tripRules ? `\nTrip Rules:\n${tripRules}\n` : "";
 
   const html = `
 <!DOCTYPE html>
@@ -74,6 +91,8 @@ export async function sendInviteEmail(params: InviteEmailParams): Promise<{ succ
                   </td>
                 </tr>
               </table>
+
+              ${rulesHtml}
 
               <!-- CTA Button -->
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
@@ -127,7 +146,7 @@ ${adminName ? `${adminName} has` : "You've been"} invited you to join ${tripName
 
 Trip Dates: ${tripDates}
 Your Starting Handicap: ${startingHandicap}
-
+${rulesText}
 Join the trip here:
 ${inviteUrl}
 

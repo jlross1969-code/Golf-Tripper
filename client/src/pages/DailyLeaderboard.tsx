@@ -95,27 +95,120 @@ interface ScorecardDrawerProps {
   userId: number;
   playerName: string | null;
   handicap: number;
+  isStableford?: boolean;
 }
 
-function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap }: ScorecardDrawerProps) {
+function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap, isStableford }: ScorecardDrawerProps) {
   const { data, isLoading } = trpc.scores.getPlayerScorecard.useQuery(
     { roundId, userId },
     { enabled: open && userId > 0 }
   );
 
-  const played = data?.filter((r) => r.score !== null) ?? [];
-  const totalGross = played.reduce((s, r) => s + (r.score?.grossScore ?? 0), 0);
-  const totalNet = played.reduce((s, r) => s + (r.score?.netScore ?? 0), 0);
-  const totalPts = played.reduce((s, r) => s + (r.score?.stablefordPoints ?? 0), 0);
-  const totalPar = played.reduce((s, r) => s + (r.hole.par ?? 0), 0);
+  const front9 = data?.filter((r) => r.hole.holeNumber <= 9) ?? [];
+  const back9 = data?.filter((r) => r.hole.holeNumber >= 10) ?? [];
+
+  function sectionTotals(rows: typeof front9) {
+    const played = rows.filter((r) => r.score !== null);
+    return {
+      gross: played.reduce((s, r) => s + (r.score?.grossScore ?? 0), 0),
+      net: played.reduce((s, r) => s + (r.score?.netScore ?? 0), 0),
+      pts: played.reduce((s, r) => s + (r.score?.stablefordPoints ?? 0), 0),
+      par: rows.reduce((s, r) => s + (r.hole.par ?? 0), 0),
+    };
+  }
+
+  const outTotals = sectionTotals(front9);
+  const inTotals = sectionTotals(back9);
+  const totalGross = outTotals.gross + inTotals.gross;
+  const totalNet = outTotals.net + inTotals.net;
+  const totalPts = outTotals.pts + inTotals.pts;
+  const totalPar = outTotals.par + inTotals.par;
+  const played = (data ?? []).filter((r) => r.score !== null);
+
+  function ptsCellClass(pts: number | null): string {
+    if (pts === null) return "text-muted-foreground/30";
+    if (pts >= 4) return "text-yellow-300 font-bold"; // eagle or better
+    if (pts === 3) return "text-primary font-semibold"; // birdie
+    if (pts === 2) return "text-foreground"; // par
+    if (pts === 1) return "text-rose-400"; // bogey
+    return "text-rose-600 font-semibold"; // 0 pts
+  }
+
+  function renderHoleRow(row: (typeof front9)[0]) {
+    const { hole, score } = row;
+    const gross = score?.grossScore ?? null;
+    const net = score?.netScore ?? null;
+    const pts = score?.stablefordPoints ?? null;
+    const capped = score?.mercyCapped ?? false;
+    // How many strokes this player gets on this hole
+    const strokesReceived = handicap > 0 ? Math.floor(handicap / 18) + (hole.strokeIndex <= (handicap % 18) ? 1 : 0) : 0;
+    return (
+      <tr key={hole.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+        <td className="px-3 py-2 font-semibold text-foreground text-center">{hole.holeNumber}</td>
+        <td className="px-2 py-2 text-center text-muted-foreground">{hole.par}</td>
+        <td className="px-2 py-2 text-center text-muted-foreground">{hole.strokeIndex}</td>
+        <td className={`px-2 py-2 text-center rounded ${scoreCellClass(gross, hole.par)}`}>
+          {gross !== null ? (
+            <span className="inline-flex items-center gap-0.5">
+              {gross}
+              {capped && <span className="text-amber-400 font-bold text-[10px] leading-none" title="Mercy rule">M</span>}
+            </span>
+          ) : <span className="text-muted-foreground/30">—</span>}
+        </td>
+        {!isStableford && (
+          <td className="px-2 py-2 text-center text-foreground/80">
+            {net !== null ? (
+              <span className="inline-flex items-center gap-0.5">
+                {net}
+                {strokesReceived > 0 && <span className="text-primary text-[9px] font-bold">{'·'.repeat(strokesReceived)}</span>}
+              </span>
+            ) : <span className="text-muted-foreground/30">—</span>}
+          </td>
+        )}
+        <td className={`px-3 py-2 text-center font-semibold ${ptsCellClass(pts)}`}>
+          {pts !== null ? pts : <span className="text-muted-foreground/30">—</span>}
+        </td>
+      </tr>
+    );
+  }
+
+  function renderSectionHeader(label: string) {
+    return (
+      <tr className="bg-slate-800/60">
+        <th className="text-left px-3 py-1.5 font-bold text-foreground text-xs uppercase tracking-wider">HOLE</th>
+        <th className="text-center px-2 py-1.5 font-bold text-foreground text-xs">PAR</th>
+        <th className="text-center px-2 py-1.5 font-bold text-foreground text-xs">SI</th>
+        <th className="text-center px-2 py-1.5 font-bold text-foreground text-xs">STROKES</th>
+        {!isStableford && <th className="text-center px-2 py-1.5 font-bold text-foreground text-xs">SCORE</th>}
+        <th className="text-center px-3 py-1.5 font-bold text-foreground text-xs">SCORE</th>
+      </tr>
+    );
+  }
+
+  function renderSubtotalRow(label: string, totals: ReturnType<typeof sectionTotals>) {
+    return (
+      <tr className="border-t border-border bg-muted/40 font-semibold">
+        <td className="px-3 py-2 text-foreground text-sm">{label}</td>
+        <td className="px-2 py-2 text-center text-muted-foreground text-sm">{totals.par}</td>
+        <td className="px-2 py-2" />
+        <td className="px-2 py-2 text-center text-foreground text-sm">{totals.gross || "—"}</td>
+        {!isStableford && <td className="px-2 py-2 text-center text-foreground text-sm">{totals.net || "—"}</td>}
+        <td className="px-3 py-2 text-center text-primary text-sm">{totals.pts || "—"}</td>
+      </tr>
+    );
+  }
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto rounded-t-2xl px-0">
+      <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto rounded-t-2xl px-0">
         <SheetHeader className="px-5 pb-3 border-b border-border">
-          <SheetTitle className="flex items-center gap-2">
+          <SheetTitle className="flex items-center gap-2 flex-wrap">
             <span>{playerName ?? "Player"}</span>
             <Badge variant="secondary" className="text-xs font-normal">HCP {handicap}</Badge>
+            {isStableford
+              ? <Badge className="text-xs bg-primary/20 text-primary border-primary/30">Stableford</Badge>
+              : <Badge variant="outline" className="text-xs">Nett Stroke Play</Badge>
+            }
           </SheetTitle>
         </SheetHeader>
 
@@ -127,67 +220,52 @@ function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap 
           <div className="px-5 py-8 text-center text-muted-foreground text-sm">No scorecard data available.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[420px]">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-4 py-2 font-medium text-muted-foreground w-10">Hole</th>
-                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-10">Par</th>
-                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-10">SI</th>
-                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-14">Gross</th>
-                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-14">Net</th>
-                  <th className="text-center px-4 py-2 font-medium text-muted-foreground w-14">Pts</th>
-                </tr>
-              </thead>
+            <table className="w-full text-sm">
               <tbody>
-                {data.map((row) => {
-                  const { hole, score } = row;
-                  const gross = score?.grossScore ?? null;
-                  const net = score?.netScore ?? null;
-                  const pts = score?.stablefordPoints ?? null;
-                  const capped = score?.mercyCapped ?? false;
-                  return (
-                    <tr key={hole.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-2.5 font-semibold text-foreground">{hole.holeNumber}</td>
-                      <td className="px-2 py-2.5 text-center text-muted-foreground">{hole.par}</td>
-                      <td className="px-2 py-2.5 text-center text-muted-foreground">{hole.strokeIndex}</td>
-                      <td className={`px-2 py-2.5 text-center rounded ${scoreCellClass(gross, hole.par)}`}>
-                        {gross !== null ? (
-                          <span className="inline-flex items-center gap-0.5">
-                            {gross}
-                            {capped && (
-                              <span className="text-amber-400 font-bold text-[10px] leading-none" title="Score capped by mercy rule">M</span>
-                            )}
-                          </span>
-                        ) : <span className="text-muted-foreground/30">—</span>}
-                      </td>
-                      <td className="px-2 py-2.5 text-center text-foreground/80">
-                        {net !== null ? net : <span className="text-muted-foreground/30">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-center font-semibold text-primary">
-                        {pts !== null ? pts : <span className="text-muted-foreground/30">—</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {played.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-border bg-muted/40 font-semibold">
-                    <td className="px-4 py-2.5 text-foreground">Total</td>
-                    <td className="px-2 py-2.5 text-center text-muted-foreground">{totalPar}</td>
-                    <td className="px-2 py-2.5" />
-                    <td className="px-2 py-2.5 text-center text-foreground">{totalGross}</td>
-                    <td className="px-2 py-2.5 text-center text-foreground">{totalNet}</td>
-                    <td className="px-4 py-2.5 text-center text-primary">{totalPts}</td>
+                {/* Front 9 */}
+                {front9.length > 0 && (
+                  <>
+                    {renderSectionHeader("OUT")}
+                    {front9.map(renderHoleRow)}
+                    {renderSubtotalRow("OUT", outTotals)}
+                  </>
+                )}
+                {/* Back 9 */}
+                {back9.length > 0 && (
+                  <>
+                    {renderSectionHeader("IN")}
+                    {back9.map(renderHoleRow)}
+                    {renderSubtotalRow("IN", inTotals)}
+                  </>
+                )}
+                {/* Grand total */}
+                {played.length > 0 && (
+                  <tr className="border-t-2 border-border bg-primary/10 font-bold">
+                    <td className="px-3 py-3 text-foreground">TOTAL</td>
+                    <td className="px-2 py-3 text-center text-muted-foreground">{totalPar}</td>
+                    <td className="px-2 py-3" />
+                    <td className="px-2 py-3 text-center text-foreground">{totalGross}</td>
+                    {!isStableford && <td className="px-2 py-3 text-center text-foreground">{totalNet}</td>}
+                    <td className="px-3 py-3 text-center text-primary text-base">{totalPts}</td>
                   </tr>
-                </tfoot>
-              )}
+                )}
+              </tbody>
             </table>
             {played.length < (data?.length ?? 0) && (
               <p className="text-xs text-muted-foreground text-center py-3">
                 {played.length} of {data?.length} holes played
               </p>
             )}
+            {/* Legend */}
+            <div className="flex items-center gap-4 px-4 py-3 border-t border-border flex-wrap">
+              <span className="text-xs text-muted-foreground font-medium">Legend:</span>
+              <span className="text-xs text-yellow-300 font-bold">Eagle−</span>
+              <span className="text-xs text-primary font-semibold">Birdie</span>
+              <span className="text-xs text-foreground">Par</span>
+              <span className="text-xs text-rose-400">Bogey</span>
+              <span className="text-xs text-rose-600 font-semibold">D.Bogey+</span>
+              {!isStableford && <span className="text-xs text-muted-foreground">· = stroke received on hole</span>}
+            </div>
           </div>
         )}
       </SheetContent>
@@ -369,8 +447,17 @@ export default function DailyLeaderboard() {
                           </div>
                           <div className="text-right flex items-center gap-2">
                             <div>
-                              <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
-                              <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                              {data.trip?.handicapMode === "stableford" ? (
+                                <>
+                                  <p className="text-lg font-bold text-primary">{(p as any).totalStableford ?? 0} pts</p>
+                                  <p className="text-xs text-muted-foreground">{p.totalGross} gross</p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
+                                  <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                                </>
+                              )}
                             </div>
                             <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
                           </div>
@@ -507,8 +594,17 @@ export default function DailyLeaderboard() {
                           </div>
                           <div className="text-right flex items-center gap-2">
                             <div>
-                              <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
-                              <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                              {data.trip?.handicapMode === "stableford" ? (
+                                <>
+                                  <p className="text-lg font-bold text-primary">{(p as any).totalStableford ?? 0} pts</p>
+                                  <p className="text-xs text-muted-foreground">{p.totalGross} gross</p>
+                                </>
+                              ) : (
+                                <>
+                                  <p className="text-lg font-bold text-foreground">{p.totalNet}</p>
+                                  <p className="text-xs text-muted-foreground">Net ({p.totalGross} gross)</p>
+                                </>
+                              )}
                             </div>
                             <ChevronRight className="w-4 h-4 text-muted-foreground/50 flex-shrink-0" />
                           </div>
@@ -597,6 +693,7 @@ export default function DailyLeaderboard() {
           userId={drawerPlayer.userId}
           playerName={drawerPlayer.userName}
           handicap={drawerPlayer.handicap}
+          isStableford={(data as any)?.trip?.handicapMode === "stableford"}
         />
       )}
     </div>

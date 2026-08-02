@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "wouter";
-import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle, Copy, MapPin, Link2Off, CreditCard } from "lucide-react";
+import { Plus, Flag, ChevronRight, Settings, Users, Calendar, BarChart2, Pencil, Trash2, AlertTriangle, Copy, MapPin, Link2Off, CreditCard, Upload, ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -36,6 +36,7 @@ export default function AdminTrips() {
   const [endDate, setEndDate] = useState("");
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
+  const [rules, setRules] = useState("");
 
   // Edit
   const [editOpen, setEditOpen] = useState(false);
@@ -45,6 +46,9 @@ export default function AdminTrips() {
   const [editEnd, setEditEnd] = useState("");
   const [editLocation, setEditLocation] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editRules, setEditRules] = useState("");
+  const [editLogoUrl, setEditLogoUrl] = useState("");
+  const [logoUploading, setLogoUploading] = useState(false);
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -89,7 +93,28 @@ export default function AdminTrips() {
     setEditEnd(new Date(trip.endDate).toISOString().split("T")[0]);
     setEditLocation(trip.location ?? "");
     setEditDescription(trip.description ?? "");
+    setEditRules((trip as any).rules ?? "");
+    setEditLogoUrl((trip as any).logoUrl ?? "");
     setEditOpen(true);
+  }
+
+  async function uploadTripLogo(tripId: number, file: File) {
+    setLogoUploading(true);
+    try {
+      const form = new FormData();
+      form.append("logo", file);
+      form.append("tripId", String(tripId));
+      const res = await fetch("/api/upload/trip-logo", { method: "POST", body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      setEditLogoUrl(json.url);
+      toast.success("Logo uploaded");
+      refetch();
+    } catch (e: any) {
+      toast.error(e.message ?? "Upload failed");
+    } finally {
+      setLogoUploading(false);
+    }
   }
 
   function openDelete(trip: Trip) {
@@ -314,12 +339,17 @@ export default function AdminTrips() {
               <label className="text-sm font-medium text-foreground mb-1 block">Description</label>
               <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional trip notes or details..." rows={3} />
             </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Trip Rules</label>
+              <Textarea value={rules} onChange={(e) => setRules(e.target.value)} placeholder="e.g. Handicap allowance 75%, nearest to pin on par 3s, no mulligans..." rows={4} />
+              <p className="text-xs text-muted-foreground mt-1">Rules will appear on the trip page and in invite emails.</p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
               disabled={!name || !startDate || !endDate || createTrip.isPending}
-              onClick={() => createTrip.mutate({ name, startDate, endDate, location: location || undefined, description: description || undefined })}
+              onClick={() => (createTrip.mutate as any)({ name, startDate, endDate, location: location || undefined, description: description || undefined, rules: rules || undefined })}
             >
               Create Trip
             </Button>
@@ -354,18 +384,46 @@ export default function AdminTrips() {
               <label className="text-sm font-medium text-foreground mb-1 block">Description</label>
               <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Optional trip notes or details..." rows={3} />
             </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Trip Rules</label>
+              <Textarea value={editRules} onChange={(e) => setEditRules(e.target.value)} placeholder="e.g. Handicap allowance 75%, nearest to pin on par 3s, no mulligans..." rows={4} />
+              <p className="text-xs text-muted-foreground mt-1">Rules will appear on the trip page and in invite emails.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Trip Logo</label>
+              {editLogoUrl ? (
+                <div className="flex items-center gap-3 mb-2">
+                  <img src={editLogoUrl} alt="Trip logo" className="w-16 h-16 rounded-lg object-contain border border-border bg-card" />
+                  <Button size="sm" variant="outline" className="gap-1 text-xs"                   onClick={() => { setEditLogoUrl(""); (updateTrip.mutate as any)({ id: editTrip!.id, logoUrl: "" }); }}>
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-3 border border-dashed border-border rounded-lg text-muted-foreground">
+                  <ImageIcon className="w-4 h-4" />
+                  <span className="text-xs">No logo set</span>
+                </div>
+              )}
+              <label className="mt-2 flex items-center gap-2 cursor-pointer">
+                <Button size="sm" variant="outline" className="gap-1 text-xs pointer-events-none" disabled={logoUploading}>
+                  <Upload className="w-3 h-3" /> {logoUploading ? "Uploading..." : "Upload Logo"}
+                </Button>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f && editTrip) uploadTripLogo(editTrip.id, f); e.target.value = ""; }} />
+              </label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button
               disabled={!editName || !editStart || !editEnd || updateTrip.isPending}
-              onClick={() => editTrip && updateTrip.mutate({
+              onClick={() => editTrip && (updateTrip.mutate as any)({
                 id: editTrip.id,
                 name: editName,
                 startDate: editStart,
                 endDate: editEnd,
                 location: editLocation || undefined,
                 description: editDescription || undefined,
+                rules: editRules || undefined,
               })}
             >
               Save Changes

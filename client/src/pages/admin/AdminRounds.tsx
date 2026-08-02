@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target, Pencil, Trash2, AlertTriangle, RefreshCw, Zap } from "lucide-react";
+import { ArrowLeft, Plus, Calendar, Users, PlayCircle, CheckCircle, Target, Pencil, Trash2, AlertTriangle, RefreshCw, Zap, Upload, ImageIcon } from "lucide-react";
 import { PremiumFeatureBadge } from "@/components/PremiumFeatureBadge";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -74,6 +74,9 @@ export default function AdminRounds() {
   // Create dialog Ambrose state
   const [ambrose, setAmbrose] = useState(false);
   const [ambroseTeamSize, setAmbroseTeamSize] = useState(4);
+  // Logo upload
+  const [editLogoUrl, setEditLogoUrl] = useState("");
+  const [logoUploading, setLogoUploading] = useState(false);
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -132,7 +135,27 @@ export default function AdminRounds() {
     setEditMercyStrokes((round as any).mercyRuleStrokes ?? 5);
     setEditAmbroseEnabled((round as any).ambroseEnabled ?? false);
     setEditAmbroseTeamSize((round as any).ambroseTeamSize ?? 4);
+    setEditLogoUrl((round as any).logoUrl ?? "");
     setEditOpen(true);
+  }
+
+  async function uploadRoundLogo(roundId: number, file: File) {
+    setLogoUploading(true);
+    try {
+      const form = new FormData();
+      form.append("logo", file);
+      form.append("roundId", String(roundId));
+      const res = await fetch("/api/upload/round-logo", { method: "POST", body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      setEditLogoUrl(json.url);
+      toast.success("Round logo uploaded");
+      refetch();
+    } catch (e: any) {
+      toast.error(e.message ?? "Upload failed");
+    } finally {
+      setLogoUploading(false);
+    }
   }
 
   function openDelete(round: Round) {
@@ -377,6 +400,27 @@ export default function AdminRounds() {
               )}
             </div>
 
+            {/* Round Logo */}
+            <div className="space-y-2 border-t border-border pt-3">
+              <label className="text-sm font-medium text-foreground block">Round Logo <span className="text-xs text-muted-foreground font-normal">(optional — falls back to trip logo)</span></label>
+              {editLogoUrl ? (
+                <div className="flex items-center gap-3">
+                  <img src={editLogoUrl} alt="Round logo" className="w-14 h-14 rounded-lg object-contain border border-border bg-card" />
+                  <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => { setEditLogoUrl(""); (updateRound.mutate as any)({ id: editRound!.id, logoUrl: "" }); }}>Remove</Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-3 border border-dashed border-border rounded-lg text-muted-foreground">
+                  <ImageIcon className="w-4 h-4" /><span className="text-xs">No logo — will use trip logo</span>
+                </div>
+              )}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Button size="sm" variant="outline" className="gap-1 text-xs pointer-events-none" disabled={logoUploading}>
+                  <Upload className="w-3 h-3" /> {logoUploading ? "Uploading..." : "Upload Logo"}
+                </Button>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f && editRound) uploadRoundLogo(editRound.id, f); e.target.value = ""; }} />
+              </label>
+            </div>
+
             {/* Mercy Rule */}
             <div className="space-y-3 border-t border-border pt-3">
               <div className="flex items-center justify-between">
@@ -416,7 +460,7 @@ export default function AdminRounds() {
                 mercyRuleStrokes: editMercyStrokes,
                 ambroseEnabled: editAmbroseEnabled,
                 ambroseTeamSize: editAmbroseTeamSize,
-              })}
+              } as any)}
             >
               Save Changes
             </Button>

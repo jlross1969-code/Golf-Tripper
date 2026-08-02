@@ -113,6 +113,13 @@
       "when": 1785634439426,
       "tag": "0015_open_puppet_master",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1785663183566,
+      "tag": "0016_groovy_power_pack",
+      "breakpoints": true
     }
   ]
 }
