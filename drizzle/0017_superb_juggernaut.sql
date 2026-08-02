@@ -1,0 +1,1 @@
+ALTER TABLE `rounds` ADD `individualScoringMode` enum('stableford','net_stroke') DEFAULT 'stableford' NOT NULL;

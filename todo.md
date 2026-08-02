@@ -584,5 +584,17 @@
 
 ## Session - Trip Leaderboard Scorecard Fix
 
-- [ ] Trip Leaderboard: tap player name/row to open scorecard drawer (same as Daily Leaderboard)
-- [ ] Trip Leaderboard scorecard: since trip spans multiple rounds, show a round selector so user can pick which round's scorecard to view
+- [x] Trip Leaderboard: tap player name/row to open scorecard drawer (same as Daily Leaderboard)
+- [x] Trip Leaderboard scorecard: since trip spans multiple rounds, show a round selector so user can pick which round's scorecard to view
+
+## Session - Round Scoring Mode & Format Exclusivity Fix
+
+- [x] DB: add individualScoringMode column to rounds table (enum: 'stableford' | 'net_stroke', default 'stableford')
+- [x] Apply DB migration for individualScoringMode
+- [x] Backend: rounds.create and rounds.update accept individualScoringMode field
+- [x] Backend: leaderboard.daily uses round.individualScoringMode instead of trip.handicapMode for per-round scoring
+- [x] AdminRounds: always show Individual Scoring Mode selector (Stableford / Net Stroke) at top of Formats section
+- [x] AdminRounds: default scoring mode from trip.handicapMode when opening Create Round dialog
+- [x] AdminRounds: enforce mutual exclusivity — Match Play / Alternate Shot / Ambrose are exclusive team formats (disable 4BBB, Skins, and each other when one is selected)
+- [x] AdminRounds: show helper text explaining format rules (e.g. "Ambrose cannot be combined with 4BBB or Skins")
+- [x] TypeScript check (0 errors), 51 tests passing, checkpoint

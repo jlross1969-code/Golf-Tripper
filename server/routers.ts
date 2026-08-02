@@ -459,6 +459,7 @@ export const appRouter = router({
           alternateShotEnabled: z.boolean().default(false),
           ambroseEnabled: z.boolean().default(false),
           ambroseTeamSize: z.number().min(2).max(4).default(4),
+          individualScoringMode: z.enum(["stableford", "net_stroke"]).default("stableford"),
           logoUrl: z.string().optional(),
         })
       )
@@ -488,6 +489,7 @@ export const appRouter = router({
           mercyRuleStrokes: z.number().min(4).max(6).optional(),
           ambroseEnabled: z.boolean().optional(),
           ambroseTeamSize: z.number().min(2).max(4).optional(),
+          individualScoringMode: z.enum(["stableford", "net_stroke"]).optional(),
           logoUrl: z.string().optional(),
         })
       )
@@ -1219,10 +1221,13 @@ export const appRouter = router({
         const scorecard = await getRoundScorecard(input.roundId);
         const courseHoles = await getHolesByCourse(round.courseId);
 
+        // Per-round scoring mode overrides trip-level handicapMode
+        const roundScoringMode = (round as any).individualScoringMode ?? trip?.handicapMode ?? "stableford";
+
         // Effective baseline = trip baseline + round daily adjustment
         const tripBaseline = trip?.handicapBaseline ?? 0;
         const effectiveBaseline = tripBaseline === 0
-          ? (trip?.handicapMode === "stableford" ? 34 : 70)
+          ? (roundScoringMode === "stableford" ? 34 : 70)
           : tripBaseline + (round.dailyAdjustment ?? 0);
 
         // Stroke Play leaderboard — sorted by net score ascending
@@ -1320,7 +1325,7 @@ export const appRouter = router({
           hasMercyCappedScore: p.scores.some((s) => s.mercyCapped),
         }));
 
-        return { round, trip, strokePlay: strokePlayWithAch, fourBBB: fourBBBResults, skins: skinsResults, effectiveBaseline };
+        return { round, trip, roundScoringMode, strokePlay: strokePlayWithAch, fourBBB: fourBBBResults, skins: skinsResults, effectiveBaseline };
       }),
 
         trip: publicProcedure

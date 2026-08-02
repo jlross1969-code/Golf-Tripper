@@ -346,6 +346,7 @@ export async function createRound(data: {
   alternateShotEnabled?: boolean;
   ambroseEnabled?: boolean;
   ambroseTeamSize?: number;
+  individualScoringMode?: "stableford" | "net_stroke";
   logoUrl?: string;
 }): Promise<number> {
   const db = await getDb();
@@ -362,6 +363,7 @@ export async function createRound(data: {
     alternateShotEnabled: data.alternateShotEnabled ?? false,
     ambroseEnabled: data.ambroseEnabled ?? false,
     ambroseTeamSize: data.ambroseTeamSize ?? 4,
+    individualScoringMode: data.individualScoringMode ?? "stableford",
     status: "scheduled",
     ...(data.logoUrl !== undefined ? { logoUrl: data.logoUrl } : {}),
   });

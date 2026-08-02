@@ -23,6 +23,12 @@ type Round = {
   skinsEnabled: boolean;
   matchPlayEnabled?: boolean;
   alternateShotEnabled?: boolean;
+  ambroseEnabled?: boolean;
+  ambroseTeamSize?: number;
+  mercyRuleEnabled?: boolean;
+  mercyRuleStrokes?: number;
+  individualScoringMode?: "stableford" | "net_stroke";
+  logoUrl?: string;
 };
 
 export default function AdminRounds() {
@@ -55,6 +61,22 @@ export default function AdminRounds() {
   const [skins, setSkins] = useState(false);
   const [matchPlay, setMatchPlay] = useState(false);
   const [alternateShot, setAlternateShot] = useState(false);
+  // Individual scoring mode: default from trip.handicapMode
+  const [scoringMode, setScoringMode] = useState<"stableford" | "net_stroke">("stableford");
+  // Exclusivity helper: team formats (matchPlay/alternateShot/ambrose) cannot combine with 4BBB/Skins or each other
+  function setExclusiveTeamFormat(format: "matchPlay" | "alternateShot" | "ambrose", val: boolean) {
+    if (val) {
+      setMatchPlay(format === "matchPlay");
+      setAlternateShot(format === "alternateShot");
+      setAmbrose(format === "ambrose");
+      setFourBBB(false);
+      setSkins(false);
+    } else {
+      if (format === "matchPlay") setMatchPlay(false);
+      if (format === "alternateShot") setAlternateShot(false);
+      if (format === "ambrose") setAmbrose(false);
+    }
+  }
 
   // Edit
   const [editOpen, setEditOpen] = useState(false);
@@ -74,6 +96,8 @@ export default function AdminRounds() {
   // Create dialog Ambrose state
   const [ambrose, setAmbrose] = useState(false);
   const [ambroseTeamSize, setAmbroseTeamSize] = useState(4);
+  // Edit scoring mode
+  const [editScoringMode, setEditScoringMode] = useState<"stableford" | "net_stroke">("stableford");
   // Logo upload
   const [editLogoUrl, setEditLogoUrl] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
@@ -121,6 +145,21 @@ export default function AdminRounds() {
     refetch();
   }
 
+  // Edit exclusivity helper
+  function setEditExclusiveTeamFormat(format: "matchPlay" | "alternateShot" | "ambrose", val: boolean) {
+    if (val) {
+      setEditMatchPlay(format === "matchPlay");
+      setEditAltShot(format === "alternateShot");
+      setEditAmbroseEnabled(format === "ambrose");
+      setEditFourBBB(false);
+      setEditSkins(false);
+    } else {
+      if (format === "matchPlay") setEditMatchPlay(false);
+      if (format === "alternateShot") setEditAltShot(false);
+      if (format === "ambrose") setEditAmbroseEnabled(false);
+    }
+  }
+
   function openEdit(round: Round) {
     setEditRound(round);
     setEditName(round.name);
@@ -131,11 +170,12 @@ export default function AdminRounds() {
     setEditSkins(round.skinsEnabled);
     setEditMatchPlay(round.matchPlayEnabled ?? false);
     setEditAltShot(round.alternateShotEnabled ?? false);
-    setEditMercyEnabled((round as any).mercyRuleEnabled ?? false);
-    setEditMercyStrokes((round as any).mercyRuleStrokes ?? 5);
-    setEditAmbroseEnabled((round as any).ambroseEnabled ?? false);
-    setEditAmbroseTeamSize((round as any).ambroseTeamSize ?? 4);
-    setEditLogoUrl((round as any).logoUrl ?? "");
+    setEditMercyEnabled(round.mercyRuleEnabled ?? false);
+    setEditMercyStrokes(round.mercyRuleStrokes ?? 5);
+    setEditAmbroseEnabled(round.ambroseEnabled ?? false);
+    setEditAmbroseTeamSize(round.ambroseTeamSize ?? 4);
+    setEditLogoUrl(round.logoUrl ?? "");
+    setEditScoringMode(round.individualScoringMode ?? (trip as any)?.handicapMode === "net_stroke" ? "net_stroke" : "stableford");
     setEditOpen(true);
   }
 
@@ -181,7 +221,11 @@ export default function AdminRounds() {
             <p className="text-xs text-muted-foreground">{trip?.name}</p>
           </div>
         </div>
-        <Button size="sm" className="gap-2" onClick={() => setOpen(true)}>
+        <Button size="sm" className="gap-2" onClick={() => {
+          // Seed scoring mode from trip's handicapMode
+          setScoringMode((trip as any)?.handicapMode === "net_stroke" ? "net_stroke" : "stableford");
+          setOpen(true);
+        }}>
           <Plus className="w-4 h-4" /> New Round
         </Button>
       </header>
@@ -210,7 +254,10 @@ export default function AdminRounds() {
                     </p>
                   )}
                   <div className="flex gap-2 flex-wrap">
-                    {round.strokePlayEnabled && <Badge variant="outline" className="text-xs">Stroke Play</Badge>}
+                    {/* Individual scoring mode badge */}
+                    {(round as any).individualScoringMode === "net_stroke"
+                      ? <Badge variant="outline" className="text-xs text-blue-300 border-blue-700">🏌️ Net Stroke</Badge>
+                      : <Badge variant="outline" className="text-xs text-yellow-300 border-yellow-700">⭐ Stableford</Badge>}
                     {round.fourBBBEnabled && <Badge variant="outline" className="text-xs">4BBB</Badge>}
                     {round.skinsEnabled && <Badge variant="outline" className="text-xs">Skins</Badge>}
                     {(round as any).matchPlayEnabled && <Badge variant="outline" className="text-xs">Match Play</Badge>}
@@ -307,31 +354,65 @@ export default function AdminRounds() {
               <label className="text-sm font-medium text-foreground mb-1 block">Date</label>
               <Input type="date" value={roundDate} onChange={(e) => setRoundDate(e.target.value)} />
             </div>
+            {/* Individual Scoring Mode */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground block">Individual Scoring Mode</label>
+              <div className="flex gap-2">
+                {(["stableford", "net_stroke"] as const).map((m) => (
+                  <button key={m} type="button"
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                      scoringMode === m
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
+                    }`}
+                    onClick={() => setScoringMode(m)}>
+                    {m === "stableford" ? "⭐ Stableford" : "🏌️ Net Stroke"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-3">
-              <label className="text-sm font-medium text-foreground block">Formats</label>
-              {[
-                { label: "Stroke Play", value: strokePlay, set: setStrokePlay },
-                { label: "4BBB", value: fourBBB, set: setFourBBB },
-                { label: "Skins", value: skins, set: setSkins },
-                { label: "Match Play", value: matchPlay, set: setMatchPlay },
-                { label: "Alternate Shot", value: alternateShot, set: setAlternateShot },
-                { label: "🏌️ Ambrose", value: ambrose, set: setAmbrose },
-              ].map(({ label, value, set }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-sm text-foreground">{label}</span>
-                  <Switch checked={value} onCheckedChange={set} />
-                </div>
-              ))}
-              {ambrose && (
-                <div className="flex items-center justify-between pl-4">
-                  <span className="text-sm text-muted-foreground">Team size</span>
-                  <div className="flex items-center gap-2">
-                    {[2, 3, 4].map((n) => (
-                      <Button key={n} size="sm" variant={ambroseTeamSize === n ? "default" : "outline"} className="h-7 w-7 p-0 text-xs" onClick={() => setAmbroseTeamSize(n)}>{n}</Button>
-                    ))}
+              <label className="text-sm font-medium text-foreground block">Additional Formats</label>
+              {/* 4BBB and Skins — only when no exclusive team format is active */}
+              {!matchPlay && !alternateShot && !ambrose && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-foreground">4BBB (Best Ball)</span>
+                    <Switch checked={fourBBB} onCheckedChange={setFourBBB} />
                   </div>
-                </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-foreground">Skins</span>
+                    <Switch checked={skins} onCheckedChange={setSkins} />
+                  </div>
+                </>
               )}
+              {/* Exclusive team formats */}
+              <div className="border-t border-border pt-3">
+                <p className="text-xs text-muted-foreground mb-2">Team formats (mutually exclusive — cannot combine with 4BBB/Skins or each other)</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">Match Play</span>
+                  <Switch checked={matchPlay} onCheckedChange={(v) => setExclusiveTeamFormat("matchPlay", v)} />
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm text-foreground">Alternate Shot</span>
+                  <Switch checked={alternateShot} onCheckedChange={(v) => setExclusiveTeamFormat("alternateShot", v)} />
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm text-foreground">🏌️ Ambrose</span>
+                  <Switch checked={ambrose} onCheckedChange={(v) => setExclusiveTeamFormat("ambrose", v)} />
+                </div>
+                {ambrose && (
+                  <div className="flex items-center justify-between pl-4 mt-2">
+                    <span className="text-sm text-muted-foreground">Team size</span>
+                    <div className="flex items-center gap-2">
+                      {[2, 3, 4].map((n) => (
+                        <Button key={n} size="sm" variant={ambroseTeamSize === n ? "default" : "outline"} className="h-7 w-7 p-0 text-xs" onClick={() => setAmbroseTeamSize(n)}>{n}</Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -343,6 +424,7 @@ export default function AdminRounds() {
                 strokePlayEnabled: strokePlay, fourBBBEnabled: fourBBB, skinsEnabled: skins,
                 matchPlayEnabled: matchPlay, alternateShotEnabled: alternateShot,
                 ambroseEnabled: ambrose, ambroseTeamSize,
+                individualScoringMode: scoringMode,
               })}
             >
               Create Round
@@ -373,31 +455,63 @@ export default function AdminRounds() {
               <label className="text-sm font-medium text-foreground mb-1 block">Date</label>
               <Input type="date" value={editRoundDate} onChange={(e) => setEditRoundDate(e.target.value)} />
             </div>
+            {/* Individual Scoring Mode */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground block">Individual Scoring Mode</label>
+              <div className="flex gap-2">
+                {(["stableford", "net_stroke"] as const).map((m) => (
+                  <button key={m} type="button"
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+                      editScoringMode === m
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
+                    }`}
+                    onClick={() => setEditScoringMode(m)}>
+                    {m === "stableford" ? "⭐ Stableford" : "🏌️ Net Stroke"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-3">
-              <label className="text-sm font-medium text-foreground block">Formats</label>
-              {[
-                { label: "Stroke Play", value: editStroke, set: setEditStroke },
-                { label: "4BBB", value: editFourBBB, set: setEditFourBBB },
-                { label: "Skins", value: editSkins, set: setEditSkins },
-                { label: "Match Play", value: editMatchPlay, set: setEditMatchPlay },
-                { label: "Alternate Shot", value: editAltShot, set: setEditAltShot },
-                { label: "🏌️ Ambrose", value: editAmbroseEnabled, set: setEditAmbroseEnabled },
-              ].map(({ label, value, set }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-sm text-foreground">{label}</span>
-                  <Switch checked={value} onCheckedChange={set} />
-                </div>
-              ))}
-              {editAmbroseEnabled && (
-                <div className="flex items-center justify-between pl-4">
-                  <span className="text-sm text-muted-foreground">Team size</span>
-                  <div className="flex items-center gap-2">
-                    {[2, 3, 4].map((n) => (
-                      <Button key={n} size="sm" variant={editAmbroseTeamSize === n ? "default" : "outline"} className="h-7 w-7 p-0 text-xs" onClick={() => setEditAmbroseTeamSize(n)}>{n}</Button>
-                    ))}
+              <label className="text-sm font-medium text-foreground block">Additional Formats</label>
+              {!editMatchPlay && !editAltShot && !editAmbroseEnabled && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-foreground">4BBB (Best Ball)</span>
+                    <Switch checked={editFourBBB} onCheckedChange={setEditFourBBB} />
                   </div>
-                </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-foreground">Skins</span>
+                    <Switch checked={editSkins} onCheckedChange={setEditSkins} />
+                  </div>
+                </>
               )}
+              <div className="border-t border-border pt-3">
+                <p className="text-xs text-muted-foreground mb-2">Team formats (mutually exclusive)</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-foreground">Match Play</span>
+                  <Switch checked={editMatchPlay} onCheckedChange={(v) => setEditExclusiveTeamFormat("matchPlay", v)} />
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm text-foreground">Alternate Shot</span>
+                  <Switch checked={editAltShot} onCheckedChange={(v) => setEditExclusiveTeamFormat("alternateShot", v)} />
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm text-foreground">🏌️ Ambrose</span>
+                  <Switch checked={editAmbroseEnabled} onCheckedChange={(v) => setEditExclusiveTeamFormat("ambrose", v)} />
+                </div>
+                {editAmbroseEnabled && (
+                  <div className="flex items-center justify-between pl-4 mt-2">
+                    <span className="text-sm text-muted-foreground">Team size</span>
+                    <div className="flex items-center gap-2">
+                      {[2, 3, 4].map((n) => (
+                        <Button key={n} size="sm" variant={editAmbroseTeamSize === n ? "default" : "outline"} className="h-7 w-7 p-0 text-xs" onClick={() => setEditAmbroseTeamSize(n)}>{n}</Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Round Logo */}
@@ -460,6 +574,7 @@ export default function AdminRounds() {
                 mercyRuleStrokes: editMercyStrokes,
                 ambroseEnabled: editAmbroseEnabled,
                 ambroseTeamSize: editAmbroseTeamSize,
+                individualScoringMode: editScoringMode,
               } as any)}
             >
               Save Changes

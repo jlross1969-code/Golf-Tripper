@@ -135,6 +135,9 @@ export const rounds = mysqlTable("rounds", {
   // Mercy rule: cap gross score at par + mercyRuleStrokes (default off, 5 over par)
   mercyRuleEnabled: boolean("mercyRuleEnabled").default(false).notNull(),
   mercyRuleStrokes: int("mercyRuleStrokes").default(5).notNull(),
+  // Individual scoring mode for this round (overrides trip-level handicapMode)
+  // 'stableford' = Stableford points, 'net_stroke' = Net Stroke Play
+  individualScoringMode: mysqlEnum("individualScoringMode", ["stableford", "net_stroke"]).default("stableford").notNull(),
   // Ambrose team scramble format
   ambroseEnabled: boolean("ambroseEnabled").default(false).notNull(),
   ambroseTeamSize: int("ambroseTeamSize").default(4).notNull(),
