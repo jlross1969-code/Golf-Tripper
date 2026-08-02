@@ -7,8 +7,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag, Pencil, Copy, ClipboardList } from "lucide-react";
-import { useState, useEffect } from "react";
+import { ArrowLeft, Plus, Trash2, Users, UserPlus, Lock, Swords, X, Shuffle, Clock, Flag, Pencil, Copy, ClipboardList, GripVertical } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  closestCenter,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 
@@ -71,6 +84,23 @@ export default function AdminGroups() {
   const [reseedGroupSize, setReseedGroupSize] = useState("4");
   const [reseedStep, setReseedStep] = useState<"configure" | "preview">("configure");
   const [reseedPreviewEnabled, setReseedPreviewEnabled] = useState(false);
+  // Drag-to-edit preview state
+  type PreviewPlayer = { userId: number; displayName: string; handicap: number; partnerId?: number | null };
+  type PreviewGroup = { name: string; players: PreviewPlayer[] };
+  const [editableGroups, setEditableGroups] = useState<PreviewGroup[]>([]);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const applyCustom = trpc.groups.applyCustom.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.groupsCreated} groups applied successfully`);
+      setReseedOpen(false);
+      setReseedStep("configure");
+      setReseedPreviewEnabled(false);
+      setEditableGroups([]);
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   // Admin scorecard drawer state
   const [scorecardPlayer, setScorecardPlayer] = useState<GroupPlayer | null>(null);
@@ -202,6 +232,61 @@ export default function AdminGroups() {
     : reseedMode === "4bbb" ? preview4BBBData?.groups
     : previewIndivData?.groups;
   const previewFetching = previewCopyFetching || preview4BBBFetching || previewIndivFetching;
+
+  // Sync preview data into editable groups when it arrives
+  useEffect(() => {
+    if (previewGroups && previewGroups.length > 0) {
+      setEditableGroups(previewGroups.map((g) => ({ name: g.name, players: g.players })));
+    }
+  }, [previewGroups]);
+
+  // DnD handlers for preview drag-to-edit
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(String(event.active.id));
+  }, []);
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const activeId = String(active.id); // "groupIdx-userId"
+    const overId = String(over.id);
+    const [activeGi] = activeId.split("-").map(Number);
+    const [overGi] = overId.split("-").map(Number);
+    if (activeGi === overGi) return; // same group — no action needed on over
+    setEditableGroups((prev) => {
+      const next = prev.map((g) => ({ ...g, players: [...g.players] }));
+      const activeUserId = parseInt(activeId.split("-")[1]);
+      const player = next[activeGi]?.players.find((p) => p.userId === activeUserId);
+      if (!player) return prev;
+      next[activeGi].players = next[activeGi].players.filter((p) => p.userId !== activeUserId);
+      if (!next[overGi].players.find((p) => p.userId === activeUserId)) {
+        next[overGi].players.push(player);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const [activeGi] = activeId.split("-").map(Number);
+    const [overGi] = overId.split("-").map(Number);
+    if (activeGi === overGi) return;
+    setEditableGroups((prev) => {
+      const next = prev.map((g) => ({ ...g, players: [...g.players] }));
+      const activeUserId = parseInt(activeId.split("-")[1]);
+      const player = next[activeGi]?.players.find((p) => p.userId === activeUserId);
+      if (!player) return prev;
+      next[activeGi].players = next[activeGi].players.filter((p) => p.userId !== activeUserId);
+      if (!next[overGi].players.find((p) => p.userId === activeUserId)) {
+        next[overGi].players.push(player);
+      }
+      return next;
+    });
+  }, []);
 
   const createAchievement = trpc.achievements.create.useMutation();
   const confirmAchievement = trpc.achievements.confirm.useMutation();
@@ -851,25 +936,59 @@ export default function AdminGroups() {
               )}
             </div>
           ) : (
-            /* Preview step */
+            /* Preview step — drag-to-edit */
             <div className="py-2 space-y-3">
               {previewFetching ? (
                 <div className="text-center py-8 text-muted-foreground text-sm">Loading preview...</div>
-              ) : previewGroups && previewGroups.length > 0 ? (
-                previewGroups.map((g, gi) => (
-                  <div key={gi} className="rounded-lg border border-border bg-card p-3">
-                    <p className="text-sm font-semibold text-foreground mb-2">{g.name}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {g.players.map((p) => (
-                        <span key={p.userId} className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 text-primary px-2 py-0.5 text-xs">
-                          <span className="font-medium">{p.displayName}</span>
-                          <span className="opacity-60">HC:{p.handicap}</span>
-                          {p.partnerId && <span className="opacity-50 text-[10px]">paired</span>}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))
+              ) : editableGroups.length > 0 ? (
+                <>
+                  <p className="text-xs text-muted-foreground">Drag players between groups to adjust before applying.</p>
+                  <DndContext
+                    sensors={dndSensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDragEnd={handleDragEnd}
+                  >
+                    {editableGroups.map((g, gi) => (
+                      <div key={gi} className="rounded-lg border border-border bg-card p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-semibold text-foreground">{g.name}</p>
+                          <span className="text-xs text-muted-foreground">{g.players.length} players</span>
+                        </div>
+                        <SortableContext
+                          items={g.players.map((p) => `${gi}-${p.userId}`)}
+                          strategy={rectSortingStrategy}
+                        >
+                          <div className="flex flex-wrap gap-1.5 min-h-[32px]">
+                            {g.players.map((p) => (
+                              <DraggablePlayerChip
+                                key={`${gi}-${p.userId}`}
+                                id={`${gi}-${p.userId}`}
+                                displayName={p.displayName}
+                                handicap={p.handicap}
+                                isDragging={activeDragId === `${gi}-${p.userId}`}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </div>
+                    ))}
+                    <DragOverlay>
+                      {activeDragId ? (() => {
+                        const [gi, uid] = activeDragId.split("-").map(Number);
+                        const p = editableGroups[gi]?.players.find((pl) => pl.userId === uid);
+                        return p ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary border border-primary/40 text-primary-foreground px-2 py-0.5 text-xs shadow-lg cursor-grabbing">
+                            <GripVertical className="w-3 h-3 opacity-60" />
+                            <span className="font-medium">{p.displayName}</span>
+                            <span className="opacity-70">HC:{p.handicap}</span>
+                          </span>
+                        ) : null;
+                      })() : null}
+                    </DragOverlay>
+                  </DndContext>
+                </>
               ) : (
                 <div className="text-center py-8 text-muted-foreground text-sm">No groups to preview.</div>
               )}
@@ -894,22 +1013,20 @@ export default function AdminGroups() {
               <>
                 <Button variant="outline" onClick={() => { setReseedStep("configure"); setReseedPreviewEnabled(false); }}>← Back</Button>
                 <Button
-                  disabled={previewFetching || copyToRound.isPending || reseedBy4BBB.isPending || reseedByIndividual.isPending}
+                  disabled={previewFetching || applyCustom.isPending}
                   onClick={() => {
-                    const applyGroupSize = Number(reseedGroupSize);
-                    const applySrcId = Number(reseedSourceRoundId);
-                    if (reseedMode === "copy") {
-                      copyToRound.mutate({ sourceRoundId: applySrcId, targetRoundId: rId, tripId: tId });
-                    } else if (reseedMode === "4bbb") {
-                      reseedBy4BBB.mutate({ sourceRoundId: applySrcId, targetRoundId: rId, tripId: tId, groupSize: applyGroupSize });
-                    } else {
-                      reseedByIndividual.mutate({ targetRoundId: rId, tripId: tId, groupSize: applyGroupSize });
-                    }
+                    // Always apply the current editableGroups state (which may have been drag-edited)
+                    applyCustom.mutate({
+                      targetRoundId: rId,
+                      tripId: tId,
+                      groups: editableGroups.map((g) => ({
+                        name: g.name,
+                        userIds: g.players.map((p) => p.userId),
+                      })),
+                    });
                   }}
                 >
-                  {(copyToRound.isPending || reseedBy4BBB.isPending || reseedByIndividual.isPending)
-                    ? "Applying..."
-                    : reseedMode === "copy" ? "Apply — Copy Groupings" : reseedMode === "4bbb" ? "Apply — Re-seed by 4BBB" : "Apply — Re-seed by Standings"}
+                  {applyCustom.isPending ? "Applying..." : "Apply Groupings"}
                 </Button>
               </>
             )}
@@ -1067,5 +1184,38 @@ export default function AdminGroups() {
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+// Draggable player chip for the reseed preview drag-to-edit
+function DraggablePlayerChip({
+  id,
+  displayName,
+  handicap,
+  isDragging,
+}: {
+  id: string;
+  displayName: string;
+  handicap: number;
+  isDragging: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1,
+  };
+  return (
+    <span
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 text-primary px-2 py-0.5 text-xs cursor-grab active:cursor-grabbing select-none"
+    >
+      <GripVertical className="w-3 h-3 opacity-40" />
+      <span className="font-medium">{displayName}</span>
+      <span className="opacity-60">HC:{handicap}</span>
+    </span>
   );
 }

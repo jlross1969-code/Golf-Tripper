@@ -382,8 +382,8 @@
 - [x] Frontend: Side Match page — Summary view (team names, HC, match result per pair)
 - [x] Frontend: Side Match page — Hole-by-Hole sheet (Hole / Par / SI / A Pts / Match / B Pts / Status table, winner highlighted per row)
 - [x] Frontend: Scorecard comparison drawer in ScoreEntry — side-by-side both partners' 18 holes with best-ball result per hole
-- [ ] Frontend: Re-seed preview drag-to-edit — drag players between proposed groups before confirming
-- [ ] Backend + Frontend: Round summary PDF — top 3 individual, top 3 4BBB pairs, achievements, skins results
+- [x] Frontend: Re-seed preview drag-to-edit — drag players between proposed groups before confirming
+- [x] Backend + Frontend: Round summary PDF — top 3 individual, top 3 4BBB pairs, achievements, skins results
 - [x] TypeScript check, tests, checkpoint
 
 ## Session - Inline Team Name Edit & Scorecard Animation

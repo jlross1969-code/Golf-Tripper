@@ -126,6 +126,7 @@ import {
   previewCopyGroupings,
   previewReseedBy4BBB,
   previewReseedByIndividual,
+  applyCustomGroupings,
 } from "./db";
 import { TRPCError } from "@trpc/server";
 import { sendPushToTrip } from "./webPush";
@@ -808,13 +809,26 @@ export const appRouter = router({
       }),
 
     // Admin: preview re-seed by individual trip standings (dry-run, no writes)
-    previewByIndividual: adminProcedure
+        previewByIndividual: adminProcedure
       .input(z.object({ tripId: z.number(), groupSize: z.number().min(2).max(8).optional() }))
       .query(async ({ input }) => {
         const preview = await previewReseedByIndividual(input.tripId, input.groupSize);
         return { groups: preview };
       }),
-
+    // Admin: apply custom group layout from drag-to-edit preview
+    applyCustom: adminProcedure
+      .input(z.object({
+        targetRoundId: z.number(),
+        tripId: z.number(),
+        groups: z.array(z.object({
+          name: z.string(),
+          userIds: z.array(z.number()),
+        })),
+      }))
+      .mutation(async ({ input }) => {
+        const count = await applyCustomGroupings(input.targetRoundId, input.tripId, input.groups);
+        return { groupsCreated: count };
+      }),
     // Admin: set tee time and starting hole for a group
     updateSettings: adminProcedure
       .input(z.object({

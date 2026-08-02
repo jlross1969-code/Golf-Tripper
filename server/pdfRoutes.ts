@@ -1,5 +1,6 @@
 import { Express, Request, Response } from "express";
 import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
+import { calculate4BBBScore, calculateSkins } from "../shared/scoring";
 import {
   getAchievementsByTrip,
   getAchievementsByRound,
@@ -175,13 +176,76 @@ export function registerPdfRoutes(app: Express) {
       const achMap = new Map<number, { type: string; holeNumber: number }[]>();
       for (const a of roundAchievements) {
         if (!achMap.has(a.userId)) achMap.set(a.userId, []);
-        achMap.get(a.userId)!.push({ type: a.type, holeNumber: 0 });
+        achMap.get(a.userId)!.push({ type: a.type, holeNumber: (a as any).holeNumber ?? 0 });
       }
 
       // Sort by net score ascending (Stableford: totalStableford desc)
       const sorted = [...scorecard]
         .filter((p) => p.holesPlayed > 0)
         .sort((a, b) => a.totalNet - b.totalNet);
+
+      // Build 4BBB pairs leaderboard
+      const fourBBBPairs: import("./pdfExport").RoundSummaryFourBBBPair[] = [];
+      if (round.fourBBBEnabled) {
+        const groupList = await getGroupsByRound(roundId);
+        for (const group of groupList) {
+          const gPlayers = await getGroupPlayers(group.id);
+          const partnered = new Set<number>();
+          for (const gp of gPlayers) {
+            if (partnered.has(gp.userId) || !gp.partnerId) continue;
+            partnered.add(gp.userId);
+            partnered.add(gp.partnerId);
+            const p1 = scorecard.find((s) => s.userId === gp.userId);
+            const p2 = scorecard.find((s) => s.userId === gp.partnerId);
+            if (!p1 || !p2) continue;
+            let totalBestBall = 0;
+            let holesPlayed = 0;
+            for (const hole of holes) {
+              const s1 = p1.scores.find((s) => s.holeId === hole.id);
+              const s2 = p2.scores.find((s) => s.holeId === hole.id);
+              const bestBall = calculate4BBBScore(s1?.netScore ?? null, s2?.netScore ?? null);
+              if (bestBall !== null) { totalBestBall += bestBall; holesPlayed++; }
+            }
+            fourBBBPairs.push({
+              position: 0,
+              teamName: `${p1.userName ?? "Player"} & ${p2.userName ?? "Player"}`,
+              totalBestBall,
+              holesPlayed,
+            });
+          }
+        }
+        fourBBBPairs.sort((a, b) => a.totalBestBall - b.totalBestBall);
+        fourBBBPairs.forEach((r, i) => (r.position = i + 1));
+      }
+
+      // Build skins results
+      const skinsResults: import("./pdfExport").RoundSummarySkinWinner[] = [];
+      if (round.skinsEnabled) {
+        const holeScores = holes.map((h) => ({
+          holeNumber: h.holeNumber,
+          scores: scorecard
+            .map((p) => {
+              const s = p.scores.find((sc) => sc.holeId === h.id);
+              return s ? { userId: p.userId, grossScore: s.grossScore } : null;
+            })
+            .filter(Boolean) as { userId: number; grossScore: number }[],
+        }));
+        const skinsMap = calculateSkins(holeScores);
+        for (const [userId, skinsWon] of Array.from(skinsMap.entries())) {
+          const player = scorecard.find((p) => p.userId === userId);
+          skinsResults.push({ userName: player?.userName ?? `Player ${userId}`, skinsWon });
+        }
+        skinsResults.sort((a, b) => b.skinsWon - a.skinsWon);
+      }
+
+      // Build achievements list for PDF
+      const achievementsList: import("./pdfExport").RoundSummaryAchievement[] = roundAchievements
+        .filter((a) => (a as any).confirmed !== false)
+        .map((a) => ({
+          playerName: scorecard.find((p) => p.userId === a.userId)?.userName ?? `Player ${a.userId}`,
+          type: a.type,
+          holeNumber: (a as any).holeNumber ?? 0,
+        }));
 
       const players = await Promise.all(
         sorted.map(async (tp, idx) => {
@@ -227,6 +291,9 @@ export function registerPdfRoutes(app: Express) {
         mercyRuleEnabled: round.mercyRuleEnabled,
         mercyRuleStrokes: round.mercyRuleStrokes,
         players,
+        fourBBB: fourBBBPairs.length > 0 ? fourBBBPairs : undefined,
+        skins: skinsResults.length > 0 ? skinsResults : undefined,
+        achievements: achievementsList.length > 0 ? achievementsList : undefined,
       };
 
       const pdfBuffer = await generateRoundSummaryPDF(data);

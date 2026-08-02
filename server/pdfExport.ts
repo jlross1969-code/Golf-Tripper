@@ -404,6 +404,21 @@ export interface RoundSummaryPlayer {
   achievements: { type: string; holeNumber: number }[];
 }
 
+export interface RoundSummaryFourBBBPair {
+  position: number;
+  teamName: string;
+  totalBestBall: number;
+  holesPlayed: number;
+}
+export interface RoundSummarySkinWinner {
+  userName: string;
+  skinsWon: number;
+}
+export interface RoundSummaryAchievement {
+  playerName: string;
+  type: string;
+  holeNumber: number;
+}
 export interface RoundSummaryData {
   tripName: string;
   roundName: string;
@@ -413,6 +428,9 @@ export interface RoundSummaryData {
   mercyRuleEnabled: boolean;
   mercyRuleStrokes: number;
   players: RoundSummaryPlayer[];
+  fourBBB?: RoundSummaryFourBBBPair[];
+  skins?: RoundSummarySkinWinner[];
+  achievements?: RoundSummaryAchievement[];
 }
 
 export async function generateRoundSummaryPDF(data: RoundSummaryData): Promise<Buffer> {
@@ -469,6 +487,80 @@ export async function generateRoundSummaryPDF(data: RoundSummaryData): Promise<B
     y += 18;
   }
   y += 20;
+
+  // ── Top 3 summary panels (4BBB, Skins, Achievements) ──
+  const hasSummary = (data.fourBBB && data.fourBBB.length > 0) ||
+    (data.skins && data.skins.length > 0) ||
+    (data.achievements && data.achievements.length > 0);
+
+  if (hasSummary) {
+    if (y > doc.page.height - 120) { doc.addPage(); y = 40; }
+
+    // 4BBB Top 3
+    if (data.fourBBB && data.fourBBB.length > 0) {
+      doc.fillColor(GREEN).fontSize(13).font("Helvetica-Bold").text("4BBB Pairs — Top 3", 40, y);
+      y += 18;
+      const bbCols = [40, 60, 260, 370, 450];
+      const bbHeaders = ["Pos", "Pair", "Best-Ball Net", "Holes"];
+      doc.rect(40, y, contentW, 18).fill(DARK_GREY);
+      bbHeaders.forEach((h, i) => {
+        doc.fillColor(WHITE).fontSize(9).font("Helvetica-Bold")
+          .text(h, bbCols[i], y + 4, { width: i === 1 ? 195 : 80, align: i === 1 ? "left" : "center" });
+      });
+      y += 20;
+      data.fourBBB.slice(0, 3).forEach((pair, idx) => {
+        const bg = idx % 2 === 0 ? WHITE : LIGHT_GREY;
+        doc.rect(40, y, contentW, 18).fill(bg);
+        const medal = idx === 0 ? "1st" : idx === 1 ? "2nd" : "3rd";
+        doc.fillColor(DARK_GREY).fontSize(9).font("Helvetica")
+          .text(medal, bbCols[0], y + 4, { width: 18, align: "center" })
+          .text(pair.teamName, bbCols[1], y + 4, { width: 195 })
+          .text(String(pair.totalBestBall), bbCols[2], y + 4, { width: 80, align: "center" })
+          .text(String(pair.holesPlayed), bbCols[3], y + 4, { width: 80, align: "center" });
+        y += 18;
+      });
+      y += 16;
+    }
+
+    // Skins
+    if (data.skins && data.skins.length > 0) {
+      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
+      doc.fillColor(GREEN).fontSize(13).font("Helvetica-Bold").text("Skins Results", 40, y);
+      y += 18;
+      const skCols = [40, 220, 380];
+      doc.rect(40, y, contentW, 18).fill(DARK_GREY);
+      ["Player", "Skins Won"].forEach((h, i) => {
+        doc.fillColor(WHITE).fontSize(9).font("Helvetica-Bold")
+          .text(h, skCols[i], y + 4, { width: i === 0 ? 175 : 80, align: i === 0 ? "left" : "center" });
+      });
+      y += 20;
+      data.skins.forEach((s, idx) => {
+        const bg = idx % 2 === 0 ? WHITE : LIGHT_GREY;
+        doc.rect(40, y, contentW, 18).fill(bg);
+        doc.fillColor(DARK_GREY).fontSize(9).font("Helvetica")
+          .text(s.userName, skCols[0], y + 4, { width: 175 })
+          .text(String(s.skinsWon), skCols[1], y + 4, { width: 80, align: "center" });
+        y += 18;
+      });
+      y += 16;
+    }
+
+    // Achievements
+    if (data.achievements && data.achievements.length > 0) {
+      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
+      doc.fillColor(GREEN).fontSize(13).font("Helvetica-Bold").text("Round Achievements", 40, y);
+      y += 18;
+      data.achievements.forEach((a, idx) => {
+        const bg = idx % 2 === 0 ? WHITE : LIGHT_GREY;
+        const label = a.type === "hole_in_one" ? "Hole-in-One" : a.type === "eagle" ? "Eagle" : "Birdie";
+        doc.rect(40, y, contentW, 18).fill(bg);
+        doc.fillColor(DARK_GREY).fontSize(9).font("Helvetica")
+          .text(`${a.playerName}  —  ${label} on Hole ${a.holeNumber}`, 48, y + 4, { width: contentW - 16 });
+        y += 18;
+      });
+      y += 16;
+    }
+  }
 
   // ── Per-player hole-by-hole scorecards ──
   for (const player of data.players) {

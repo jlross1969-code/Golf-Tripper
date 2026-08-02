@@ -2641,3 +2641,42 @@ export async function getPennantTeamScore(roundId: number) {
     };
   });
 }
+
+/**
+ * Apply custom group assignments from the drag-to-edit preview.
+ * Clears existing groups on the target round and creates new ones from the provided layout.
+ */
+export async function applyCustomGroupings(
+  targetRoundId: number,
+  tripId: number,
+  groupLayout: { name: string; userIds: number[] }[]
+): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  // Clear existing groups
+  const existingTarget = await db.select({ id: groups.id }).from(groups).where(eq(groups.roundId, targetRoundId));
+  for (const g of existingTarget) {
+    await db.delete(groupPlayers).where(eq(groupPlayers.groupId, g.id));
+    await db.delete(groups).where(eq(groups.id, g.id));
+  }
+  // Create new groups from layout
+  for (const layout of groupLayout) {
+    const newGroupResult = await db.insert(groups).values({
+      roundId: targetRoundId,
+      tripId,
+      name: layout.name,
+      pairsLocked: false,
+    });
+    const newGroupId = (newGroupResult[0] as any).insertId as number;
+    for (const userId of layout.userIds) {
+      await db.insert(groupPlayers).values({
+        groupId: newGroupId,
+        userId,
+        partnerId: null,
+        pairId: null,
+        scorerId: null,
+      });
+    }
+  }
+  return groupLayout.length;
+}
