@@ -681,8 +681,7 @@ export default function SideMatches() {
                     <div className="flex flex-wrap gap-2">
                       {match.players.map((p) => (
                         <span key={p.id} className="text-xs bg-muted rounded-full px-2 py-0.5 text-muted-foreground">
-                          Player {p.userId}
-                          {p.partnerId ? ` + ${p.partnerId}` : ""}
+                          {(p as any).displayName ?? `Player ${p.userId}`}
                         </span>
                       ))}
                     </div>

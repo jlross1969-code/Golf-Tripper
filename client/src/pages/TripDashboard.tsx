@@ -252,6 +252,11 @@ export default function TripDashboard() {
                                 </Button>
                               </Link>
                             )}
+                            <Link href={`/round/${round.id}/side-matches`}>
+                              <Button size="sm" variant="outline" className="gap-1">
+                                <Swords className="w-3 h-3" /> Side Matches
+                              </Button>
+                            </Link>
                           </>
                         )}
                         {round.status === "completed" && (

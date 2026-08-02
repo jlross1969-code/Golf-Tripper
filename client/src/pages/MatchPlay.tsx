@@ -126,12 +126,20 @@ export default function MatchPlay() {
                   <SelectValue placeholder="Choose a match…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {matches.map((m) => (
-                    <SelectItem key={m.id} value={m.id.toString()}>
-                      Player {m.player1Id} vs Player {m.player2Id} —{" "}
-                      {m.winner !== "pending" ? `FINISHED (${m.winner})` : formatMatchStatus(m.matchStatus, JSON.parse(m.holeResults || "[]").length, 18)}
-                    </SelectItem>
-                  ))}
+                  {matches.map((m) => {
+                    const p1Label = (m as any).player1PartnerName
+                      ? `${(m as any).player1Name} & ${(m as any).player1PartnerName}`
+                      : ((m as any).player1Name ?? `Player ${m.player1Id}`);
+                    const p2Label = (m as any).player2PartnerName
+                      ? `${(m as any).player2Name} & ${(m as any).player2PartnerName}`
+                      : ((m as any).player2Name ?? `Player ${m.player2Id}`);
+                    return (
+                      <SelectItem key={m.id} value={m.id.toString()}>
+                        {p1Label} vs {p2Label} —{" "}
+                        {m.winner !== "pending" ? `FINISHED (${m.winner})` : formatMatchStatus(m.matchStatus, JSON.parse(m.holeResults || "[]").length, 18)}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </CardContent>
@@ -161,8 +169,8 @@ export default function MatchPlay() {
                       ? selectedMatch.winner === "halved"
                         ? "Match Halved"
                         : selectedMatch.winner === "player1"
-                        ? `Player ${selectedMatch.player1Id} Wins`
-                        : `Player ${selectedMatch.player2Id} Wins`
+                        ? `${(selectedMatch as any).player1Name ?? `Player ${selectedMatch.player1Id}`} Wins`
+                        : `${(selectedMatch as any).player2Name ?? `Player ${selectedMatch.player2Id}`} Wins`
                       : formatMatchStatus(
                           selectedMatch.matchStatus,
                           holeResults.length,
@@ -213,7 +221,7 @@ export default function MatchPlay() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Player {selectedMatch.player1Id} Net Score</Label>
+                        <Label>{(selectedMatch as any).player1Name ?? `Player ${selectedMatch.player1Id}`} Net Score</Label>
                         <Input
                           type="number"
                           min={1}
@@ -223,7 +231,7 @@ export default function MatchPlay() {
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>Player {selectedMatch.player2Id} Net Score</Label>
+                        <Label>{(selectedMatch as any).player2Name ?? `Player ${selectedMatch.player2Id}`} Net Score</Label>
                         <Input
                           type="number"
                           min={1}

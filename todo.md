@@ -559,3 +559,13 @@
 - [x] Frontend: DailyLeaderboard — Ambrose tab (auto-selected when ambroseEnabled), 4BBB auto-selected when fourBBBEnabled
 - [x] Frontend: TripLeaderboard — Best Day tab (each player's best single round), 4BBB tab, Ambrose tab (all conditionally shown)
 - [x] TypeScript check (0 errors), all 51 tests passing, checkpoint
+
+## Session - Side Match Audit & Fixes
+
+- [x] Backend: matchPlay.getByRound — change from protectedProcedure to publicProcedure so unauthenticated users can view match results
+- [x] Backend: matchPlay.getByRound — enrich response with player display names (same pattern as groupMatch.getByRound)
+- [x] Backend: sideMatches.list — enrich sideMatchPlayers with display names from trip_players/users
+- [x] Frontend: MatchPlay page — show player names instead of raw IDs in match selector and status display
+- [x] Frontend: SideMatches page — show player names instead of raw IDs in "Other Side Matches" section
+- [x] Frontend: TripDashboard — add "Side Matches" link button on active round cards (visible when round is active)
+- [x] TypeScript check (0 errors), 51 tests passing, checkpoint

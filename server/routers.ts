@@ -1379,11 +1379,26 @@ export const appRouter = router({
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const matches = await getSideMatchesByRound(input.roundId);
+        // Enrich players with display names
+        const round = await getRound(input.roundId);
+        const { users: usersTable, tripPlayers: tpTable } = await import("../drizzle/schema");
+        const { eq: eqOp, inArray: inArr, and: andOp } = await import("drizzle-orm");
+        const { getDb } = await import("./db");
+        const db = await getDb();
         return Promise.all(
-          matches.map(async (m) => ({
-            ...m,
-            players: await getSideMatchPlayers(m.id),
-          }))
+          matches.map(async (m) => {
+            const rawPlayers = await getSideMatchPlayers(m.id);
+            if (!db || !round) return { ...m, players: rawPlayers.map(p => ({ ...p, displayName: `Player ${p.userId}` })) };
+            const ids = rawPlayers.map(p => p.userId);
+            const userRows = ids.length > 0 ? await db.select().from(usersTable).where(inArr(usersTable.id, ids)) : [];
+            const userMap = new Map(userRows.map(u => [u.id, u.name ?? `Player ${u.id}`]));
+            const tpRows = ids.length > 0 ? await db.select({ userId: tpTable.userId, nickname: tpTable.nickname }).from(tpTable).where(andOp(eqOp(tpTable.tripId, round.tripId), inArr(tpTable.userId, ids))) : [];
+            const nickMap = new Map(tpRows.map(r => [r.userId, r.nickname ?? userMap.get(r.userId) ?? `Player ${r.userId}`]));
+            return {
+              ...m,
+              players: rawPlayers.map(p => ({ ...p, displayName: nickMap.get(p.userId) ?? userMap.get(p.userId) ?? `Player ${p.userId}` })),
+            };
+          })
         );
       }),
 
@@ -1442,10 +1457,35 @@ export const appRouter = router({
         return { id };
       }),
 
-    getByRound: protectedProcedure
+    getByRound: publicProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
-        return getMatchPlayResultsByRound(input.roundId);
+        const results = await getMatchPlayResultsByRound(input.roundId);
+        if (results.length === 0) return [];
+        // Enrich with player display names
+        const { users: usersTable, tripPlayers: tpTable, rounds: roundsTable } = await import("../drizzle/schema");
+        const { eq: eqOp, inArray: inArr, and: andOp } = await import("drizzle-orm");
+        const { getDb } = await import("./db");
+        const db = await getDb();
+        if (!db) return results.map(r => ({ ...r, player1Name: `Player ${r.player1Id}`, player2Name: `Player ${r.player2Id}`, player1PartnerName: r.player1PartnerId ? `Player ${r.player1PartnerId}` : null, player2PartnerName: r.player2PartnerId ? `Player ${r.player2PartnerId}` : null }));
+        const roundRow = await db.select().from(roundsTable).where(eqOp(roundsTable.id, input.roundId)).limit(1);
+        const tripId = roundRow[0]?.tripId;
+        const allIds = Array.from(new Set(results.flatMap(r => [r.player1Id, r.player2Id, r.player1PartnerId, r.player2PartnerId].filter(Boolean) as number[])));
+        const userRows = allIds.length > 0 ? await db.select().from(usersTable).where(inArr(usersTable.id, allIds)) : [];
+        const userMap = new Map(userRows.map(u => [u.id, u.name ?? `Player ${u.id}`]));
+        let nickMap = new Map<number, string>();
+        if (tripId && allIds.length > 0) {
+          const tpRows = await db.select({ userId: tpTable.userId, nickname: tpTable.nickname }).from(tpTable).where(andOp(eqOp(tpTable.tripId, tripId), inArr(tpTable.userId, allIds)));
+          nickMap = new Map(tpRows.map(r => [r.userId, r.nickname ?? userMap.get(r.userId) ?? `Player ${r.userId}`]));
+        }
+        const displayName = (id: number | null) => id ? (nickMap.get(id) ?? userMap.get(id) ?? `Player ${id}`) : null;
+        return results.map(r => ({
+          ...r,
+          player1Name: displayName(r.player1Id),
+          player2Name: displayName(r.player2Id),
+          player1PartnerName: displayName(r.player1PartnerId ?? null),
+          player2PartnerName: displayName(r.player2PartnerId ?? null),
+        }));
       }),
 
     submitHoleResult: protectedProcedure
