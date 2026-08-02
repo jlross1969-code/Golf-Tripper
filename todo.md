@@ -581,3 +581,8 @@
 - [x] Feature 4: Round logo upload — admin can upload a logo per round; if not set, falls back to trip logo; displayed on daily leaderboard and scorecard headers
 - [x] Feature 4: Schema migration — add logoUrl column to trips and rounds tables
 - [x] TypeScript check (0 errors), 51 tests passing, checkpoint
+
+## Session - Trip Leaderboard Scorecard Fix
+
+- [ ] Trip Leaderboard: tap player name/row to open scorecard drawer (same as Daily Leaderboard)
+- [ ] Trip Leaderboard scorecard: since trip spans multiple rounds, show a round selector so user can pick which round's scorecard to view

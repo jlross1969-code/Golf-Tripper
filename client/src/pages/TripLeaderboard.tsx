@@ -2,6 +2,9 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download, Star, Users, Share2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,7 +34,7 @@ function PlayerAvatar({ name, photoUrl }: { name: string | null; photoUrl?: stri
   );
 }
 
-function PlayerRow({ player, mode }: { player: any; mode: "stroke" | "stableford" }) {
+function PlayerRow({ player, mode, onScorecardClick }: { player: any; mode: "stroke" | "stableford"; onScorecardClick?: (p: any) => void }) {
   const [expanded, setExpanded] = useState(false);
   const score = mode === "stroke" ? player.cumulativeNet : player.cumulativeStableford;
   const scoreLabel = mode === "stroke" ? "Net" : "Pts";
@@ -47,12 +50,17 @@ function PlayerRow({ player, mode }: { player: any; mode: "stroke" | "stableford
         <PlayerAvatar name={player.userName} photoUrl={player.photoUrl} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="font-semibold text-foreground truncate">{player.userName ?? "Unknown"}</p>
+            <button
+              className="font-semibold text-foreground truncate hover:text-primary hover:underline text-left"
+              onClick={(e) => { e.stopPropagation(); onScorecardClick?.(player); }}
+            >
+              {player.userName ?? "Unknown"}
+            </button>
             {ach && ach.hio > 0 && <span className="text-xs bg-yellow-400/20 text-yellow-400 px-1.5 py-0.5 rounded-full font-bold">🕳️ {ach.hio}</span>}
             {ach && ach.eagle > 0 && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full font-bold">🦅 {ach.eagle}</span>}
             {ach && ach.birdie > 0 && <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-bold">🐦 {ach.birdie}</span>}
           </div>
-          <p className="text-xs text-muted-foreground">{player.rounds.length} rounds</p>
+          <p className="text-xs text-muted-foreground">{player.rounds.length} rounds · <span className="text-primary/70 text-xs">tap name for scorecard</span></p>
         </div>
         <div className="text-right mr-2">
           <p className="text-lg font-bold text-foreground">{score}</p>
@@ -116,9 +124,190 @@ function TripAwardCard({ award }: { award: { id: number; name: string; descripti
   );
 }
 
+// ─── Trip Scorecard Drawer ────────────────────────────────────────────────────
+function TripScorecardDrawer({
+  open, onClose, player, isStableford,
+}: {
+  open: boolean;
+  onClose: () => void;
+  player: { userId: number; userName: string | null; currentHandicap: number; rounds: { roundId: number; roundName: string }[] } | null;
+  isStableford: boolean;
+}) {
+  const [selectedRoundId, setSelectedRoundId] = useState<number | null>(null);
+  const roundId = selectedRoundId ?? (player?.rounds[0]?.roundId ?? 0);
+  const { data, isLoading } = trpc.scores.getPlayerScorecard.useQuery(
+    { roundId, userId: player?.userId ?? 0 },
+    { enabled: open && !!player && roundId > 0 }
+  );
+
+  if (!player) return null;
+
+  const handicap = player.currentHandicap;
+  const played = (data ?? []).filter((h) => h.score !== null);
+  const front9 = played.filter((h) => h.hole.holeNumber <= 9);
+  const back9 = played.filter((h) => h.hole.holeNumber >= 10);
+
+  function strokesReceived(si: number): number {
+    const h = Math.floor(handicap);
+    const extra = handicap - h;
+    if (si <= h) return 1;
+    if (extra >= 0.5 && si === h + 1) return 1;
+    return 0;
+  }
+
+  function sectionTotals(rows: typeof played) {
+    return rows.reduce(
+      (acc, h) => ({
+        par: acc.par + h.hole.par,
+        gross: acc.gross + (h.score?.grossScore ?? 0),
+        net: acc.net + (h.score?.netScore ?? 0),
+        pts: acc.pts + (h.score?.stablefordPoints ?? 0),
+      }),
+      { par: 0, gross: 0, net: 0, pts: 0 }
+    );
+  }
+
+  function grossClass(gross: number, par: number): string {
+    const diff = gross - par;
+    if (diff <= -2) return "text-yellow-300 font-bold";
+    if (diff === -1) return "text-primary font-semibold";
+    if (diff === 0) return "text-foreground";
+    if (diff === 1) return "text-rose-400";
+    return "text-rose-600 font-semibold";
+  }
+
+  function renderHoleRow(h: typeof played[0]) {
+    const si = h.hole.strokeIndex ?? 18;
+    const strokes = strokesReceived(si);
+    const gross = h.score?.grossScore ?? 0;
+    const net = h.score?.netScore ?? 0;
+    const pts = h.score?.stablefordPoints ?? 0;
+    return (
+      <tr key={h.hole.id} className="border-b border-border/40 hover:bg-muted/20">
+        <td className="px-3 py-2 text-foreground">{h.hole.holeNumber}</td>
+        <td className="px-2 py-2 text-center text-muted-foreground">{h.hole.par}</td>
+        <td className="px-2 py-2 text-center text-muted-foreground text-xs">{si}</td>
+        <td className={`px-2 py-2 text-center ${grossClass(gross, h.hole.par)}`}>{gross || "—"}</td>
+        {!isStableford && (
+          <td className="px-2 py-2 text-center text-foreground text-sm">
+            {net || "—"}{strokes > 0 ? <span className="text-primary text-xs ml-0.5">{"·".repeat(strokes)}</span> : null}
+          </td>
+        )}
+        <td className={`px-3 py-2 text-center font-semibold ${pts >= 3 ? "text-yellow-300" : pts === 2 ? "text-primary" : pts === 1 ? "text-foreground" : "text-rose-400"}`}>{pts}</td>
+      </tr>
+    );
+  }
+
+  function renderHeader() {
+    return (
+      <tr className="bg-slate-800/60">
+        <th className="text-left px-3 py-1.5 font-bold text-foreground text-xs uppercase tracking-wider">HOLE</th>
+        <th className="text-center px-2 py-1.5 font-bold text-foreground text-xs">PAR</th>
+        <th className="text-center px-2 py-1.5 font-bold text-foreground text-xs">SI</th>
+        <th className="text-center px-2 py-1.5 font-bold text-foreground text-xs">STROKES</th>
+        {!isStableford && <th className="text-center px-2 py-1.5 font-bold text-foreground text-xs">NET</th>}
+        <th className="text-center px-3 py-1.5 font-bold text-foreground text-xs">{isStableford ? "PTS" : "PTS"}</th>
+      </tr>
+    );
+  }
+
+  function renderSubtotal(label: string, rows: typeof played) {
+    const t = sectionTotals(rows);
+    return (
+      <tr className="border-t border-border bg-muted/40 font-semibold">
+        <td className="px-3 py-2 text-foreground text-sm">{label}</td>
+        <td className="px-2 py-2 text-center text-muted-foreground text-sm">{t.par}</td>
+        <td className="px-2 py-2" />
+        <td className="px-2 py-2 text-center text-foreground text-sm">{t.gross || "—"}</td>
+        {!isStableford && <td className="px-2 py-2 text-center text-foreground text-sm">{t.net || "—"}</td>}
+        <td className="px-3 py-2 text-center text-primary text-sm">{t.pts || "—"}</td>
+      </tr>
+    );
+  }
+
+  const outTotals = sectionTotals(front9);
+  const inTotals = sectionTotals(back9);
+  const allTotals = sectionTotals(played);
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto rounded-t-2xl px-0">
+        <SheetHeader className="px-5 pb-3 border-b border-border">
+          <SheetTitle className="flex items-center gap-2 flex-wrap">
+            <span>{player.userName ?? "Player"}</span>
+            <Badge variant="secondary" className="text-xs font-normal">HCP {handicap}</Badge>
+            {isStableford
+              ? <Badge className="text-xs bg-primary/20 text-primary border-primary/30">Stableford</Badge>
+              : <Badge variant="outline" className="text-xs">Nett Stroke Play</Badge>
+            }
+          </SheetTitle>
+          {player.rounds.length > 1 && (
+            <div className="mt-2">
+              <Select
+                value={String(roundId)}
+                onValueChange={(v) => setSelectedRoundId(Number(v))}
+              >
+                <SelectTrigger className="w-full text-sm h-8">
+                  <SelectValue placeholder="Select round" />
+                </SelectTrigger>
+                <SelectContent>
+                  {player.rounds.map((r) => (
+                    <SelectItem key={r.roundId} value={String(r.roundId)}>{r.roundName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </SheetHeader>
+        {isLoading ? (
+          <div className="px-5 py-4 space-y-2">
+            {[...Array(9)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded" />)}
+          </div>
+        ) : !data || data.length === 0 ? (
+          <div className="px-5 py-8 text-center text-muted-foreground text-sm">No scorecard data available.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                {front9.length > 0 && <>{renderHeader()}{front9.map(renderHoleRow)}{renderSubtotal("OUT", front9)}</>}
+                {back9.length > 0 && <>{renderHeader()}{back9.map(renderHoleRow)}{renderSubtotal("IN", back9)}</>}
+                {played.length > 0 && (
+                  <tr className="border-t-2 border-border bg-primary/10 font-bold">
+                    <td className="px-3 py-3 text-foreground">TOTAL</td>
+                    <td className="px-2 py-3 text-center text-muted-foreground">{allTotals.par}</td>
+                    <td className="px-2 py-3" />
+                    <td className="px-2 py-3 text-center text-foreground">{allTotals.gross}</td>
+                    {!isStableford && <td className="px-2 py-3 text-center text-foreground">{allTotals.net}</td>}
+                    <td className="px-3 py-3 text-center text-primary text-base">{allTotals.pts}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <div className="flex items-center gap-4 px-4 py-3 border-t border-border flex-wrap">
+              <span className="text-xs text-muted-foreground font-medium">Legend:</span>
+              <span className="text-xs text-yellow-300 font-bold">Eagle−</span>
+              <span className="text-xs text-primary font-semibold">Birdie</span>
+              <span className="text-xs text-foreground">Par</span>
+              <span className="text-xs text-rose-400">Bogey</span>
+              <span className="text-xs text-rose-600 font-semibold">D.Bogey+</span>
+              {!isStableford && <span className="text-xs text-muted-foreground">· = stroke received on hole</span>}
+            </div>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export default function TripLeaderboard() {
   const { tripId } = useParams<{ tripId: string }>();
   const id = Number(tripId);
+  const [drawerPlayer, setDrawerPlayer] = useState<{
+    userId: number;
+    userName: string | null;
+    currentHandicap: number;
+    rounds: { roundId: number; roundName: string }[];
+  } | null>(null);
 
   const { data: trip } = trpc.trips.get.useQuery({ id });
   const { data: awardsData } = trpc.awards.list.useQuery({ tripId: id }, { refetchInterval: 60000 });
@@ -127,6 +316,7 @@ export default function TripLeaderboard() {
     { tripId: id },
     { refetchInterval: 30000 }
   );
+  const isStableford = (data as any)?.individualScoringMode === "stableford";
 
   return (
     <div className="min-h-screen bg-background">
@@ -181,7 +371,7 @@ export default function TripLeaderboard() {
                   </div>
                 ) : (
                   data.strokePlay.map((p) => (
-                    <PlayerRow key={p.userId} player={p} mode="stroke" />
+                    <PlayerRow key={p.userId} player={p} mode="stroke" onScorecardClick={setDrawerPlayer} />
                   ))
                 )}
               </div>
@@ -195,7 +385,7 @@ export default function TripLeaderboard() {
                   </div>
                 ) : (
                   data.stableford.map((p) => (
-                    <PlayerRow key={p.userId} player={p} mode="stableford" />
+                    <PlayerRow key={p.userId} player={p} mode="stableford" onScorecardClick={setDrawerPlayer} />
                   ))
                 )}
               </div>
@@ -398,6 +588,14 @@ export default function TripLeaderboard() {
           </Tabs>
         )}
       </div>
+
+      {/* Scorecard drawer — tap any player name to view their hole-by-hole scorecard */}
+      <TripScorecardDrawer
+        open={drawerPlayer !== null}
+        onClose={() => setDrawerPlayer(null)}
+        player={drawerPlayer}
+        isStableford={isStableford}
+      />
     </div>
   );
 }

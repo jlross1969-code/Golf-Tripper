@@ -792,6 +792,7 @@ export async function getTripLeaderboard(tripId: number): Promise<
     cumulativeGross: number;
     cumulativeNet: number;
     cumulativeStableford: number;
+    currentHandicap: number;
   }[]
 > {
   const db = await getDb();
@@ -824,6 +825,7 @@ export async function getTripLeaderboard(tripId: number): Promise<
         cumulativeGross: roundBreakdown.reduce((s, r) => s + r.totalGross, 0),
         cumulativeNet: roundBreakdown.reduce((s, r) => s + r.totalNet, 0),
         cumulativeStableford: roundBreakdown.reduce((s, r) => s + r.totalStableford, 0),
+        currentHandicap: tp.currentHandicap ?? 0,
       };
     })
   );
