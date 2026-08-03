@@ -317,6 +317,10 @@ export default function TripLeaderboard() {
     { refetchInterval: 30000 }
   );
   const isStableford = (data as any)?.individualScoringMode === "stableford";
+  const tournamentType = (data as any)?.tournamentType ?? (trip as any)?.tournamentType ?? "stableford";
+  const isMatchPlayTrip = tournamentType === "matchplay";
+  const pennantLeaderboard: any[] = (data as any)?.pennantLeaderboard ?? [];
+  const hasMatchPlayRound = (data as any)?.hasMatchPlayRound ?? false;
 
   return (
     <div className="min-h-screen bg-background">
@@ -371,12 +375,16 @@ export default function TripLeaderboard() {
           <div className="text-center py-12 text-muted-foreground">No leaderboard data.</div>
         ) : (
           <Tabs defaultValue={
-            (data as any).hasAmbroseRound ? "ambrose"
-            : (trip as any)?.tournamentType === "stableford" || (trip as any)?.tournamentType === "stableford_4bbb" ? "stableford"
+            isMatchPlayTrip && hasMatchPlayRound ? "pennant"
+            : (data as any).hasAmbroseRound ? "ambrose"
+            : tournamentType === "stableford" || tournamentType === "stableford_4bbb" ? "stableford"
             : (data as any).hasFourBBBRound ? "4bbb"
             : "stroke"
           }>
             <TabsList className="mb-6 w-full flex-wrap gap-1">
+              {isMatchPlayTrip && hasMatchPlayRound && (
+                <TabsTrigger value="pennant" className="flex-1 gap-2">🏆 Match Play</TabsTrigger>
+              )}
               <TabsTrigger value="stroke" className="flex-1 gap-2"><Trophy className="w-4 h-4" />Net Stroke</TabsTrigger>
               <TabsTrigger value="stableford" className="flex-1 gap-2">⭐ Stableford</TabsTrigger>
               <TabsTrigger value="bestday" className="flex-1 gap-2">🌟 Best Day</TabsTrigger>
@@ -462,6 +470,56 @@ export default function TripLeaderboard() {
                         <div className="text-right">
                           <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
                           <p className="text-xs text-muted-foreground">Best Ball Net</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </TabsContent>
+            )}
+
+            {/* Match Play Pennant Trip Tab */}
+            {isMatchPlayTrip && hasMatchPlayRound && (
+              <TabsContent value="pennant">
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground text-center mb-3">
+                    Pennant team standings across all match play rounds. Points: Win = 1, Half = 0.5, Loss = 0.
+                  </p>
+                  {pennantLeaderboard.length === 0 ? (
+                    <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">
+                      No match play results yet.
+                    </div>
+                  ) : (
+                    pennantLeaderboard.map((t: any) => (
+                      <div key={t.teamName} className="bg-card border border-blue-800/40 rounded-xl px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(t.position)}</div>
+                          <div className="text-2xl flex-shrink-0">{t.teamEmoji}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-foreground">{t.teamName}</p>
+                            <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""} played</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-bold text-blue-300">{t.totalPoints}</p>
+                            <p className="text-xs text-muted-foreground">Points</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-4 mt-3 pl-11">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-green-400 bg-green-900/30 border border-green-700/40 px-2 py-0.5 rounded-full">
+                              W {t.wins}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-yellow-400 bg-yellow-900/30 border border-yellow-700/40 px-2 py-0.5 rounded-full">
+                              H {t.halves}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-red-400 bg-red-900/30 border border-red-700/40 px-2 py-0.5 rounded-full">
+                              L {t.losses}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     ))

@@ -654,3 +654,50 @@
 - [x] AdminPennant: show all trip players (including pending/unregistered) in team player selector; colour pending names amber with a "Pending" badge
 - [x] AdminGroups: show all trip players (including pending/unregistered) in group player selector; colour pending names amber with a "Pending" badge
 - [x] TypeScript check (0 errors), 51 tests passing, checkpoint
+
+## Session - Smart Group Seeding
+
+- [x] Backend: groups.previewSmartSeed procedure — accepts seedMethod, pairingMethod, teeOrder, groupSize, roundId, tripId; returns proposed groups with pairs
+- [x] Backend: handicap_mix algorithm — sort by HCP, snake-draft into groups
+- [x] Backend: top_together algorithm — sort by HCP descending, fill groups sequentially
+- [x] Backend: previous_round algorithm — rank by last completed round leaderboard, snake-draft
+- [x] Backend: pairingMethod=keep_last — keep same 4BBB partners, reshuffle groups by seed
+- [x] Backend: pairingMethod=seed_4bbb — rank 4BBB pairs by leaderboard, keep top pair together
+- [x] Backend: teeOrder — reverse group order when bottom_first
+- [x] Frontend: AdminGroups Re-seed dialog — Smart Seed option with grouping method (4), pairing method (3), tee order toggle, group size, reference round selectors
+- [x] TypeScript check (0 errors), 51 tests passing, checkpoint
+
+## Session - 5 New Features
+
+### Feature 1: Auto-seed groups in Create Round dialog
+- [ ] Frontend: AdminRounds Create Round dialog — add optional "Auto-seed groups" section with Smart Seed controls
+- [ ] Backend: rounds.create — if autoSeed params provided, create groups and seed them immediately after round creation
+- [ ] Backend: new helper createAndSeedGroups(roundId, tripId, seedParams) reusing previewSmartSeed + applyCustom logic
+
+### Feature 2: Format lock for specialty trip types
+- [ ] Frontend: AdminRounds Create/Edit Round dialogs — when trip tournamentType is ambrose or alternate_shot, lock format toggles and show explanation
+- [ ] Frontend: AdminRounds — when trip tournamentType is matchplay, lock round to matchPlay format only
+- [ ] Frontend: Show tooltip/badge explaining why toggles are locked
+
+### Feature 3: Match Play trip leaderboard
+- [ ] Backend: leaderboard.tripMatchPlay procedure — return team wins/halves/losses/points from pennant fixtures
+- [ ] Frontend: TripLeaderboard — when tournamentType is matchplay, show Pennant Team Score view as primary tab
+- [ ] Frontend: Team cards with W/H/L record, points total, fixture list
+
+### Feature 4: Auto-link pending players on invite acceptance
+- [ ] Backend: promoteInviteToUser(inviteId, userId) helper in db.ts — updates groupPlayers + matchPlayTeamPlayers
+- [ ] Backend: Call promoteInviteToUser in joinViaToken handler after trip_players insert
+
+### Feature 5: Round format badge on round cards
+- [ ] Frontend: AdminRounds — show small format badge on each round card derived from round format flags
+- [ ] Frontend: Badge shows "Stableford", "4BBB", "Stroke", "Match Play", "Ambrose", "Alt Shot" etc.
+
+- [ ] TypeScript check (0 errors), tests passing, checkpoint
+
+## Session - 5 New Features
+
+- [x] Feature 5: Round format badges with colour-coding and inherited format indicator on round cards in AdminRounds
+- [x] Feature 2: Format lock for specialty trip types (matchplay/ambrose/alternate_shot) in Create Round and Edit Round dialogs
+- [x] Feature 1: Auto-seed groups option in Create Round dialog — Smart Seed controls (method, pairing, tee order, group size) applied immediately after round creation via new groups.applySmartSeed procedure
+- [x] Feature 3: Match Play trip leaderboard — getTripPennantLeaderboard in db.ts, pennantLeaderboard in leaderboard.trip, Pennant Team Score tab as primary tab for matchplay trips in TripLeaderboard
+- [x] Feature 4: Auto-link pending players on invite acceptance — promoteInviteSlots in db.ts, called in invites.accept after acceptInvite

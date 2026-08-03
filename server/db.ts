@@ -2817,3 +2817,326 @@ export async function getAllTripPlayersAndInvites(tripId: number): Promise<{
 
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// ─── Smart Group Seeding ───────────────────────────────────────────────────────
+
+export type SeedMethod = "random" | "handicap_mix" | "top_together" | "previous_round";
+export type PairingMethod = "random" | "keep_last" | "seed_4bbb";
+export type TeeOrder = "top_first" | "bottom_first";
+
+/** Snake-draft an array of userIds into numGroups buckets. */
+function snakeDraft(sorted: number[], numGroups: number): number[][] {
+  const buckets: number[][] = Array.from({ length: numGroups }, () => []);
+  for (let i = 0; i < sorted.length; i++) {
+    const round = Math.floor(i / numGroups);
+    const pos = i % numGroups;
+    const idx = round % 2 === 0 ? pos : numGroups - 1 - pos;
+    buckets[idx].push(sorted[i]);
+  }
+  return buckets;
+}
+
+/** Assign 4BBB pairs within each group bucket using the chosen pairing method. */
+async function assignSmartPairs(
+  buckets: number[][],
+  pairingMethod: PairingMethod,
+  sourceRoundId: number | null
+): Promise<{ userId: number; partnerId: number | null }[][]> {
+  const db = await getDb();
+  if (!db) return buckets.map((b) => b.map((u) => ({ userId: u, partnerId: null })));
+
+  if (pairingMethod === "keep_last" && sourceRoundId) {
+    const srcGroups = await db.select({ id: groups.id }).from(groups).where(eq(groups.roundId, sourceRoundId));
+    const srcGroupIds = srcGroups.map((g) => g.id);
+    const srcGPs = srcGroupIds.length > 0
+      ? await db.select().from(groupPlayers).where(inArray(groupPlayers.groupId, srcGroupIds))
+      : [];
+    const lastPartner = new Map<number, number>();
+    for (const gp of srcGPs) {
+      if (gp.userId && gp.partnerId) {
+        lastPartner.set(gp.userId, gp.partnerId);
+        lastPartner.set(gp.partnerId, gp.userId);
+      }
+    }
+    return buckets.map((bucket) => {
+      const assigned = new Set<number>();
+      const result: { userId: number; partnerId: number | null }[] = [];
+      for (const uid of bucket) {
+        if (assigned.has(uid)) continue;
+        const partner = lastPartner.get(uid);
+        if (partner && bucket.includes(partner) && !assigned.has(partner)) {
+          result.push({ userId: uid, partnerId: partner });
+          result.push({ userId: partner, partnerId: uid });
+          assigned.add(uid);
+          assigned.add(partner);
+        }
+      }
+      for (const uid of bucket) {
+        if (!assigned.has(uid)) result.push({ userId: uid, partnerId: null });
+      }
+      return result;
+    });
+  }
+
+  if (pairingMethod === "seed_4bbb" && sourceRoundId) {
+    const srcGroups = await db.select({ id: groups.id }).from(groups).where(eq(groups.roundId, sourceRoundId));
+    const srcGroupIds = srcGroups.map((g) => g.id);
+    const srcGPs = srcGroupIds.length > 0
+      ? await db.select().from(groupPlayers).where(inArray(groupPlayers.groupId, srcGroupIds))
+      : [];
+    const allUserIds = buckets.flat();
+    const allScores = allUserIds.length > 0
+      ? await db.select().from(scores).where(and(eq(scores.roundId, sourceRoundId), inArray(scores.userId, allUserIds)))
+      : [];
+    const scoreMap = new Map(allScores.map((s) => [`${s.userId}-${s.holeId}`, s.stablefordPoints ?? 0]));
+    const holeIds = [...new Set(allScores.map((s) => s.holeId))];
+    type PairScore = { u1: number; u2: number; total: number };
+    const pairScores: PairScore[] = [];
+    const seenPairs = new Set<string>();
+    for (const gp of srcGPs) {
+      if (!gp.userId || !gp.partnerId) continue;
+      const key = [gp.userId, gp.partnerId].sort().join("-");
+      if (seenPairs.has(key)) continue;
+      seenPairs.add(key);
+      let total = 0;
+      for (const hId of holeIds) {
+        const s1 = scoreMap.get(`${gp.userId}-${hId}`) ?? 0;
+        const s2 = scoreMap.get(`${gp.partnerId}-${hId}`) ?? 0;
+        total += Math.max(s1, s2);
+      }
+      pairScores.push({ u1: gp.userId, u2: gp.partnerId, total });
+    }
+    pairScores.sort((a, b) => b.total - a.total);
+    return buckets.map((bucket) => {
+      const assigned = new Set<number>();
+      const result: { userId: number; partnerId: number | null }[] = [];
+      for (const ps of pairScores) {
+        if (bucket.includes(ps.u1) && bucket.includes(ps.u2) && !assigned.has(ps.u1) && !assigned.has(ps.u2)) {
+          result.push({ userId: ps.u1, partnerId: ps.u2 });
+          result.push({ userId: ps.u2, partnerId: ps.u1 });
+          assigned.add(ps.u1);
+          assigned.add(ps.u2);
+        }
+      }
+      for (const uid of bucket) {
+        if (!assigned.has(uid)) result.push({ userId: uid, partnerId: null });
+      }
+      return result;
+    });
+  }
+
+  // Default: random pairing within each group
+  return buckets.map((bucket) => {
+    const shuffled = [...bucket].sort(() => Math.random() - 0.5);
+    const result: { userId: number; partnerId: number | null }[] = [];
+    for (let i = 0; i < shuffled.length; i += 2) {
+      const u1 = shuffled[i];
+      const u2 = shuffled[i + 1] ?? null;
+      result.push({ userId: u1, partnerId: u2 });
+      if (u2 !== null) result.push({ userId: u2, partnerId: u1 });
+    }
+    return result;
+  });
+}
+
+/**
+ * Preview smart seeding — dry-run, no DB writes.
+ * Returns proposed GroupPreview[] with pairs assigned.
+ */
+export async function previewSmartSeed(
+  tripId: number,
+  seedMethod: SeedMethod,
+  pairingMethod: PairingMethod,
+  teeOrder: TeeOrder,
+  groupSize: number,
+  sourceRoundId: number | null
+): Promise<GroupPreview[]> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+
+  const tpList = await db
+    .select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap })
+    .from(tripPlayers)
+    .where(eq(tripPlayers.tripId, tripId));
+  const allUserIds = tpList.map((t) => t.userId).filter(Boolean) as number[];
+  if (allUserIds.length === 0) return [];
+
+  const userList = await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, allUserIds));
+  const nameMap = new Map(userList.map((u) => [u.id, u.name]));
+  const hcpMap = new Map(tpList.map((t) => [t.userId, t.currentHandicap ?? 0]));
+
+  const numGroups = Math.max(1, Math.ceil(allUserIds.length / groupSize));
+  let buckets: number[][];
+
+  if (seedMethod === "handicap_mix") {
+    // Sort by HCP ascending (lowest = best), snake-draft for balanced groups
+    const sorted = [...allUserIds].sort((a, b) => (hcpMap.get(a) ?? 0) - (hcpMap.get(b) ?? 0));
+    buckets = snakeDraft(sorted, numGroups);
+  } else if (seedMethod === "top_together") {
+    // Sort by HCP ascending, fill groups sequentially (best players together)
+    const sorted = [...allUserIds].sort((a, b) => (hcpMap.get(a) ?? 0) - (hcpMap.get(b) ?? 0));
+    buckets = Array.from({ length: numGroups }, () => [] as number[]);
+    for (let i = 0; i < sorted.length; i++) {
+      buckets[Math.floor(i / groupSize)].push(sorted[i]);
+    }
+  } else if (seedMethod === "previous_round") {
+    const tripRoundList = await db
+      .select({ id: rounds.id, status: rounds.status, roundDate: rounds.roundDate, individualScoringMode: rounds.individualScoringMode })
+      .from(rounds)
+      .where(eq(rounds.tripId, tripId))
+      .orderBy(rounds.roundDate);
+    const completedRounds = tripRoundList.filter((r) => r.status === "completed" || r.status === "active");
+    const refRound = sourceRoundId
+      ? completedRounds.find((r) => r.id === sourceRoundId) ?? completedRounds[completedRounds.length - 1]
+      : completedRounds[completedRounds.length - 1];
+
+    if (!refRound) {
+      // No completed rounds — fall back to handicap mix
+      const sorted = [...allUserIds].sort((a, b) => (hcpMap.get(a) ?? 0) - (hcpMap.get(b) ?? 0));
+      buckets = snakeDraft(sorted, numGroups);
+    } else {
+      const roundScores = await db.select().from(scores).where(eq(scores.roundId, refRound.id));
+      const scoreByUser = new Map<number, number>();
+      for (const s of roundScores) {
+        const val = refRound.individualScoringMode === "net_stroke" ? (s.netScore ?? 0) : (s.stablefordPoints ?? 0);
+        scoreByUser.set(s.userId, (scoreByUser.get(s.userId) ?? 0) + val);
+      }
+      const sorted = [...allUserIds].sort((a, b) => {
+        const sa = scoreByUser.get(a) ?? (refRound.individualScoringMode === "net_stroke" ? 999 : 0);
+        const sb = scoreByUser.get(b) ?? (refRound.individualScoringMode === "net_stroke" ? 999 : 0);
+        return refRound.individualScoringMode === "net_stroke" ? sa - sb : sb - sa;
+      });
+      buckets = snakeDraft(sorted, numGroups);
+    }
+  } else {
+    // Random
+    const shuffled = [...allUserIds].sort(() => Math.random() - 0.5);
+    buckets = snakeDraft(shuffled, numGroups);
+  }
+
+  // Apply tee order
+  if (teeOrder === "bottom_first") buckets = [...buckets].reverse();
+
+  // Assign pairs within each group
+  const pairedBuckets = await assignSmartPairs(buckets, pairingMethod, sourceRoundId);
+
+  return pairedBuckets
+    .filter((b) => b.length > 0)
+    .map((bucket, gi) => ({
+      name: `Group ${gi + 1}`,
+      players: bucket.map((p) => ({
+        userId: p.userId,
+        displayName: tpList.find((t) => t.userId === p.userId)?.nickname ?? nameMap.get(p.userId) ?? `User ${p.userId}`,
+        handicap: hcpMap.get(p.userId) ?? 0,
+        partnerId: p.partnerId,
+      })),
+    }));
+}
+
+// ─── Trip-Level Pennant (Match Play) Leaderboard ─────────────────────────────
+/**
+ * Aggregate pennant team scores across all match-play-enabled rounds in a trip.
+ * Teams are identified by name (stable across rounds).
+ * Returns sorted by total actual points descending.
+ */
+export async function getTripPennantLeaderboard(tripId: number): Promise<{
+  teamName: string;
+  teamEmoji: string;
+  wins: number;
+  halves: number;
+  losses: number;
+  totalPoints: number;
+  roundsPlayed: number;
+  position: number;
+}[]> {
+  const db = await getDb();
+  if (!db) return [];
+  // Get all match-play-enabled rounds for this trip
+  const mpRounds = await db
+    .select()
+    .from(rounds)
+    .where(and(eq(rounds.tripId, tripId), eq(rounds.matchPlayEnabled, true)));
+  if (mpRounds.length === 0) return [];
+
+  // Aggregate per team name across rounds
+  const teamMap = new Map<string, {
+    teamEmoji: string;
+    wins: number;
+    halves: number;
+    losses: number;
+    totalPoints: number;
+    roundsPlayed: number;
+  }>();
+
+  for (const round of mpRounds) {
+    const teams = await db.select().from(matchPlayTeams).where(eq(matchPlayTeams.roundId, round.id));
+    const fixtures = await db.select().from(matchPlayFixtures).where(eq(matchPlayFixtures.roundId, round.id));
+    const hasAnyComplete = fixtures.some((f) => f.status === "complete");
+    if (teams.length === 0) continue;
+
+    for (const team of teams) {
+      const teamFixtures = fixtures.filter((f) => f.teamAId === team.id || f.teamBId === team.id);
+      let wins = 0, halves = 0, losses = 0;
+      for (const f of teamFixtures) {
+        if (f.status !== "complete" || !f.result) continue;
+        const isA = f.teamAId === team.id;
+        if (f.result === "halved") halves++;
+        else if ((isA && f.result === "teamA") || (!isA && f.result === "teamB")) wins++;
+        else losses++;
+      }
+      const points = wins + halves * 0.5;
+      const existing = teamMap.get(team.name);
+      if (existing) {
+        existing.wins += wins;
+        existing.halves += halves;
+        existing.losses += losses;
+        existing.totalPoints += points;
+        if (hasAnyComplete) existing.roundsPlayed += 1;
+      } else {
+        teamMap.set(team.name, {
+          teamEmoji: team.emoji,
+          wins,
+          halves,
+          losses,
+          totalPoints: points,
+          roundsPlayed: hasAnyComplete ? 1 : 0,
+        });
+      }
+    }
+  }
+
+  const sorted = Array.from(teamMap.entries())
+    .map(([teamName, v]) => ({ teamName, ...v }))
+    .sort((a, b) => b.totalPoints - a.totalPoints || b.wins - a.wins);
+  return sorted.map((t, i) => ({ ...t, position: i + 1 }));
+}
+
+// ─── Auto-link pending invite slots to registered user ────────────────────────
+/**
+ * When a pending invitee accepts their invite and registers, promote their
+ * placeholder slots in group_players and match_play_team_players from
+ * inviteId → userId/tripPlayerId.
+ */
+export async function promoteInviteSlots(inviteId: number, userId: number, tripId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  // Find the tripPlayer record for this user+trip
+  const tpRows = await db
+    .select()
+    .from(tripPlayers)
+    .where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, userId)))
+    .limit(1);
+  const tripPlayerId = tpRows[0]?.id ?? null;
+
+  // Promote group_players slots
+  await db
+    .update(groupPlayers)
+    .set({ userId, inviteId: null })
+    .where(eq(groupPlayers.inviteId, inviteId));
+
+  // Promote match_play_team_players slots
+  await db
+    .update(matchPlayTeamPlayers)
+    .set({ userId, inviteId: null, ...(tripPlayerId ? { tripPlayerId } : {}) })
+    .where(eq(matchPlayTeamPlayers.inviteId, inviteId));
+}

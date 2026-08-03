@@ -83,11 +83,15 @@ export default function AdminGroups() {
 
   // Copy / Re-seed state
   const [reseedOpen, setReseedOpen] = useState(false);
-  const [reseedMode, setReseedMode] = useState<"copy" | "4bbb" | "individual">("copy");
+  const [reseedMode, setReseedMode] = useState<"copy" | "4bbb" | "individual" | "smart">("smart");
   const [reseedSourceRoundId, setReseedSourceRoundId] = useState("");
   const [reseedGroupSize, setReseedGroupSize] = useState("4");
   const [reseedStep, setReseedStep] = useState<"configure" | "preview">("configure");
   const [reseedPreviewEnabled, setReseedPreviewEnabled] = useState(false);
+  // Smart seed sub-options
+  const [smartSeedMethod, setSmartSeedMethod] = useState<"random" | "handicap_mix" | "top_together" | "previous_round">("handicap_mix");
+  const [smartPairingMethod, setSmartPairingMethod] = useState<"random" | "keep_last" | "seed_4bbb">("random");
+  const [smartTeeOrder, setSmartTeeOrder] = useState<"top_first" | "bottom_first">("top_first");
   // Drag-to-edit preview state
   type PreviewPlayer = { userId: number; displayName: string; handicap: number; partnerId?: number | null };
   type PreviewGroup = { name: string; players: PreviewPlayer[] };
@@ -232,10 +236,15 @@ export default function AdminGroups() {
     { tripId: tId, groupSize: gSize },
     { enabled: reseedPreviewEnabled && reseedMode === "individual" }
   );
+  const { data: previewSmartData, isFetching: previewSmartFetching } = trpc.groups.previewSmartSeed.useQuery(
+    { tripId: tId, seedMethod: smartSeedMethod, pairingMethod: smartPairingMethod, teeOrder: smartTeeOrder, groupSize: gSize, sourceRoundId: srcId > 0 ? srcId : null },
+    { enabled: reseedPreviewEnabled && reseedMode === "smart" }
+  );
   const previewGroups = reseedMode === "copy" ? previewCopyData?.groups
     : reseedMode === "4bbb" ? preview4BBBData?.groups
+    : reseedMode === "smart" ? previewSmartData?.groups
     : previewIndivData?.groups;
-  const previewFetching = previewCopyFetching || preview4BBBFetching || previewIndivFetching;
+  const previewFetching = previewCopyFetching || preview4BBBFetching || previewIndivFetching || previewSmartFetching;
 
   // Sync preview data into editable groups when it arrives
   useEffect(() => {
@@ -904,6 +913,7 @@ export default function AdminGroups() {
                 <label className="text-sm font-medium text-foreground">Method</label>
                 <div className="grid grid-cols-1 gap-2">
                   {([
+                    { value: "smart", label: "🎯 Smart Seed", desc: "Automatically distribute players by handicap, form, or previous round results with custom pairing options." },
                     { value: "copy", label: "Copy exact groupings & pairings", desc: "Same groups, same partners — ideal when partnerships carry over unchanged." },
                     { value: "4bbb", label: "Re-seed by 4BBB pair standings", desc: "Best pair from the source round goes into Group 1, second pair into Group 2, etc." },
                     { value: "individual", label: "Re-seed by individual trip standings", desc: "Snake draft by cumulative net score — top and bottom players in the same group for competitive balance." },
@@ -924,6 +934,118 @@ export default function AdminGroups() {
                   ))}
                 </div>
               </div>
+
+              {/* Smart Seed sub-options */}
+              {reseedMode === "smart" && (
+                <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                  {/* Grouping method */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Grouping Method</label>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {([
+                        { value: "handicap_mix", label: "Handicap Mix", desc: "Bottom-half HCP paired with top-half — balanced, competitive groups." },
+                        { value: "top_together", label: "Top Together", desc: "Best players grouped together, weakest together — tiered groups." },
+                        { value: "previous_round", label: "Seed from Previous Round", desc: "Snake-draft by last round's leaderboard position." },
+                        { value: "random", label: "Random", desc: "Completely random distribution." },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setSmartSeedMethod(opt.value)}
+                          className={`text-left rounded-md border px-3 py-2 transition-colors text-sm ${
+                            smartSeedMethod === opt.value
+                              ? "border-primary bg-primary/15 text-foreground"
+                              : "border-border/50 bg-card/50 text-muted-foreground hover:border-primary/40"
+                          }`}
+                        >
+                          <span className="font-medium">{opt.label}</span>
+                          <span className="text-xs opacity-70 ml-2">{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Previous round source selector */}
+                  {smartSeedMethod === "previous_round" && (
+                    <div>
+                      <label className="text-sm font-medium text-foreground mb-1 block">Reference Round <span className="text-muted-foreground font-normal">(optional — defaults to most recent)</span></label>
+                      <Select value={reseedSourceRoundId} onValueChange={setReseedSourceRoundId}>
+                        <SelectTrigger><SelectValue placeholder="Most recent completed round" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Most recent completed round</SelectItem>
+                          {otherRounds.map((r) => (
+                            <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* 4BBB Pairing method */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">4BBB Pairing Within Groups</label>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {([
+                        { value: "random", label: "Random", desc: "New random partners within each group." },
+                        { value: "keep_last", label: "Keep Last Round's Partners", desc: "Same 4BBB partners as the previous round, groups reshuffled by seed." },
+                        { value: "seed_4bbb", label: "Seed by 4BBB Leaderboard", desc: "Best 4BBB pair stays together, others mixed." },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setSmartPairingMethod(opt.value)}
+                          className={`text-left rounded-md border px-3 py-2 transition-colors text-sm ${
+                            smartPairingMethod === opt.value
+                              ? "border-primary bg-primary/15 text-foreground"
+                              : "border-border/50 bg-card/50 text-muted-foreground hover:border-primary/40"
+                          }`}
+                        >
+                          <span className="font-medium">{opt.label}</span>
+                          <span className="text-xs opacity-70 ml-2">{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tee order */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Tee Order</label>
+                    <div className="flex gap-2">
+                      {([
+                        { value: "top_first", label: "Top seed tees first" },
+                        { value: "bottom_first", label: "Bottom seed tees first" },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setSmartTeeOrder(opt.value)}
+                          className={`flex-1 rounded-md border px-3 py-2 text-sm transition-colors ${
+                            smartTeeOrder === opt.value
+                              ? "border-primary bg-primary/15 text-foreground font-medium"
+                              : "border-border/50 bg-card/50 text-muted-foreground hover:border-primary/40"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Group size */}
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-1 block">Players per Group</label>
+                    <Select value={reseedGroupSize} onValueChange={setReseedGroupSize}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="2">2 players (pairs only)</SelectItem>
+                        <SelectItem value="4">4 players (standard)</SelectItem>
+                        <SelectItem value="6">6 players</SelectItem>
+                        <SelectItem value="8">8 players</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
 
               {/* Source round selector (copy + 4bbb) */}
               {(reseedMode === "copy" || reseedMode === "4bbb") && (

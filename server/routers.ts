@@ -88,6 +88,8 @@ import {
   getPennantTeamScore,
   syncRoundsToTournamentType,
   roundFlagsFromTournamentType,
+  getTripPennantLeaderboard,
+  promoteInviteSlots,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -130,6 +132,10 @@ import {
   previewReseedBy4BBB,
   previewReseedByIndividual,
   applyCustomGroupings,
+  previewSmartSeed,
+  type SeedMethod,
+  type PairingMethod,
+  type TeeOrder,
 } from "./db";
 import { TRPCError } from "@trpc/server";
 import { sendPushToTrip } from "./webPush";
@@ -859,6 +865,54 @@ export const appRouter = router({
         const preview = await previewReseedByIndividual(input.tripId, input.groupSize);
         return { groups: preview };
       }),
+    // Admin: preview smart seeding (handicap mix, top together, previous round, random)
+    previewSmartSeed: adminProcedure
+      .input(z.object({
+        tripId: z.number(),
+        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round"]),
+        pairingMethod: z.enum(["random", "keep_last", "seed_4bbb"]),
+        teeOrder: z.enum(["top_first", "bottom_first"]),
+        groupSize: z.number().min(2).max(8).default(4),
+        sourceRoundId: z.number().nullable().optional(),
+      }))
+      .query(async ({ input }) => {
+        const preview = await previewSmartSeed(
+          input.tripId,
+          input.seedMethod as SeedMethod,
+          input.pairingMethod as PairingMethod,
+          input.teeOrder as TeeOrder,
+          input.groupSize,
+          input.sourceRoundId ?? null
+        );
+        return { groups: preview };
+      }),
+    // Admin: apply smart seed directly (preview + apply in one step)
+    applySmartSeed: adminProcedure
+      .input(z.object({
+        targetRoundId: z.number(),
+        tripId: z.number(),
+        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round"]),
+        pairingMethod: z.enum(["random", "keep_last", "seed_4bbb"]),
+        teeOrder: z.enum(["top_first", "bottom_first"]),
+        groupSize: z.number().min(2).max(8).default(4),
+        sourceRoundId: z.number().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const preview = await previewSmartSeed(
+          input.tripId,
+          input.seedMethod as SeedMethod,
+          input.pairingMethod as PairingMethod,
+          input.teeOrder as TeeOrder,
+          input.groupSize,
+          input.sourceRoundId ?? null
+        );
+        const groupLayout = preview.map((g) => ({
+          name: g.name,
+          userIds: g.players.map((p) => p.userId),
+        }));
+        const count = await applyCustomGroupings(input.targetRoundId, input.tripId, groupLayout);
+        return { groupsCreated: count };
+      }),
     // Admin: apply custom group layout from drag-to-edit preview
     applyCustom: adminProcedure
       .input(z.object({
@@ -1445,8 +1499,12 @@ export const appRouter = router({
 
         const trip = await getTrip(input.tripId);
         const individualScoringMode = (trip as any)?.handicapMode ?? "stableford";
+        const tournamentType = (trip as any)?.tournamentType ?? "stableford";
+        const isMatchPlayTrip = tournamentType === "matchplay";
+        const pennantLeaderboard = isMatchPlayTrip ? await getTripPennantLeaderboard(input.tripId) : [];
+        const hasMatchPlayRound = pennantLeaderboard.length > 0;
 
-        return { strokePlay, stableford, fourBBB, ambrose, hasAmbroseRound, hasFourBBBRound, bestDayStableford, bestDayStroke, individualScoringMode };
+        return { strokePlay, stableford, fourBBB, ambrose, hasAmbroseRound, hasFourBBBRound, bestDayStableford, bestDayStroke, individualScoringMode, tournamentType, pennantLeaderboard, hasMatchPlayRound };
       }),
   }),
 
@@ -1796,6 +1854,8 @@ export const appRouter = router({
         if (!existing) {
           await import("./db").then(m => m.addPlayerToTrip(invite.tripId, ctx.user!.id, invite.startingHandicap));
         }
+        // Promote any pending invite placeholder slots in groups/teams to this userId
+        await promoteInviteSlots(invite.id, ctx.user.id, invite.tripId);
         return { success: true, tripId: invite.tripId, alreadyJoined: false };
       }),
     // Admin: get or create a trip-level shareable link (open invite token on the trip row)
