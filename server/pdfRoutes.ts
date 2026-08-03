@@ -192,7 +192,7 @@ export function registerPdfRoutes(app: Express) {
           const gPlayers = await getGroupPlayers(group.id);
           const partnered = new Set<number>();
           for (const gp of gPlayers) {
-            if (partnered.has(gp.userId) || !gp.partnerId) continue;
+            if (!gp.userId || partnered.has(gp.userId) || !gp.partnerId) continue;
             partnered.add(gp.userId);
             partnered.add(gp.partnerId);
             const p1 = scorecard.find((s) => s.userId === gp.userId);

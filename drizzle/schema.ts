@@ -182,7 +182,10 @@ export type Group = typeof groups.$inferSelect;
 export const groupPlayers = mysqlTable("group_players", {
   id: int("id").autoincrement().primaryKey(),
   groupId: int("groupId").notNull(),
-  userId: int("userId").notNull(),
+  // For registered players; null for pending-invite placeholder rows
+  userId: int("userId"),
+  // For pending invitees who haven't registered yet; null once they register
+  inviteId: int("inviteId"),
   // Partner for 4BBB / matchplay pairing — nullable until paired
   partnerId: int("partnerId"),
   // pairId groups two players into Pair A (1) or Pair B (2) within the group
@@ -495,8 +498,11 @@ export const matchPlayTeamPlayers = mysqlTable("match_play_team_players", {
   id: int("id").autoincrement().primaryKey(),
   teamId: int("teamId").notNull(),
   roundId: int("roundId").notNull(),
-  userId: int("userId").notNull(),
-  tripPlayerId: int("tripPlayerId").notNull(),
+  // For registered players; null for pending-invite placeholder rows
+  userId: int("userId"),
+  // For pending invitees who haven't registered yet; null once they register
+  inviteId: int("inviteId"),
+  tripPlayerId: int("tripPlayerId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

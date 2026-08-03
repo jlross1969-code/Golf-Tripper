@@ -28,7 +28,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 
 type GroupPlayer = {
   id: number;
-  userId: number;
+  userId: number | null;
+  inviteId?: number | null;
   groupId: number;
   partnerId: number | null;
   pairId: number | null;
@@ -37,6 +38,8 @@ type GroupPlayer = {
   nickname?: string | null;
   currentHandicap?: number | null;
   photoUrl?: string | null;
+  isPending?: boolean;
+  pendingName?: string | null;
 };
 
 export default function AdminGroups() {
@@ -59,7 +62,7 @@ export default function AdminGroups() {
 
   const { data: roundData } = trpc.rounds.get.useQuery({ id: rId });
   const { data: groups, refetch } = trpc.groups.list.useQuery({ roundId: rId, tripId: tId });
-  const { data: players } = trpc.players.tripPlayers.useQuery({ tripId: tId });
+  const { data: players } = trpc.players.allForTrip.useQuery({ tripId: tId });
 
   const [groupOpen, setGroupOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -132,7 +135,7 @@ export default function AdminGroups() {
 
   // Compute set of userIds already assigned to any group in this round
   const assignedUserIds = new Set<number>(
-    (groups ?? []).flatMap((g) => g.players.map((p) => p.userId))
+    (groups ?? []).flatMap((g) => g.players.filter((p) => p.userId != null).map((p) => p.userId as number))
   );
 
   const createGroup = trpc.groups.create.useMutation({
@@ -332,6 +335,7 @@ export default function AdminGroups() {
   });
 
   function playerName(p: GroupPlayer) {
+    if (p.isPending) return p.pendingName ?? `Pending ${p.inviteId ?? '?'}`;
     return p.nickname ?? p.user?.name ?? `User ${p.userId}`;
   }
 
@@ -345,7 +349,13 @@ export default function AdminGroups() {
   }
 
   // Players not yet assigned to any group (available for selection)
-  const availablePlayers = (players ?? []).filter((p) => !assignedUserIds.has(p.userId));
+  // allForTrip returns both registered and pending-invite players
+  const assignedInviteIds = new Set<number>(
+    (groups ?? []).flatMap((g) => g.players.filter((p) => p.inviteId != null).map((p) => p.inviteId as number))
+  );
+  const availablePlayers = (players ?? []).filter((p) =>
+    p.userId != null ? !assignedUserIds.has(p.userId) : !assignedInviteIds.has(p.inviteId!)
+  );
 
   function openCorrect(p: GroupPlayer) {
     setCorrectPlayer(p);
@@ -366,7 +376,7 @@ export default function AdminGroups() {
 
     function PlayerChip({ p, color }: { p: GroupPlayer; color: string }) {
       return (
-        <span className={`inline-flex items-center gap-1.5 rounded-full pl-1 pr-2 py-0.5 text-xs ${color}`}>
+        <span className={`inline-flex items-center gap-1.5 rounded-full pl-1 pr-2 py-0.5 text-xs ${p.isPending ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : color}`}>
           <Avatar className="w-5 h-5 flex-shrink-0">
             {p.photoUrl && <AvatarImage src={p.photoUrl} alt={playerName(p)} />}
             <AvatarFallback className="text-[9px] font-bold bg-black/20">
@@ -395,7 +405,10 @@ export default function AdminGroups() {
             <button
               className="opacity-60 hover:opacity-100 transition-opacity"
               title="Remove from group"
-              onClick={() => removePlayer.mutate({ groupId: group.id, userId: p.userId })}
+              onClick={() => p.userId != null
+                ? removePlayer.mutate({ groupId: group.id, userId: p.userId })
+                : removePlayer.mutate({ groupId: group.id, inviteId: p.inviteId ?? undefined } as any)
+              }
             >
               <X className="w-3 h-3" />
             </button>
@@ -483,8 +496,8 @@ export default function AdminGroups() {
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2 flex items-center gap-2 flex-wrap">
           <span className="text-xs text-amber-400 font-medium shrink-0">{availablePlayers.length} unassigned:</span>
           {availablePlayers.map((p) => (
-            <span key={p.userId} className="text-xs text-amber-300 bg-amber-500/10 rounded-full px-2 py-0.5">
-              {p.nickname ?? p.user?.name ?? `Player ${p.userId}`} (HCP {p.currentHandicap})
+            <span key={p.id} className={`text-xs rounded-full px-2 py-0.5 ${p.registered ? "text-amber-300 bg-amber-500/10" : "text-orange-300 bg-orange-500/10"}`}>
+              {p.name} (HCP {p.currentHandicap}){!p.registered && " ⏳"}
             </span>
           ))}
         </div>
@@ -630,7 +643,7 @@ export default function AdminGroups() {
           <DialogHeader>
             <DialogTitle>Add Player to Group</DialogTitle>
             <DialogDescription>
-              Only players not yet assigned to a group are shown.
+              Players not yet assigned to a group are shown. Pending invitees (amber) haven't registered yet.
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
@@ -642,8 +655,10 @@ export default function AdminGroups() {
                   <div className="px-3 py-2 text-sm text-muted-foreground">All players are already assigned.</div>
                 ) : (
                   availablePlayers.map((p) => (
-                    <SelectItem key={p.userId} value={p.userId.toString()}>
-                      {p.nickname ?? p.user?.name ?? `User ${p.userId}`} (HCP {p.currentHandicap})
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className={p.registered ? "" : "text-amber-400"}>
+                        {p.name} (HCP {p.currentHandicap}){!p.registered && " ⏳"}
+                      </span>
                     </SelectItem>
                   ))
                 )}
@@ -654,7 +669,15 @@ export default function AdminGroups() {
             <Button variant="outline" onClick={() => setPlayerOpen(false)}>Cancel</Button>
             <Button
               disabled={!addUserId || !selectedGroup || addPlayer.isPending || availablePlayers.length === 0}
-              onClick={() => addPlayer.mutate({ groupId: selectedGroup!, userId: Number(addUserId) })}
+              onClick={() => {
+                const sel = availablePlayers.find((p) => p.id === addUserId);
+                if (!sel || !selectedGroup) return;
+                addPlayer.mutate({
+                  groupId: selectedGroup,
+                  userId: sel.userId ?? undefined,
+                  inviteId: sel.inviteId ?? undefined,
+                });
+              }}
             >
               Add Player
             </Button>
@@ -691,9 +714,9 @@ export default function AdminGroups() {
                 <SelectTrigger><SelectValue placeholder="Select player..." /></SelectTrigger>
                 <SelectContent>
                   {groups?.find((g) => g.id === pairGroupId)?.players
-                    .filter((p) => p.userId.toString() !== pairPlayer2)
+                    .filter((p) => p.userId != null && p.userId.toString() !== pairPlayer2)
                     .map((p) => (
-                      <SelectItem key={p.userId} value={p.userId.toString()}>
+                      <SelectItem key={p.userId!} value={p.userId!.toString()}>
                         {p.nickname ?? p.user?.name ?? `User ${p.userId}`}
                       </SelectItem>
                     ))}
@@ -706,9 +729,9 @@ export default function AdminGroups() {
                 <SelectTrigger><SelectValue placeholder="Select partner..." /></SelectTrigger>
                 <SelectContent>
                   {groups?.find((g) => g.id === pairGroupId)?.players
-                    .filter((p) => p.userId.toString() !== pairPlayer1)
+                    .filter((p) => p.userId != null && p.userId.toString() !== pairPlayer1)
                     .map((p) => (
-                      <SelectItem key={p.userId} value={p.userId.toString()}>
+                      <SelectItem key={p.userId!} value={p.userId!.toString()}>
                         {p.nickname ?? p.user?.name ?? `User ${p.userId}`}
                       </SelectItem>
                     ))}
@@ -836,7 +859,7 @@ export default function AdminGroups() {
             <Button
               disabled={!correctHoleId || !correctGross || !correctPlayer || adminCorrect.isPending || !selectedHole}
               onClick={() => {
-                if (!correctPlayer || !selectedHole) return;
+                if (!correctPlayer || !selectedHole || correctPlayer.userId == null) return;
                 adminCorrect.mutate({
                   roundId: rId,
                   userId: correctPlayer.userId,

@@ -141,6 +141,13 @@
       "when": 1785704387723,
       "tag": "0019_ambitious_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1785724711339,
+      "tag": "0020_minor_switch",
+      "breakpoints": true
     }
   ]
 }

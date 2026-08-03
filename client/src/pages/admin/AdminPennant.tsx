@@ -25,7 +25,7 @@ export default function AdminPennant() {
   const { data: teams, refetch: refetchTeams } = trpc.pennant.getTeams.useQuery({ roundId: roundIdNum });
   const { data: fixtures, refetch: refetchFixtures } = trpc.pennant.getFixtures.useQuery({ roundId: roundIdNum });
   const { data: tripData } = trpc.trips.get.useQuery({ id: tripIdNum });
-  const { data: tripPlayers } = trpc.players.tripPlayers.useQuery({ tripId: tripIdNum });
+  const { data: allPlayers } = trpc.players.allForTrip.useQuery({ tripId: tripIdNum });
   const { data: roundData } = trpc.rounds.get.useQuery({ id: roundIdNum });
 
   // Team mutations
@@ -87,9 +87,12 @@ export default function AdminPennant() {
     setPlayer2B("");
   }
 
-  // Compute unassigned players
-  const assignedUserIds = new Set((teams ?? []).flatMap((t) => t.players.map((p) => p.userId)));
-  const unassignedPlayers = (tripPlayers ?? []).filter((p) => !assignedUserIds.has(p.userId));
+  // Compute unassigned players (registered + pending invites)
+  const assignedUserIds = new Set((teams ?? []).flatMap((t) => t.players.filter((p) => p.userId != null).map((p) => p.userId as number)));
+  const assignedInviteIds = new Set((teams ?? []).flatMap((t) => t.players.filter((p) => p.inviteId != null).map((p) => p.inviteId as number)));
+  const unassignedPlayers = (allPlayers ?? []).filter((p) =>
+    p.userId != null ? !assignedUserIds.has(p.userId) : !assignedInviteIds.has(p.inviteId!)
+  );
 
   function getTeamPlayers(teamId: number) {
     return (teams ?? []).find(t => t.id === teamId)?.players ?? [];
@@ -170,17 +173,25 @@ export default function AdminPennant() {
                       </SelectTrigger>
                       <SelectContent>
                         {unassignedPlayers.map((p) => (
-                          <SelectItem key={p.userId} value={String(p.userId)}>
-                            {p.nickname ?? p.user?.name ?? `Player ${p.userId}`} (HC: {p.currentHandicap ?? 0})
+                          <SelectItem key={p.id} value={p.id}>
+                            <span className={p.registered ? "" : "text-amber-400"}>
+                              {p.name} (HC: {p.currentHandicap ?? 0}){!p.registered && " ⏳"}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <Button size="sm" disabled={!selectedUserId}
                       onClick={() => {
-                        const tp = (tripPlayers ?? []).find((p) => p.userId === parseInt(selectedUserId));
-                        if (!tp) return;
-                        assignPlayer.mutate({ teamId: team.id, roundId: roundIdNum, userId: tp.userId, tripPlayerId: tp.id });
+                        const sel = (allPlayers ?? []).find((p) => p.id === selectedUserId);
+                        if (!sel) return;
+                        assignPlayer.mutate({
+                          teamId: team.id,
+                          roundId: roundIdNum,
+                          userId: sel.userId ?? undefined,
+                          tripPlayerId: sel.tripPlayerId ?? undefined,
+                          inviteId: sel.inviteId ?? undefined,
+                        });
                         setAssigningTeamId(null);
                         setSelectedUserId("");
                       }}>Add</Button>
@@ -196,7 +207,7 @@ export default function AdminPennant() {
                       <Badge key={p.userId} variant="secondary" className="gap-1 pr-1">
                         {p.displayName} <span className="text-muted-foreground">HC:{p.currentHandicap}</span>
                         <button className="ml-1 text-red-400 hover:text-red-300"
-                          onClick={() => removePlayer.mutate({ roundId: roundIdNum, userId: p.userId })}>×</button>
+                          onClick={() => removePlayer.mutate({ roundId: roundIdNum, userId: p.userId! })}>×</button>
                       </Badge>
                     ))}
                   </div>

@@ -22,6 +22,7 @@ import {
   getAchievementsByRound,
   getAllCourses,
   getAllTrips,
+  getAllTripPlayersAndInvites,
   getAllUsers,
   getCourse,
   getGroupPlayers,
@@ -316,13 +317,14 @@ export const appRouter = router({
 
   // ─── Players ──────────────────────────────────────────────────────────────
 
-  players: router({
+    players: router({
     allUsers: protectedProcedure.query(() => getAllUsers()),
-
     tripPlayers: publicProcedure
       .input(z.object({ tripId: z.number() }))
       .query(({ input }) => getTripPlayers(input.tripId)),
-
+    allForTrip: adminProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(({ input }) => getAllTripPlayersAndInvites(input.tripId)),
     add: adminProcedure
       .input(z.object({ tripId: z.number(), userId: z.number(), startingHandicap: z.number().min(0) }))
       .mutation(async ({ input }) => {
@@ -685,9 +687,9 @@ export const appRouter = router({
       }),
 
     addPlayer: adminProcedure
-      .input(z.object({ groupId: z.number(), userId: z.number(), partnerId: z.number().optional() }))
+      .input(z.object({ groupId: z.number(), userId: z.number().nullable().optional(), inviteId: z.number().optional(), partnerId: z.number().optional() }))
       .mutation(async ({ input }) => {
-        await addPlayerToGroup(input.groupId, input.userId, input.partnerId);
+        await addPlayerToGroup(input.groupId, input.userId ?? null, input.partnerId, input.inviteId);
         return { success: true };
       }),
 
@@ -909,13 +911,13 @@ export const appRouter = router({
           if (tripId) {
             const tpRows = await db.select({ userId: tpTable.userId, nickname: tpTable.nickname })
               .from(tpTable).where(andOp(eqOp(tpTable.tripId, tripId), inArr(tpTable.userId, ids)));
-            nicknameMap = new Map(tpRows.map(r => [r.userId, r.nickname ?? userMap.get(r.userId) ?? `Player ${r.userId}`]));
+            nicknameMap = new Map(tpRows.filter(r => r.userId !== null).map(r => [r.userId as number, r.nickname ?? userMap.get(r.userId as number) ?? `Player ${r.userId}`]));
           }
           // Fetch teamName + teamEmoji from groupPlayers
           const gpRows = await db.select({ userId: gpTable.userId, teamName: gpTable.teamName, teamEmoji: gpTable.teamEmoji })
             .from(gpTable).where(andOp(eqOp(gpTable.groupId, m.groupId), inArr(gpTable.userId, ids)));
-          teamNameMap = new Map(gpRows.map(r => [r.userId, r.teamName ?? null]));
-          const teamEmojiMap = new Map(gpRows.map(r => [r.userId, r.teamEmoji ?? null]));
+          teamNameMap = new Map(gpRows.filter(r => r.userId !== null).map(r => [r.userId as number, r.teamName ?? null]));
+          const teamEmojiMap = new Map(gpRows.filter(r => r.userId !== null).map(r => [r.userId as number, r.teamEmoji ?? null]));
           const displayName = (id: number) => nicknameMap.get(id) ?? userMap.get(id) ?? `Player ${id}`;
           const pairAIds = [m.player1Id, m.player1PartnerId].filter(Boolean) as number[];
           const pairBIds = [m.player2Id, m.player2PartnerId].filter(Boolean) as number[];
@@ -1315,11 +1317,10 @@ export const appRouter = router({
 
         if (round.fourBBBEnabled) {
           for (const group of groupList) {
-            const gPlayers = await getGroupPlayers(group.id);
+                        const gPlayers = await getGroupPlayers(group.id);
             const partnered = new Set<number>();
-
             for (const gp of gPlayers) {
-              if (partnered.has(gp.userId) || !gp.partnerId) continue;
+              if (!gp.userId || partnered.has(gp.userId) || !gp.partnerId) continue;
               partnered.add(gp.userId);
               partnered.add(gp.partnerId);
 
@@ -2257,8 +2258,8 @@ export const appRouter = router({
 
     // Assign a player to a team (moves them from any other team)
     assignPlayer: protectedProcedure
-      .input(z.object({ teamId: z.number(), roundId: z.number(), userId: z.number(), tripPlayerId: z.number() }))
-      .mutation(async ({ input }) => assignPlayerToTeam(input.teamId, input.roundId, input.userId, input.tripPlayerId)),
+      .input(z.object({ teamId: z.number(), roundId: z.number(), userId: z.number().nullable().optional(), tripPlayerId: z.number().nullable().optional(), inviteId: z.number().optional() }))
+      .mutation(async ({ input }) => assignPlayerToTeam(input.teamId, input.roundId, input.userId ?? null, input.tripPlayerId ?? null, input.inviteId)),
 
     // Remove a player from their team
     removePlayer: protectedProcedure

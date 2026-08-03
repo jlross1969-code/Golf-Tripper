@@ -459,25 +459,27 @@ export async function getGroupsByRound(roundId: number): Promise<Group[]> {
   return db.select().from(groups).where(eq(groups.roundId, roundId));
 }
 
-export async function addPlayerToGroup(groupId: number, userId: number, partnerId?: number): Promise<void> {
+export async function addPlayerToGroup(groupId: number, userId: number | null, partnerId?: number, inviteId?: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  // Check if player is already in another group for the same round
-  const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
-  if (group.length > 0) {
-    const roundGroups = await db.select().from(groups).where(eq(groups.roundId, group[0].roundId));
-    const roundGroupIds = roundGroups.map((g) => g.id);
-    if (roundGroupIds.length > 0) {
-      const existing = await db.select().from(groupPlayers)
-        .where(and(eq(groupPlayers.userId, userId), inArray(groupPlayers.groupId, roundGroupIds)));
-      if (existing.length > 0 && existing[0].groupId !== groupId) {
-        throw new Error("Player is already assigned to another group in this round.");
+  // Check if player is already in another group for the same round (only for registered players)
+  if (userId !== null) {
+    const group = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+    if (group.length > 0) {
+      const roundGroups = await db.select().from(groups).where(eq(groups.roundId, group[0].roundId));
+      const roundGroupIds = roundGroups.map((g) => g.id);
+      if (roundGroupIds.length > 0) {
+        const existing = await db.select().from(groupPlayers)
+          .where(and(eq(groupPlayers.userId, userId), inArray(groupPlayers.groupId, roundGroupIds)));
+        if (existing.length > 0 && existing[0].groupId !== groupId) {
+          throw new Error("Player is already assigned to another group in this round.");
+        }
       }
     }
   }
   await db
     .insert(groupPlayers)
-    .values({ groupId, userId, partnerId: partnerId ?? null })
+    .values({ groupId, userId: userId ?? null, inviteId: inviteId ?? null, partnerId: partnerId ?? null })
     .onDuplicateKeyUpdate({ set: { partnerId: partnerId ?? null } });
 }
 
@@ -502,27 +504,39 @@ export async function removePlayerFromGroup(groupId: number, userId: number): Pr
     .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, userId)));
 }
 
-export async function getGroupPlayers(groupId: number, tripId?: number): Promise<(GroupPlayer & { user: User | undefined; nickname?: string | null })[]> {
+export async function getGroupPlayers(groupId: number, tripId?: number): Promise<(GroupPlayer & { user: User | undefined; nickname?: string | null; pendingName?: string | null; isPending?: boolean })[]> {
   const db = await getDb();
   if (!db) return [];
   const players = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
-  const userIds = players.map((p) => p.userId);
-  if (userIds.length === 0) return [];
-  const userList = await db.select().from(users).where(inArray(users.id, userIds));
+  if (players.length === 0) return [];
+  // Separate registered (userId set) from pending-invite rows
+  const registeredUserIds = players.filter((p) => p.userId !== null).map((p) => p.userId as number);
+  const pendingInviteIds = players.filter((p) => p.userId === null && p.inviteId !== null).map((p) => p.inviteId as number);
+  const userList = registeredUserIds.length > 0 ? await db.select().from(users).where(inArray(users.id, registeredUserIds)) : [];
   const userMap = new Map(userList.map((u) => [u.id, u]));
+  // Fetch pending invite names
+  const inviteList = pendingInviteIds.length > 0 ? await db.select({ id: tripInvites.id, name: tripInvites.name }).from(tripInvites).where(inArray(tripInvites.id, pendingInviteIds)) : [];
+  const inviteNameMap = new Map(inviteList.map((i) => [i.id, i.name]));
   // Also fetch nicknames and handicaps from trip_players if tripId is provided
   let nicknameMap = new Map<number, string | null>();
   let handicapMap = new Map<number, number>();
   let photoUrlMap = new Map<number, string | null>();
-  if (tripId) {
+  if (tripId && registeredUserIds.length > 0) {
     const tpList = await db.select({ userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap, photoUrl: tripPlayers.photoUrl })
       .from(tripPlayers)
-      .where(and(eq(tripPlayers.tripId, tripId), inArray(tripPlayers.userId, userIds)));
+      .where(and(eq(tripPlayers.tripId, tripId), inArray(tripPlayers.userId, registeredUserIds)));
     nicknameMap = new Map(tpList.map((tp) => [tp.userId, tp.nickname ?? null]));
     handicapMap = new Map(tpList.map((tp) => [tp.userId, tp.currentHandicap]));
     photoUrlMap = new Map(tpList.map((tp) => [tp.userId, tp.photoUrl ?? null]));
   }
-  return players.map((p) => ({ ...p, user: userMap.get(p.userId), nickname: nicknameMap.get(p.userId) ?? null, currentHandicap: handicapMap.get(p.userId) ?? null, photoUrl: photoUrlMap.get(p.userId) ?? null }));
+  return players.map((p) => {
+    if (p.userId !== null) {
+      return { ...p, user: userMap.get(p.userId), nickname: nicknameMap.get(p.userId) ?? null, currentHandicap: handicapMap.get(p.userId) ?? null, photoUrl: photoUrlMap.get(p.userId) ?? null, isPending: false, pendingName: null };
+    } else {
+      // Pending invite row — no user yet
+      return { ...p, user: undefined, nickname: null, currentHandicap: null, photoUrl: null, isPending: true, pendingName: p.inviteId ? (inviteNameMap.get(p.inviteId) ?? null) : null };
+    }
+  });
 }
 
 export async function deleteGroup(groupId: number): Promise<void> {
@@ -933,20 +947,16 @@ export async function getTripFourBBBLeaderboard(
 
     for (const group of groupList) {
       const gPlayers = await getGroupPlayers(group.id);
-      const partnered = new Set<number>();
-
+            const partnered = new Set<number>();
       for (const gp of gPlayers) {
-        if (partnered.has(gp.userId) || !gp.partnerId) continue;
+        if (!gp.userId || partnered.has(gp.userId) || !gp.partnerId) continue;
         partnered.add(gp.userId);
         partnered.add(gp.partnerId);
-
         const p1 = scorecard.find((s) => s.userId === gp.userId);
         const p2 = scorecard.find((s) => s.userId === gp.partnerId);
         if (!p1 || !p2) continue;
-
         let roundBestBall = 0;
         let holesPlayed = 0;
-
         for (const hole of courseHoles) {
           const s1 = p1.scores.find((s) => s.holeId === hole.id);
           const s2 = p2.scores.find((s) => s.holeId === hole.id);
@@ -958,9 +968,7 @@ export async function getTripFourBBBLeaderboard(
             holesPlayed++;
           }
         }
-
         if (holesPlayed === 0) continue;
-
         const ids = [gp.userId, gp.partnerId].sort((a, b) => a - b);
         const teamKey = ids.join("-");
         const existing = teamMap.get(teamKey);
@@ -1342,10 +1350,10 @@ export async function lockGroupPairs(groupId: number, roundId: number): Promise<
   const [result] = await db.insert(matchPlayResults).values({
     roundId,
     groupId,
-    player1Id: pairA[0].userId,
-    player1PartnerId: pairA[1].userId,
-    player2Id: pairB[0].userId,
-    player2PartnerId: pairB[1].userId,
+    player1Id: pairA[0].userId!,
+    player1PartnerId: pairA[1].userId!,
+    player2Id: pairB[0].userId!,
+    player2PartnerId: pairB[1].userId!,
     holeResults: "[]",
     matchStatus: 0,
     winner: "pending",
@@ -1375,10 +1383,11 @@ export async function getMyGroupForRound(roundId: number, userId: number): Promi
     const members = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, grp.id));
     const myEntry = members.find((m) => m.userId === userId) ?? null;
     if (!myEntry) continue;
-    const userIds = members.map((m) => m.userId);
-    const userList = await db.select().from(users).where(inArray(users.id, userIds));
+    const registeredMembers = members.filter((m) => m.userId !== null);
+    const userIds = registeredMembers.map((m) => m.userId as number);
+    const userList = userIds.length > 0 ? await db.select().from(users).where(inArray(users.id, userIds)) : [];
     const userMap = new Map(userList.map((u) => [u.id, u]));
-    const withUser = members.map((m) => ({ ...m, user: userMap.get(m.userId) }));
+    const withUser = registeredMembers.map((m) => ({ ...m, user: userMap.get(m.userId as number) }));
     const partner = myEntry.partnerId
       ? (withUser.find((m) => m.userId === myEntry.partnerId) ?? null)
       : null;
@@ -1536,24 +1545,24 @@ export async function autoGroupRound(
 
   // 6. Auto-assign pairs within each group (first two = Pair A, last two = Pair B)
   for (const groupId of groupIds) {
-    const gPlayers = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+    const gPlayers = (await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId))).filter((p) => p.userId !== null);
     if (gPlayers.length >= 2) {
       // Pair A: first two players
       await db.update(groupPlayers)
-        .set({ pairId: 1, partnerId: gPlayers[1].userId, scorerId: gPlayers[1].userId })
-        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[0].userId)));
+        .set({ pairId: 1, partnerId: gPlayers[1].userId!, scorerId: gPlayers[1].userId! })
+        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[0].userId!)));
       await db.update(groupPlayers)
-        .set({ pairId: 1, partnerId: gPlayers[0].userId, scorerId: gPlayers[0].userId })
-        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[1].userId)));
+        .set({ pairId: 1, partnerId: gPlayers[0].userId!, scorerId: gPlayers[0].userId! })
+        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[1].userId!)));
     }
     if (gPlayers.length >= 4) {
       // Pair B: third and fourth players
       await db.update(groupPlayers)
-        .set({ pairId: 2, partnerId: gPlayers[3].userId, scorerId: gPlayers[3].userId })
-        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[2].userId)));
+        .set({ pairId: 2, partnerId: gPlayers[3].userId!, scorerId: gPlayers[3].userId! })
+        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[2].userId!)));
       await db.update(groupPlayers)
-        .set({ pairId: 2, partnerId: gPlayers[2].userId, scorerId: gPlayers[2].userId })
-        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[3].userId)));
+        .set({ pairId: 2, partnerId: gPlayers[2].userId!, scorerId: gPlayers[2].userId! })
+        .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, gPlayers[3].userId!)));
     }
   }
 
@@ -1670,10 +1679,10 @@ export async function reseedGroupsBy4BBB(
   const pairEntries: PairEntry[] = [];
   const seenPairs = new Set<string>();
 
-  for (const sg of sourceGroups) {
+    for (const sg of sourceGroups) {
     const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, sg.id));
     for (const gp of gps) {
-      if (!gp.partnerId) continue;
+      if (!gp.userId || !gp.partnerId) continue;
       const key = [gp.userId, gp.partnerId].sort().join("-");
       if (seenPairs.has(key)) continue;
       seenPairs.add(key);
@@ -1688,10 +1697,8 @@ export async function reseedGroupsBy4BBB(
       pairEntries.push({ userId1: gp.userId, userId2: gp.partnerId, totalBestBall: total });
     }
   }
-
   // Sort pairs: best (lowest net) first
   pairEntries.sort((a, b) => a.totalBestBall - b.totalBestBall);
-
   // Clear existing groups on target round
   const existingTarget = await db.select({ id: groups.id }).from(groups).where(eq(groups.roundId, targetRoundId));
   for (const g of existingTarget) {
@@ -1828,15 +1835,16 @@ export async function previewCopyGroupings(
   const tpMap = new Map(tpList.map((t) => [t.userId, t]));
 
   const result: GroupPreview[] = [];
-  for (const sg of sourceGroups) {
+    for (const sg of sourceGroups) {
     const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, sg.id));
     result.push({
       name: sg.name,
-      players: gps.map((gp) => {
-        const tp = tpMap.get(gp.userId);
+      players: gps.filter((gp) => gp.userId !== null).map((gp) => {
+        const uid = gp.userId as number;
+        const tp = tpMap.get(uid);
         return {
-          userId: gp.userId,
-          displayName: tp?.nickname ?? nameMap.get(gp.userId) ?? `User ${gp.userId}`,
+          userId: uid,
+          displayName: tp?.nickname ?? nameMap.get(uid) ?? `User ${uid}`,
           handicap: tp?.currentHandicap ?? 0,
           partnerId: gp.partnerId,
         };
@@ -1845,7 +1853,6 @@ export async function previewCopyGroupings(
   }
   return result;
 }
-
 /** Preview: re-seed by 4BBB pair standings from sourceRound (no DB writes). */
 export async function previewReseedBy4BBB(
   sourceRoundId: number,
@@ -1878,10 +1885,10 @@ export async function previewReseedBy4BBB(
   const pairEntries: PairEntry[] = [];
   const seenPairs = new Set<string>();
 
-  for (const sg of sourceGroups) {
+    for (const sg of sourceGroups) {
     const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, sg.id));
     for (const gp of gps) {
-      if (!gp.partnerId) continue;
+      if (!gp.userId || !gp.partnerId) continue;
       const key = [gp.userId, gp.partnerId].sort().join("-");
       if (seenPairs.has(key)) continue;
       seenPairs.add(key);
@@ -1897,7 +1904,6 @@ export async function previewReseedBy4BBB(
     }
   }
   pairEntries.sort((a, b) => a.totalBestBall - b.totalBestBall);
-
   const pairsPerGroup = Math.max(1, Math.floor(groupSize / 2));
   const groupBuckets: { userId1: number; userId2: number }[][] = [];
   let currentBucket: { userId1: number; userId2: number }[] = [];
@@ -2230,8 +2236,8 @@ export async function getAmbroseLeaderboard(roundId: number): Promise<
         .from(groupPlayers)
         .where(eq(groupPlayers.groupId, g.id));
 
-      // Get player names
-      const playerIds = gPlayers.map((p) => p.userId);
+            // Get player names
+      const playerIds = gPlayers.filter((p) => p.userId !== null).map((p) => p.userId as number);
       const playerNames =
         playerIds.length > 0
           ? await db
@@ -2239,24 +2245,21 @@ export async function getAmbroseLeaderboard(roundId: number): Promise<
               .from(users)
               .where(inArray(users.id, playerIds))
           : [];
-
       const teamName =
         gPlayers.find((p) => p.teamName)?.teamName ?? g.name;
       const teamEmoji = gPlayers.find((p) => p.teamEmoji)?.teamEmoji ?? null;
-
       const totalGross = groupScores.reduce((s, r) => s + r.grossScore, 0);
       const totalNet = groupScores.reduce((s, r) => s + r.netScore, 0);
       const totalStableford = groupScores.reduce(
         (s, r) => s + r.stablefordPoints,
         0
       );
-
       return {
         groupId: g.id,
         teamName,
         teamEmoji,
-        players: playerIds.map((uid) => ({
-          userId: uid,
+        players: playerIds.filter((uid) => uid !== null).map((uid) => ({
+          userId: uid as number,
           name: playerNames.find((u) => u.id === uid)?.name ?? `Player ${uid}`,
         })),
         holesPlayed: groupScores.length,
@@ -2339,7 +2342,7 @@ export async function getTripAmbroseLeaderboard(tripId: number): Promise<
         .from(groupPlayers)
         .where(eq(groupPlayers.groupId, g.id));
 
-      const playerIds = gPlayers.map((p) => p.userId).sort((a, b) => a - b);
+      const playerIds = gPlayers.filter((p) => p.userId !== null).map((p) => p.userId as number).sort((a, b) => a - b);
       const teamKey = playerIds.join("-");
       const teamName = gPlayers.find((p) => p.teamName)?.teamName ?? g.name;
       const teamEmoji = gPlayers.find((p) => p.teamEmoji)?.teamEmoji ?? null;
@@ -2368,7 +2371,7 @@ export async function getTripAmbroseLeaderboard(tripId: number): Promise<
           teamName,
           teamEmoji,
           players: playerIds.map((uid) => ({
-            userId: uid,
+            userId: uid as number,
             name: playerNames.find((u) => u.id === uid)?.name ?? `Player ${uid}`,
           })),
           roundsPlayed: 1,
@@ -2443,16 +2446,20 @@ export async function getPennantTeams(roundId: number) {
   // Enrich with display names
   const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
   const allTripPlayers = await db.select({ id: tripPlayers.id, userId: tripPlayers.userId, nickname: tripPlayers.nickname, currentHandicap: tripPlayers.currentHandicap }).from(tripPlayers);
+  const allInvites = await db.select({ id: tripInvites.id, name: tripInvites.name, startingHandicap: tripInvites.startingHandicap }).from(tripInvites);
   const userMap = new Map(allUsers.map(u => [u.id, u.name]));
   const tpMap = new Map(allTripPlayers.map(tp => [tp.id, tp]));
+  const inviteMap = new Map(allInvites.map(inv => [inv.id, inv]));
   return teams.map(team => ({
     ...team,
     players: players
       .filter(p => p.teamId === team.id)
       .map(p => {
-        const tp = tpMap.get(p.tripPlayerId);
-        const name = tp?.nickname ?? userMap.get(p.userId) ?? `Player ${p.userId}`;
-        return { ...p, displayName: name, currentHandicap: tp?.currentHandicap ?? 0 };
+        const tp = p.tripPlayerId != null ? tpMap.get(p.tripPlayerId as number) : undefined;
+        const inv = p.inviteId != null ? inviteMap.get(p.inviteId as number) : undefined;
+        const name = tp?.nickname ?? (p.userId != null ? userMap.get(p.userId as number) : undefined) ?? inv?.name ?? `Player ?`;
+        const handicap = tp?.currentHandicap ?? inv?.startingHandicap ?? 0;
+        return { ...p, displayName: name, currentHandicap: handicap, registered: p.userId != null };
       }),
   }));
 }
@@ -2471,14 +2478,20 @@ export async function deletePennantTeam(teamId: number) {
   await db.delete(matchPlayTeams).where(eq(matchPlayTeams.id, teamId));
 }
 
-export async function assignPlayerToTeam(teamId: number, roundId: number, userId: number, tripPlayerId: number) {
+export async function assignPlayerToTeam(teamId: number, roundId: number, userId: number | null, tripPlayerId: number | null, inviteId?: number) {
   const db = await getDb();
   if (!db) throw new Error("No DB");
-  // Remove from any existing team in this round first
-  await db.delete(matchPlayTeamPlayers).where(
-    and(eq(matchPlayTeamPlayers.roundId, roundId), eq(matchPlayTeamPlayers.userId, userId))
-  );
-  await db.insert(matchPlayTeamPlayers).values({ teamId, roundId, userId, tripPlayerId });
+  // Remove from any existing team in this round first (by userId or inviteId)
+  if (userId !== null) {
+    await db.delete(matchPlayTeamPlayers).where(
+      and(eq(matchPlayTeamPlayers.roundId, roundId), eq(matchPlayTeamPlayers.userId, userId))
+    );
+  } else if (inviteId) {
+    await db.delete(matchPlayTeamPlayers).where(
+      and(eq(matchPlayTeamPlayers.roundId, roundId), eq(matchPlayTeamPlayers.inviteId, inviteId))
+    );
+  }
+  await db.insert(matchPlayTeamPlayers).values({ teamId, roundId, userId: userId ?? null, tripPlayerId: tripPlayerId ?? null, inviteId: inviteId ?? null });
 }
 
 export async function removePlayerFromTeam(roundId: number, userId: number) {
@@ -2726,4 +2739,81 @@ export async function applyCustomGroupings(
     }
   }
   return groupLayout.length;
+}
+
+// ─── All trip players + pending invites (for admin assignment) ────────────────
+// Returns a unified list of registered players and pending invites for a trip.
+// Pending invitees have userId=null and inviteId set; registered players have userId set.
+export async function getAllTripPlayersAndInvites(tripId: number): Promise<{
+  id: string; // "user-{userId}" or "invite-{inviteId}"
+  userId: number | null;
+  inviteId: number | null;
+  tripPlayerId: number | null;
+  name: string;
+  nickname: string | null;
+  currentHandicap: number;
+  registered: boolean; // true = accepted invite / direct add; false = pending invite
+}[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Registered players
+  const tpRows = await db
+    .select({
+      id: tripPlayers.id,
+      userId: tripPlayers.userId,
+      nickname: tripPlayers.nickname,
+      currentHandicap: tripPlayers.currentHandicap,
+      userName: users.name,
+    })
+    .from(tripPlayers)
+    .leftJoin(users, eq(users.id, tripPlayers.userId))
+    .where(eq(tripPlayers.tripId, tripId));
+
+  // Pending invites (not yet accepted)
+  const inviteRows = await db
+    .select()
+    .from(tripInvites)
+    .where(and(eq(tripInvites.tripId, tripId), eq(tripInvites.status, "pending")));
+
+  const result: {
+    id: string;
+    userId: number | null;
+    inviteId: number | null;
+    tripPlayerId: number | null;
+    name: string;
+    nickname: string | null;
+    currentHandicap: number;
+    registered: boolean;
+  }[] = [];
+
+  for (const tp of tpRows) {
+    result.push({
+      id: `user-${tp.userId}`,
+      userId: tp.userId,
+      inviteId: null,
+      tripPlayerId: tp.id,
+      name: tp.nickname ?? tp.userName ?? `Player ${tp.userId}`,
+      nickname: tp.nickname,
+      currentHandicap: tp.currentHandicap,
+      registered: true,
+    });
+  }
+
+  for (const inv of inviteRows) {
+    // Skip if the invitee has already been added as a registered player
+    if (inv.acceptedByUserId && tpRows.some((tp) => tp.userId === inv.acceptedByUserId)) continue;
+    result.push({
+      id: `invite-${inv.id}`,
+      userId: null,
+      inviteId: inv.id,
+      tripPlayerId: null,
+      name: inv.name,
+      nickname: null,
+      currentHandicap: inv.startingHandicap,
+      registered: false,
+    });
+  }
+
+  return result.sort((a, b) => a.name.localeCompare(b.name));
 }

@@ -648,3 +648,9 @@
 - [x] Trip Leaderboard: tap player row opens a drawer showing hole-by-hole scorecard for each round played
 - [x] Drawer shows round name, date, gross/net/stableford per hole, totals per round (Best Day and Highlights tabs also wired)
 - [x] TypeScript check (0 errors), checkpoint
+
+## Session - Allow Assigning Pending Players to Teams/Groups
+
+- [x] AdminPennant: show all trip players (including pending/unregistered) in team player selector; colour pending names amber with a "Pending" badge
+- [x] AdminGroups: show all trip players (including pending/unregistered) in group player selector; colour pending names amber with a "Pending" badge
+- [x] TypeScript check (0 errors), 51 tests passing, checkpoint

@@ -237,7 +237,7 @@ export default function SideMatches() {
       groupId: selectedGroupId,
       roundId: id,
       type: selectedType as any,
-      players: group.players.map((p) => ({ userId: p.userId, partnerId: p.partnerId ?? undefined })),
+      players: group.players.filter((p) => p.userId != null).map((p) => ({ userId: p.userId as number, partnerId: p.partnerId ?? undefined })),
     });
   };
 
