@@ -720,3 +720,10 @@
 - [x] Make 4BBB Trip Leaderboard rows tappable and open the pair scorecard drawer
 - [x] Show each player score, the counting best-ball score, and front/back/total team summary
 - [x] Add tests, verify TypeScript and mobile UI, checkpoint, and publish
+
+## Session - Stableford 4BBB Best-Points Correction
+
+- [x] Replace cumulative 4BBB best-net aggregation with highest Stableford points per pair per hole
+- [x] Return the counting best Stableford points in the pair scorecard query
+- [x] Update 4BBB leaderboard rankings, totals, labels, and scorecard columns to use points
+- [x] Add Stableford 4BBB best-points tests, validate TypeScript and UI, checkpoint, and publish

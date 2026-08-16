@@ -501,7 +501,7 @@ export async function generateRoundSummaryPDF(data: RoundSummaryData): Promise<B
       doc.fillColor(GREEN).fontSize(13).font("Helvetica-Bold").text("4BBB Pairs — Top 3", 40, y);
       y += 18;
       const bbCols = [40, 60, 260, 370, 450];
-      const bbHeaders = ["Pos", "Pair", "Best-Ball Net", "Holes"];
+      const bbHeaders = ["Pos", "Pair", "Best Stableford Pts", "Holes"];
       doc.rect(40, y, contentW, 18).fill(DARK_GREY);
       bbHeaders.forEach((h, i) => {
         doc.fillColor(WHITE).fontSize(9).font("Helvetica-Bold")

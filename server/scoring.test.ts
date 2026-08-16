@@ -7,6 +7,7 @@ import {
   buildAchievementMessage,
   calculateSkins,
   calculate4BBBScore,
+  calculate4BBBStablefordPoints,
 } from "../shared/scoring";
 
 // ─── Net Score ────────────────────────────────────────────────────────────────
@@ -167,6 +168,19 @@ describe("calculate4BBBScore", () => {
     expect(calculate4BBBScore(null, 4)).toBe(4);
     expect(calculate4BBBScore(3, null)).toBe(3);
     expect(calculate4BBBScore(null, null)).toBeNull();
+  });
+});
+
+describe("calculate4BBBStablefordPoints", () => {
+  it("counts the higher Stableford points score for the pair", () => {
+    expect(calculate4BBBStablefordPoints(2, 3)).toBe(3);
+    expect(calculate4BBBStablefordPoints(4, 1)).toBe(4);
+  });
+
+  it("uses the available points score when a partner has not recorded a score", () => {
+    expect(calculate4BBBStablefordPoints(null, 2)).toBe(2);
+    expect(calculate4BBBStablefordPoints(1, null)).toBe(1);
+    expect(calculate4BBBStablefordPoints(null, null)).toBeNull();
   });
 });
 

@@ -57,7 +57,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { isAutomaticFourBBBReady, resolveMutualScoreMarkerPairs } from "../shared/sideMatchAutomation";
-import { getBestBallNet } from "../shared/fourBBBScorecard";
+import { getBestBallStablefordPoints } from "../shared/fourBBBScorecard";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -964,9 +964,9 @@ export async function getTripFourBBBLeaderboard(
         for (const hole of courseHoles) {
           const s1 = p1.scores.find((s) => s.holeId === hole.id);
           const s2 = p2.scores.find((s) => s.holeId === hole.id);
-          const n1 = s1?.netScore ?? null;
-          const n2 = s2?.netScore ?? null;
-          const best = getBestBallNet(n1, n2).bestNet;
+          const points1 = s1?.stablefordPoints ?? null;
+          const points2 = s2?.stablefordPoints ?? null;
+          const best = getBestBallStablefordPoints(points1, points2).bestNet;
           if (best !== null) {
             roundBestBall += best;
             holesPlayed++;
@@ -999,7 +999,7 @@ export async function getTripFourBBBLeaderboard(
   }
 
   const results = Array.from(teamMap.entries()).map(([teamKey, v]) => ({ teamKey, ...v, position: 0 }));
-  results.sort((a, b) => a.cumulativeBestBall - b.cumulativeBestBall);
+  results.sort((a, b) => b.cumulativeBestBall - a.cumulativeBestBall);
   results.forEach((r, i) => (r.position = i + 1));
   return results;
 }
@@ -1017,16 +1017,16 @@ export async function getFourBBBPairScorecard(roundId: number, player1Id: number
   const holesWithScores = courseHoles.map((hole) => {
     const score1 = player1.scores.find((score) => score.holeId === hole.id) ?? null;
     const score2 = player2.scores.find((score) => score.holeId === hole.id) ?? null;
-    const net1 = score1?.netScore ?? null;
-    const net2 = score2?.netScore ?? null;
-    const bestBall = getBestBallNet(net1, net2);
-    const bestBallNet = bestBall.bestNet;
+    const points1 = score1?.stablefordPoints ?? null;
+    const points2 = score2?.stablefordPoints ?? null;
+    const bestBall = getBestBallStablefordPoints(points1, points2);
+    const bestBallPoints = bestBall.bestNet;
     const countingPlayerId = bestBall.countingSide === "player1" ? player1Id : bestBall.countingSide === "player2" ? player2Id : null;
     return {
       hole: { id: hole.id, holeNumber: hole.holeNumber, par: hole.par, strokeIndex: hole.strokeIndex },
       player1Score: score1,
       player2Score: score2,
-      bestBallNet,
+      bestBallPoints,
       countingPlayerId,
     };
   });
@@ -1038,9 +1038,9 @@ export async function getFourBBBPairScorecard(roundId: number, player1Id: number
     player2Net: total.player2Net + (entry.player2Score?.netScore ?? 0),
     player1Points: total.player1Points + (entry.player1Score?.stablefordPoints ?? 0),
     player2Points: total.player2Points + (entry.player2Score?.stablefordPoints ?? 0),
-    bestBallNet: total.bestBallNet + (entry.bestBallNet ?? 0),
-    holesPlayed: total.holesPlayed + (entry.bestBallNet === null ? 0 : 1),
-  }), { player1Gross: 0, player2Gross: 0, player1Net: 0, player2Net: 0, player1Points: 0, player2Points: 0, bestBallNet: 0, holesPlayed: 0 });
+    bestBallPoints: total.bestBallPoints + (entry.bestBallPoints ?? 0),
+    holesPlayed: total.holesPlayed + (entry.bestBallPoints === null ? 0 : 1),
+  }), { player1Gross: 0, player2Gross: 0, player1Net: 0, player2Net: 0, player1Points: 0, player2Points: 0, bestBallPoints: 0, holesPlayed: 0 });
 
   return {
     round: { id: round.id, name: round.name, date: round.roundDate },
@@ -2595,7 +2595,7 @@ function netScore(gross: number, handicap: number, strokeIndex: number): number 
 }
 
 /** Determine hole winner for a singles or 4BBB fixture hole.
- *  For 4BBB: best net of the pair is used.
+ *  For Stableford 4BBB: the higher Stableford points score from the pair is used.
  *  Returns 'teamA' | 'teamB' | 'halved'.
  */
 function computeHoleWinner(

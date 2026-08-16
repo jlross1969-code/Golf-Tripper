@@ -494,7 +494,7 @@ export default function DailyLeaderboard() {
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-bold text-foreground">{t.totalBestBall}</p>
-                          <p className="text-xs text-muted-foreground">Best Ball Net</p>
+                          <p className="text-xs text-muted-foreground">Best Stableford Pts</p>
                         </div>
                       </div>
                     ))
@@ -551,7 +551,7 @@ export default function DailyLeaderboard() {
                       if (data.round.fourBBBEnabled && pairs.length > 0) {
                         text += "\n🧑‍🤝‍🧑 Top 3 Pairs (4BBB):\n";
                         pairs.forEach((t, i) => {
-                          text += `${medals[i]} ${t.teamName} — ${t.totalBestBall} best ball\n`;
+                          text += `${medals[i]} ${t.teamName} — ${t.totalBestBall} Stableford pts\n`;
                         });
                       }
                       if (navigator.share) {
@@ -635,7 +635,7 @@ export default function DailyLeaderboard() {
                             </div>
                             <div className="text-right">
                               <p className="text-lg font-bold text-foreground">{t.totalBestBall}</p>
-                              <p className="text-xs text-muted-foreground">Best Ball Net</p>
+                              <p className="text-xs text-muted-foreground">Best Stableford Pts</p>
                             </div>
                           </div>
                         ))}

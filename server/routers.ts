@@ -96,6 +96,7 @@ import {
 import {
   buildAchievementMessage,
   calculate4BBBScore,
+  calculate4BBBStablefordPoints,
   calculateAlternateShotHandicap,
   calculateAmbroseTeamHandicap,
   calculateAmbroseNetScore,
@@ -600,13 +601,13 @@ export const appRouter = router({
                       for (const hole of courseHoles) {
                         const s1 = p1.scores.find((s) => s.holeId === hole.id);
                         const s2 = p2.scores.find((s) => s.holeId === hole.id);
-                        const best = calculate4BBBScore(s1?.netScore ?? null, s2?.netScore ?? null);
+                        const best = calculate4BBBStablefordPoints(s1?.stablefordPoints ?? null, s2?.stablefordPoints ?? null);
                         if (best !== null) totalBestBall += best;
                       }
                       pairResults.push({ teamName: `${p1.userName ?? "P"} & ${p2.userName ?? "P"}`, totalBestBall });
                     }
                   }
-                  pairResults.sort((a, b) => a.totalBestBall - b.totalBestBall);
+                  pairResults.sort((a, b) => b.totalBestBall - a.totalBestBall);
                   fourBBBLines = pairResults.slice(0, 3).map((r, i) =>
                     `${["\ud83e\udd47","\ud83e\udd48","\ud83e\udd49"][i]} ${r.teamName} \u2014 ${r.totalBestBall} net`
                   );
@@ -1393,7 +1394,7 @@ export const appRouter = router({
               for (const hole of courseHoles) {
                 const s1 = p1.scores.find((s) => s.holeId === hole.id);
                 const s2 = p2.scores.find((s) => s.holeId === hole.id);
-                const bestBall = calculate4BBBScore(s1?.netScore ?? null, s2?.netScore ?? null);
+                const bestBall = calculate4BBBStablefordPoints(s1?.stablefordPoints ?? null, s2?.stablefordPoints ?? null);
                 if (bestBall !== null) {
                   totalBestBall += bestBall;
                   holesPlayed++;
@@ -1410,7 +1411,7 @@ export const appRouter = router({
               });
             }
           }
-          fourBBBResults.sort((a, b) => a.totalBestBall - b.totalBestBall);
+          fourBBBResults.sort((a, b) => b.totalBestBall - a.totalBestBall);
           fourBBBResults.forEach((r, i) => (r.position = i + 1));
         }
 

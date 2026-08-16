@@ -1,6 +1,6 @@
 import { Express, Request, Response } from "express";
 import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
-import { calculate4BBBScore, calculateSkins } from "../shared/scoring";
+import { calculate4BBBStablefordPoints, calculateSkins } from "../shared/scoring";
 import {
   getAchievementsByTrip,
   getAchievementsByRound,
@@ -203,7 +203,7 @@ export function registerPdfRoutes(app: Express) {
             for (const hole of holes) {
               const s1 = p1.scores.find((s) => s.holeId === hole.id);
               const s2 = p2.scores.find((s) => s.holeId === hole.id);
-              const bestBall = calculate4BBBScore(s1?.netScore ?? null, s2?.netScore ?? null);
+              const bestBall = calculate4BBBStablefordPoints(s1?.stablefordPoints ?? null, s2?.stablefordPoints ?? null);
               if (bestBall !== null) { totalBestBall += bestBall; holesPlayed++; }
             }
             fourBBBPairs.push({
@@ -214,7 +214,7 @@ export function registerPdfRoutes(app: Express) {
             });
           }
         }
-        fourBBBPairs.sort((a, b) => a.totalBestBall - b.totalBestBall);
+        fourBBBPairs.sort((a, b) => b.totalBestBall - a.totalBestBall);
         fourBBBPairs.forEach((r, i) => (r.position = i + 1));
       }
 

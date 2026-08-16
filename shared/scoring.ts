@@ -95,6 +95,17 @@ export function calculate4BBBScore(
   return Math.min(player1NetScore, player2NetScore);
 }
 
+/** In a Stableford 4BBB, the pair counts the higher of its two Stableford point scores. */
+export function calculate4BBBStablefordPoints(
+  player1Points: number | null,
+  player2Points: number | null
+): number | null {
+  if (player1Points === null && player2Points === null) return null;
+  if (player1Points === null) return player2Points;
+  if (player2Points === null) return player1Points;
+  return Math.max(player1Points, player2Points);
+}
+
 /**
  * Calculate Skins results for a round.
  * A skin is won when one player has the strictly lowest score on a hole.

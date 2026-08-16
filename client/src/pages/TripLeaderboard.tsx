@@ -326,9 +326,9 @@ function FourBBBPairScorecardDrawer({
   const sectionTotals = (rows: any[]) => rows.reduce((total, row) => ({
     p1Gross: total.p1Gross + (row.player1Score?.grossScore ?? 0),
     p2Gross: total.p2Gross + (row.player2Score?.grossScore ?? 0),
-    bestNet: total.bestNet + (row.bestBallNet ?? 0),
-    holesPlayed: total.holesPlayed + (row.bestBallNet === null ? 0 : 1),
-  }), { p1Gross: 0, p2Gross: 0, bestNet: 0, holesPlayed: 0 });
+    bestPoints: total.bestPoints + (row.bestBallPoints ?? 0),
+    holesPlayed: total.holesPlayed + (row.bestBallPoints === null ? 0 : 1),
+  }), { p1Gross: 0, p2Gross: 0, bestPoints: 0, holesPlayed: 0 });
 
   const front9 = data?.holes.filter((row) => row.hole.holeNumber <= 9) ?? [];
   const back9 = data?.holes.filter((row) => row.hole.holeNumber >= 10) ?? [];
@@ -343,7 +343,7 @@ function FourBBBPairScorecardDrawer({
       <td className="px-2 py-2 text-center text-foreground" />
       <td className="px-2 py-2 text-center text-foreground">{values.p2Gross || "—"}</td>
       <td className="px-2 py-2 text-center text-foreground" />
-      <td className="px-3 py-2 text-center text-primary">{values.bestNet || "—"}</td>
+      <td className="px-3 py-2 text-center text-primary">{values.bestPoints || "—"}</td>
     </tr>
   );
 
@@ -354,14 +354,14 @@ function FourBBBPairScorecardDrawer({
           <SheetTitle className="flex items-center gap-2 flex-wrap">
             <Users className="w-5 h-5 text-primary" />
             <span>{pair.player1Name} & {pair.player2Name}</span>
-            <Badge className="text-xs bg-primary/15 text-primary border border-primary/25">4BBB best ball</Badge>
+            <Badge className="text-xs bg-primary/15 text-primary border border-primary/25">4BBB best Stableford points</Badge>
           </SheetTitle>
-          <p className="text-xs text-muted-foreground mt-1">Tap a round to view each score and the counting net score on every hole.</p>
+          <p className="text-xs text-muted-foreground mt-1">Tap a round to view each score and the counting highest Stableford points on every hole.</p>
           {pair.rounds.length > 1 && (
             <Select value={String(roundId)} onValueChange={(value) => setSelectedRoundId(Number(value))}>
               <SelectTrigger className="w-full text-sm h-8 mt-3"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {pair.rounds.map((round) => <SelectItem key={round.roundId} value={String(round.roundId)}>{round.roundName} · {round.totalBestBall} net</SelectItem>)}
+                {pair.rounds.map((round) => <SelectItem key={round.roundId} value={String(round.roundId)}>{round.roundName} · {round.totalBestBall} pts</SelectItem>)}
               </SelectContent>
             </Select>
           )}
@@ -378,25 +378,25 @@ function FourBBBPairScorecardDrawer({
                   <th className="px-3 py-2 text-left text-foreground">Hole</th>
                   <th className="px-2 py-2 text-center text-foreground">Par</th>
                   <th className="px-2 py-2 text-center text-sky-300">{data.player1.userName.split(" ")[0]}</th>
-                  <th className="px-2 py-2 text-center text-muted-foreground">Net</th>
+                  <th className="px-2 py-2 text-center text-muted-foreground">Pts</th>
                   <th className="px-2 py-2 text-center text-emerald-300">{data.player2.userName.split(" ")[0]}</th>
-                  <th className="px-2 py-2 text-center text-muted-foreground">Net</th>
-                  <th className="px-3 py-2 text-center text-primary">Best Net</th>
+                  <th className="px-2 py-2 text-center text-muted-foreground">Pts</th>
+                  <th className="px-3 py-2 text-center text-primary">Best Pts</th>
                 </tr>
               </thead>
               <tbody>
                 {data.holes.map((row) => {
-                  const p1Counting = row.countingPlayerId === data.player1.userId || row.countingPlayerId === null && row.bestBallNet !== null && row.player1Score?.netScore === row.bestBallNet;
-                  const p2Counting = row.countingPlayerId === data.player2.userId || row.countingPlayerId === null && row.bestBallNet !== null && row.player2Score?.netScore === row.bestBallNet;
+                  const p1Counting = row.countingPlayerId === data.player1.userId || row.countingPlayerId === null && row.bestBallPoints !== null && row.player1Score?.stablefordPoints === row.bestBallPoints;
+                  const p2Counting = row.countingPlayerId === data.player2.userId || row.countingPlayerId === null && row.bestBallPoints !== null && row.player2Score?.stablefordPoints === row.bestBallPoints;
                   return (
                     <tr key={row.hole.id} className="border-b border-border/40 hover:bg-muted/20">
                       <td className="px-3 py-2 text-foreground font-medium">{row.hole.holeNumber}</td>
                       <td className="px-2 py-2 text-center text-muted-foreground">{row.hole.par}</td>
                       <td className={`px-2 py-2 text-center font-semibold ${p1Counting ? "bg-sky-500/20 text-sky-300" : "text-foreground"}`}>{row.player1Score?.grossScore ?? "—"}</td>
-                      <td className={`px-2 py-2 text-center ${p1Counting ? "text-sky-300 font-bold" : "text-muted-foreground"}`}>{row.player1Score?.netScore ?? "—"}</td>
+                      <td className={`px-2 py-2 text-center ${p1Counting ? "text-sky-300 font-bold" : "text-muted-foreground"}`}>{row.player1Score?.stablefordPoints ?? "—"}</td>
                       <td className={`px-2 py-2 text-center font-semibold ${p2Counting ? "bg-emerald-500/20 text-emerald-300" : "text-foreground"}`}>{row.player2Score?.grossScore ?? "—"}</td>
-                      <td className={`px-2 py-2 text-center ${p2Counting ? "text-emerald-300 font-bold" : "text-muted-foreground"}`}>{row.player2Score?.netScore ?? "—"}</td>
-                      <td className="px-3 py-2 text-center font-bold text-primary">{row.bestBallNet ?? "—"}</td>
+                      <td className={`px-2 py-2 text-center ${p2Counting ? "text-emerald-300 font-bold" : "text-muted-foreground"}`}>{row.player2Score?.stablefordPoints ?? "—"}</td>
+                      <td className="px-3 py-2 text-center font-bold text-primary">{row.bestBallPoints ?? "—"}</td>
                     </tr>
                   );
                 })}
@@ -405,7 +405,7 @@ function FourBBBPairScorecardDrawer({
                 {summaryRow("TOTAL", total, true)}
               </tbody>
             </table>
-            <p className="px-5 py-3 text-xs text-muted-foreground border-t border-border">Highlighted player cells supplied the counting score. When both nets match, both scores count.</p>
+            <p className="px-5 py-3 text-xs text-muted-foreground border-t border-border">Highlighted player cells supplied the counting Stableford points. When both point scores match, both scores count.</p>
           </div>
         )}
       </SheetContent>
@@ -601,7 +601,7 @@ export default function TripLeaderboard() {
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
-                          <p className="text-xs text-muted-foreground">Best Ball Net</p>
+                          <p className="text-xs text-muted-foreground">Best Stableford Pts</p>
                         </div>
                       </button>
                     ))
@@ -710,7 +710,7 @@ export default function TripLeaderboard() {
                       if (pairs.length > 0) {
                         text += "\n🧑\u200D🤝\u200D🧑 Top 3 Pairs (4BBB Cumulative):\n";
                         pairs.forEach((t, i) => {
-                          text += `${medals[i]} ${t.player1Name} & ${t.player2Name} — ${t.cumulativeBestBall} best ball\n`;
+                          text += `${medals[i]} ${t.player1Name} & ${t.player2Name} — ${t.cumulativeBestBall} Stableford pts\n`;
                         });
                       }
                       if (navigator.share) {
@@ -781,7 +781,7 @@ export default function TripLeaderboard() {
                           </div>
                           <div className="text-right">
                             <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
-                            <p className="text-xs text-muted-foreground">Best Ball Net</p>
+                            <p className="text-xs text-muted-foreground">Best Stableford Pts</p>
                           </div>
                         </button>
                       ))}
