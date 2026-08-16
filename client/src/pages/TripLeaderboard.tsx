@@ -299,6 +299,120 @@ function TripScorecardDrawer({
   );
 }
 
+function FourBBBPairScorecardDrawer({
+  open,
+  onClose,
+  pair,
+}: {
+  open: boolean;
+  onClose: () => void;
+  pair: {
+    player1Id: number;
+    player2Id: number;
+    player1Name: string;
+    player2Name: string;
+    rounds: { roundId: number; roundName: string; totalBestBall: number; holesPlayed: number }[];
+  } | null;
+}) {
+  const [selectedRoundId, setSelectedRoundId] = useState<number | null>(null);
+  const roundId = selectedRoundId ?? pair?.rounds[0]?.roundId ?? 0;
+  const { data, isLoading } = trpc.leaderboard.fourBBBPairScorecard.useQuery(
+    { roundId, player1Id: pair?.player1Id ?? 0, player2Id: pair?.player2Id ?? 0 },
+    { enabled: open && !!pair && roundId > 0 }
+  );
+
+  if (!pair) return null;
+
+  const sectionTotals = (rows: any[]) => rows.reduce((total, row) => ({
+    p1Gross: total.p1Gross + (row.player1Score?.grossScore ?? 0),
+    p2Gross: total.p2Gross + (row.player2Score?.grossScore ?? 0),
+    bestNet: total.bestNet + (row.bestBallNet ?? 0),
+    holesPlayed: total.holesPlayed + (row.bestBallNet === null ? 0 : 1),
+  }), { p1Gross: 0, p2Gross: 0, bestNet: 0, holesPlayed: 0 });
+
+  const front9 = data?.holes.filter((row) => row.hole.holeNumber <= 9) ?? [];
+  const back9 = data?.holes.filter((row) => row.hole.holeNumber >= 10) ?? [];
+  const out = sectionTotals(front9);
+  const inn = sectionTotals(back9);
+  const total = sectionTotals(data?.holes ?? []);
+
+  const summaryRow = (label: string, values: ReturnType<typeof sectionTotals>, emphasized = false) => (
+    <tr className={`border-t border-border font-semibold ${emphasized ? "bg-primary/10" : "bg-muted/40"}`}>
+      <td colSpan={2} className="px-3 py-2 text-foreground">{label}</td>
+      <td className="px-2 py-2 text-center text-foreground">{values.p1Gross || "—"}</td>
+      <td className="px-2 py-2 text-center text-foreground" />
+      <td className="px-2 py-2 text-center text-foreground">{values.p2Gross || "—"}</td>
+      <td className="px-2 py-2 text-center text-foreground" />
+      <td className="px-3 py-2 text-center text-primary">{values.bestNet || "—"}</td>
+    </tr>
+  );
+
+  return (
+    <Sheet open={open} onOpenChange={(value) => !value && onClose()}>
+      <SheetContent side="bottom" className="max-h-[92vh] overflow-y-auto rounded-t-2xl px-0">
+        <SheetHeader className="px-5 pb-3 border-b border-border">
+          <SheetTitle className="flex items-center gap-2 flex-wrap">
+            <Users className="w-5 h-5 text-primary" />
+            <span>{pair.player1Name} & {pair.player2Name}</span>
+            <Badge className="text-xs bg-primary/15 text-primary border border-primary/25">4BBB best ball</Badge>
+          </SheetTitle>
+          <p className="text-xs text-muted-foreground mt-1">Tap a round to view each score and the counting net score on every hole.</p>
+          {pair.rounds.length > 1 && (
+            <Select value={String(roundId)} onValueChange={(value) => setSelectedRoundId(Number(value))}>
+              <SelectTrigger className="w-full text-sm h-8 mt-3"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {pair.rounds.map((round) => <SelectItem key={round.roundId} value={String(round.roundId)}>{round.roundName} · {round.totalBestBall} net</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+        </SheetHeader>
+        {isLoading ? (
+          <div className="px-5 py-5 space-y-2">{[...Array(9)].map((_, index) => <Skeleton key={index} className="h-9 w-full rounded" />)}</div>
+        ) : !data ? (
+          <div className="px-5 py-10 text-center text-sm text-muted-foreground">No 4BBB scorecard data is available for this round.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[630px] text-sm">
+              <thead className="bg-slate-800/70 text-xs">
+                <tr>
+                  <th className="px-3 py-2 text-left text-foreground">Hole</th>
+                  <th className="px-2 py-2 text-center text-foreground">Par</th>
+                  <th className="px-2 py-2 text-center text-sky-300">{data.player1.userName.split(" ")[0]}</th>
+                  <th className="px-2 py-2 text-center text-muted-foreground">Net</th>
+                  <th className="px-2 py-2 text-center text-emerald-300">{data.player2.userName.split(" ")[0]}</th>
+                  <th className="px-2 py-2 text-center text-muted-foreground">Net</th>
+                  <th className="px-3 py-2 text-center text-primary">Best Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.holes.map((row) => {
+                  const p1Counting = row.countingPlayerId === data.player1.userId || row.countingPlayerId === null && row.bestBallNet !== null && row.player1Score?.netScore === row.bestBallNet;
+                  const p2Counting = row.countingPlayerId === data.player2.userId || row.countingPlayerId === null && row.bestBallNet !== null && row.player2Score?.netScore === row.bestBallNet;
+                  return (
+                    <tr key={row.hole.id} className="border-b border-border/40 hover:bg-muted/20">
+                      <td className="px-3 py-2 text-foreground font-medium">{row.hole.holeNumber}</td>
+                      <td className="px-2 py-2 text-center text-muted-foreground">{row.hole.par}</td>
+                      <td className={`px-2 py-2 text-center font-semibold ${p1Counting ? "bg-sky-500/20 text-sky-300" : "text-foreground"}`}>{row.player1Score?.grossScore ?? "—"}</td>
+                      <td className={`px-2 py-2 text-center ${p1Counting ? "text-sky-300 font-bold" : "text-muted-foreground"}`}>{row.player1Score?.netScore ?? "—"}</td>
+                      <td className={`px-2 py-2 text-center font-semibold ${p2Counting ? "bg-emerald-500/20 text-emerald-300" : "text-foreground"}`}>{row.player2Score?.grossScore ?? "—"}</td>
+                      <td className={`px-2 py-2 text-center ${p2Counting ? "text-emerald-300 font-bold" : "text-muted-foreground"}`}>{row.player2Score?.netScore ?? "—"}</td>
+                      <td className="px-3 py-2 text-center font-bold text-primary">{row.bestBallNet ?? "—"}</td>
+                    </tr>
+                  );
+                })}
+                {summaryRow("OUT", out)}
+                {summaryRow("IN", inn)}
+                {summaryRow("TOTAL", total, true)}
+              </tbody>
+            </table>
+            <p className="px-5 py-3 text-xs text-muted-foreground border-t border-border">Highlighted player cells supplied the counting score. When both nets match, both scores count.</p>
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export default function TripLeaderboard() {
   const { tripId } = useParams<{ tripId: string }>();
   const id = Number(tripId);
@@ -307,6 +421,13 @@ export default function TripLeaderboard() {
     userName: string | null;
     currentHandicap: number;
     rounds: { roundId: number; roundName: string }[];
+  } | null>(null);
+  const [drawerPair, setDrawerPair] = useState<{
+    player1Id: number;
+    player2Id: number;
+    player1Name: string;
+    player2Name: string;
+    rounds: { roundId: number; roundName: string; totalBestBall: number; holesPlayed: number }[];
   } | null>(null);
 
   const { data: trip } = trpc.trips.get.useQuery({ id });
@@ -321,6 +442,17 @@ export default function TripLeaderboard() {
   const isMatchPlayTrip = tournamentType === "matchplay";
   const pennantLeaderboard: any[] = (data as any)?.pennantLeaderboard ?? [];
   const hasMatchPlayRound = (data as any)?.hasMatchPlayRound ?? false;
+  const openPairScorecard = (team: any) => {
+    const [player1Id, player2Id] = String(team.teamKey).split("-").map(Number);
+    if (!player1Id || !player2Id || !team.rounds?.length) return;
+    setDrawerPair({
+      player1Id,
+      player2Id,
+      player1Name: team.player1Name,
+      player2Name: team.player2Name,
+      rounds: team.rounds,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -457,7 +589,7 @@ export default function TripLeaderboard() {
                     <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">No 4BBB data yet.</div>
                   ) : (
                     data.fourBBB.map((t) => (
-                      <div key={t.teamKey} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4">
+                      <button key={t.teamKey} type="button" onClick={() => openPairScorecard(t)} className="w-full text-left bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4 cursor-pointer hover:bg-muted/30 transition-colors active:scale-[0.98]">
                         <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(t.position)}</div>
                         <div className="flex -space-x-2 flex-shrink-0">
                           <PlayerAvatar name={t.player1Name} photoUrl={t.player1PhotoUrl} />
@@ -465,13 +597,13 @@ export default function TripLeaderboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-foreground truncate">{t.player1Name} & {t.player2Name}</p>
-                          <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""}</p>
+                          <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""} · tap for hole scores</p>
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
                           <p className="text-xs text-muted-foreground">Best Ball Net</p>
                         </div>
-                      </div>
+                      </button>
                     ))
                   )}
                 </div>
@@ -637,7 +769,7 @@ export default function TripLeaderboard() {
                   ) : (
                     <div className="space-y-2">
                       {data.fourBBB.slice(0, 3).map((t) => (
-                        <div key={t.teamKey} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4">
+                        <button key={t.teamKey} type="button" onClick={() => openPairScorecard(t)} className="w-full text-left bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4 cursor-pointer hover:bg-muted/30 transition-colors active:scale-[0.98]">
                           <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(t.position)}</div>
                           <div className="flex -space-x-2 flex-shrink-0">
                             <PlayerAvatar name={t.player1Name} photoUrl={t.player1PhotoUrl} />
@@ -645,13 +777,13 @@ export default function TripLeaderboard() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-foreground truncate">{t.player1Name} & {t.player2Name}</p>
-                            <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""}</p>
+                            <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""} · tap for hole scores</p>
                           </div>
                           <div className="text-right">
                             <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
                             <p className="text-xs text-muted-foreground">Best Ball Net</p>
                           </div>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -683,6 +815,12 @@ export default function TripLeaderboard() {
         onClose={() => setDrawerPlayer(null)}
         player={drawerPlayer}
         isStableford={isStableford}
+      />
+      <FourBBBPairScorecardDrawer
+        key={drawerPair ? `${drawerPair.player1Id}-${drawerPair.player2Id}` : "closed"}
+        open={drawerPair !== null}
+        onClose={() => setDrawerPair(null)}
+        pair={drawerPair}
       />
     </div>
   );

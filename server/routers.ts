@@ -39,6 +39,7 @@ import {
   getTrip,
   getTripLeaderboard,
   getTripFourBBBLeaderboard,
+  getFourBBBPairScorecard,
   getTripPlayer,
   getTripPlayers,
   markAchievementBroadcast,
@@ -1509,6 +1510,14 @@ export const appRouter = router({
         const hasMatchPlayRound = pennantLeaderboard.length > 0;
 
         return { strokePlay, stableford, fourBBB, ambrose, hasAmbroseRound, hasFourBBBRound, bestDayStableford, bestDayStroke, individualScoringMode, tournamentType, pennantLeaderboard, hasMatchPlayRound };
+      }),
+
+    fourBBBPairScorecard: publicProcedure
+      .input(z.object({ roundId: z.number(), player1Id: z.number(), player2Id: z.number() }))
+      .query(async ({ input }) => {
+        const scorecard = await getFourBBBPairScorecard(input.roundId, input.player1Id, input.player2Id);
+        if (!scorecard) throw new TRPCError({ code: "NOT_FOUND", message: "4BBB pair scorecard not found" });
+        return scorecard;
       }),
   }),
 

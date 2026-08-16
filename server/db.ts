@@ -57,6 +57,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { isAutomaticFourBBBReady, resolveMutualScoreMarkerPairs } from "../shared/sideMatchAutomation";
+import { getBestBallNet } from "../shared/fourBBBScorecard";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -916,6 +917,7 @@ export async function getTripFourBBBLeaderboard(
     player2PhotoUrl: string | null;
     roundsPlayed: number;
     cumulativeBestBall: number;
+    rounds: { roundId: number; roundName: string; totalBestBall: number; holesPlayed: number }[];
     position: number;
   }[]
 > {
@@ -938,6 +940,7 @@ export async function getTripFourBBBLeaderboard(
       player2PhotoUrl: string | null;
       roundsPlayed: number;
       cumulativeBestBall: number;
+      rounds: { roundId: number; roundName: string; totalBestBall: number; holesPlayed: number }[];
     }
   >();
 
@@ -963,7 +966,7 @@ export async function getTripFourBBBLeaderboard(
           const s2 = p2.scores.find((s) => s.holeId === hole.id);
           const n1 = s1?.netScore ?? null;
           const n2 = s2?.netScore ?? null;
-          const best = n1 !== null && n2 !== null ? Math.min(n1, n2) : n1 ?? n2;
+          const best = getBestBallNet(n1, n2).bestNet;
           if (best !== null) {
             roundBestBall += best;
             holesPlayed++;
@@ -976,6 +979,7 @@ export async function getTripFourBBBLeaderboard(
         if (existing) {
           existing.cumulativeBestBall += roundBestBall;
           existing.roundsPlayed += 1;
+          existing.rounds.push({ roundId: round.id, roundName: round.name, totalBestBall: roundBestBall, holesPlayed });
         } else {
           // Look up photo URLs from trip players
           const tp1 = await getTripPlayer(tripId, gp.userId);
@@ -987,6 +991,7 @@ export async function getTripFourBBBLeaderboard(
             player2PhotoUrl: tp2?.photoUrl ?? null,
             roundsPlayed: 1,
             cumulativeBestBall: roundBestBall,
+            rounds: [{ roundId: round.id, roundName: round.name, totalBestBall: roundBestBall, holesPlayed }],
           });
         }
       }
@@ -997,6 +1002,53 @@ export async function getTripFourBBBLeaderboard(
   results.sort((a, b) => a.cumulativeBestBall - b.cumulativeBestBall);
   results.forEach((r, i) => (r.position = i + 1));
   return results;
+}
+
+/** Hole-by-hole 4BBB scorecard for a specific confirmed pair in a round. */
+export async function getFourBBBPairScorecard(roundId: number, player1Id: number, player2Id: number) {
+  const round = await getRound(roundId);
+  if (!round) return null;
+  const courseHoles = await getHolesByCourse(round.courseId);
+  const scorecard = await getRoundScorecard(roundId);
+  const player1 = scorecard.find((player) => player.userId === player1Id);
+  const player2 = scorecard.find((player) => player.userId === player2Id);
+  if (!player1 || !player2) return null;
+
+  const holesWithScores = courseHoles.map((hole) => {
+    const score1 = player1.scores.find((score) => score.holeId === hole.id) ?? null;
+    const score2 = player2.scores.find((score) => score.holeId === hole.id) ?? null;
+    const net1 = score1?.netScore ?? null;
+    const net2 = score2?.netScore ?? null;
+    const bestBall = getBestBallNet(net1, net2);
+    const bestBallNet = bestBall.bestNet;
+    const countingPlayerId = bestBall.countingSide === "player1" ? player1Id : bestBall.countingSide === "player2" ? player2Id : null;
+    return {
+      hole: { id: hole.id, holeNumber: hole.holeNumber, par: hole.par, strokeIndex: hole.strokeIndex },
+      player1Score: score1,
+      player2Score: score2,
+      bestBallNet,
+      countingPlayerId,
+    };
+  });
+
+  const totals = holesWithScores.reduce((total, entry) => ({
+    player1Gross: total.player1Gross + (entry.player1Score?.grossScore ?? 0),
+    player2Gross: total.player2Gross + (entry.player2Score?.grossScore ?? 0),
+    player1Net: total.player1Net + (entry.player1Score?.netScore ?? 0),
+    player2Net: total.player2Net + (entry.player2Score?.netScore ?? 0),
+    player1Points: total.player1Points + (entry.player1Score?.stablefordPoints ?? 0),
+    player2Points: total.player2Points + (entry.player2Score?.stablefordPoints ?? 0),
+    bestBallNet: total.bestBallNet + (entry.bestBallNet ?? 0),
+    holesPlayed: total.holesPlayed + (entry.bestBallNet === null ? 0 : 1),
+  }), { player1Gross: 0, player2Gross: 0, player1Net: 0, player2Net: 0, player1Points: 0, player2Points: 0, bestBallNet: 0, holesPlayed: 0 });
+
+  return {
+    round: { id: round.id, name: round.name, date: round.roundDate },
+    player1: { userId: player1Id, userName: player1.userName ?? "Player 1" },
+    player2: { userId: player2Id, userName: player2.userName ?? "Player 2" },
+    holes: holesWithScores,
+    totals,
+  };
 }
 
 // ─── Match Play ───────────────────────────────────────────────────────────────

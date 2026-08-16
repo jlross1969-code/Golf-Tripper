@@ -712,3 +712,11 @@
 - [x] Feature 1: Auto-seed groups option in Create Round dialog — Smart Seed controls (method, pairing, tee order, group size) applied immediately after round creation via new groups.applySmartSeed procedure
 - [x] Feature 3: Match Play trip leaderboard — getTripPennantLeaderboard in db.ts, pennantLeaderboard in leaderboard.trip, Pennant Team Score tab as primary tab for matchplay trips in TripLeaderboard
 - [x] Feature 4: Auto-link pending players on invite acceptance — promoteInviteSlots in db.ts, called in invites.accept after acceptInvite
+
+## Session - 4BBB Pair Scorecard Drill-Down
+
+- [x] Inspect the existing cumulative 4BBB leaderboard data and pair identifiers
+- [x] Add a hole-by-hole pair scorecard query for the selected round
+- [x] Make 4BBB Trip Leaderboard rows tappable and open the pair scorecard drawer
+- [x] Show each player score, the counting best-ball score, and front/back/total team summary
+- [x] Add tests, verify TypeScript and mobile UI, checkpoint, and publish
