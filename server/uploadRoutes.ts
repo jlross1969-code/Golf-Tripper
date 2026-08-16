@@ -129,6 +129,24 @@ export function registerUploadRoutes(app: express.Application) {
     }
   });
 
+  // POST /api/upload/course-scorecard — admin only, stores an image for AI-assisted extraction.
+  router.post("/api/upload/course-scorecard", upload.single("scorecard"), async (req: Request, res: Response) => {
+    try {
+      const ctx = await createContext({ req, res } as any);
+      if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (ctx.user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
+      if (!req.file) { res.status(400).json({ error: "No scorecard image provided" }); return; }
+
+      const ext = req.file.mimetype.split("/")[1] || "jpg";
+      const key = `course-scorecards/${ctx.user.id}/scorecard-${Date.now()}.${ext}`;
+      const stored = await storagePut(key, req.file.buffer, req.file.mimetype);
+      res.json(stored);
+    } catch (err) {
+      console.error("Course scorecard upload error:", err);
+      res.status(500).json({ error: "Scorecard upload failed" });
+    }
+  });
+
   // POST /api/push/subscribe
   router.post("/api/push/subscribe", async (req: Request, res: Response) => {
     try {

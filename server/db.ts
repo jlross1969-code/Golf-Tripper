@@ -58,6 +58,7 @@ import {
 import { ENV } from "./_core/env";
 import { isAutomaticFourBBBReady, resolveMutualScoreMarkerPairs } from "../shared/sideMatchAutomation";
 import { getBestBallStablefordPoints } from "../shared/fourBBBScorecard";
+import { calculateCountback, compareCountback, type CountbackBreakdown } from "../shared/countback";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -129,10 +130,14 @@ export async function getAllUsers(): Promise<User[]> {
 
 // ─── Courses ──────────────────────────────────────────────────────────────────
 
-export async function createCourse(name: string, totalHoles: number = 18): Promise<number> {
+export async function createCourse(name: string, totalHoles: number = 18, teeName?: string | null): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const result = await db.insert(courses).values({ name, totalHoles });
+  const existing = await db.select().from(courses).where(eq(courses.name, name));
+  if (existing.some((course) => (course.teeName ?? null) === (teeName ?? null))) {
+    throw new Error(`A course named ${name}${teeName ? ` (${teeName} tees)` : ""} already exists.`);
+  }
+  const result = await db.insert(courses).values({ name, totalHoles, teeName: teeName ?? null });
   return (result[0] as any).insertId;
 }
 
@@ -149,7 +154,7 @@ export async function getAllCourses(): Promise<Course[]> {
   return db.select().from(courses).orderBy(courses.name);
 }
 
-export async function createHoles(courseId: number, holeData: { holeNumber: number; par: number; strokeIndex: number }[]): Promise<void> {
+export async function createHoles(courseId: number, holeData: { holeNumber: number; par: number; strokeIndex: number; distanceMeters?: number | null }[]): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.insert(holes).values(holeData.map((h) => ({ courseId, ...h })));
@@ -861,11 +866,13 @@ export async function getTripLeaderboard(tripId: number): Promise<
     userId: number;
     userName: string | null;
     photoUrl: string | null;
-    rounds: { roundId: number; roundName: string; totalGross: number; totalNet: number; totalStableford: number; holesPlayed: number }[];
+    rounds: { roundId: number; roundName: string; roundDate: Date; totalGross: number; totalNet: number; totalStableford: number; holesPlayed: number; stablefordCountback: CountbackBreakdown; netCountback: CountbackBreakdown }[];
     cumulativeGross: number;
     cumulativeNet: number;
     cumulativeStableford: number;
     currentHandicap: number;
+    stablefordCountback: CountbackBreakdown;
+    netCountback: CountbackBreakdown;
   }[]
 > {
   const db = await getDb();
@@ -880,16 +887,30 @@ export async function getTripLeaderboard(tripId: number): Promise<
       const roundBreakdown = await Promise.all(
         completedRounds.map(async (r) => {
           const playerScores = await getScoresByRoundAndUser(r.id, tp.userId);
+          const courseHoles = await getHolesByCourse(r.courseId);
+          const scoreByHoleId = new Map(playerScores.map((score) => [score.holeId, score]));
           return {
             roundId: r.id,
             roundName: r.name,
+            roundDate: r.roundDate,
             totalGross: playerScores.reduce((s, sc) => s + sc.grossScore, 0),
             totalNet: playerScores.reduce((s, sc) => s + sc.netScore, 0),
             totalStableford: playerScores.reduce((s, sc) => s + sc.stablefordPoints, 0),
             holesPlayed: playerScores.length,
+            stablefordCountback: calculateCountback(courseHoles.map((hole) => ({
+              holeNumber: hole.holeNumber,
+              value: scoreByHoleId.get(hole.id)?.stablefordPoints ?? null,
+            }))),
+            netCountback: calculateCountback(courseHoles.map((hole) => ({
+              holeNumber: hole.holeNumber,
+              value: scoreByHoleId.get(hole.id)?.netScore ?? null,
+            }))),
           };
         })
       );
+      const latestPlayedRound = [...roundBreakdown]
+        .filter((round) => round.holesPlayed > 0)
+        .sort((left, right) => new Date(right.roundDate).getTime() - new Date(left.roundDate).getTime())[0];
       return {
         userId: tp.userId,
         userName: tp.nickname ?? tp.user?.name ?? null,
@@ -899,6 +920,8 @@ export async function getTripLeaderboard(tripId: number): Promise<
         cumulativeNet: roundBreakdown.reduce((s, r) => s + r.totalNet, 0),
         cumulativeStableford: roundBreakdown.reduce((s, r) => s + r.totalStableford, 0),
         currentHandicap: tp.currentHandicap ?? 0,
+        stablefordCountback: latestPlayedRound?.stablefordCountback ?? calculateCountback([]),
+        netCountback: latestPlayedRound?.netCountback ?? calculateCountback([]),
       };
     })
   );
@@ -919,6 +942,7 @@ export async function getTripFourBBBLeaderboard(
     cumulativeBestBall: number;
     rounds: { roundId: number; roundName: string; totalBestBall: number; holesPlayed: number }[];
     position: number;
+    countback: CountbackBreakdown;
   }[]
 > {
   const db = await getDb();
@@ -941,6 +965,8 @@ export async function getTripFourBBBLeaderboard(
       roundsPlayed: number;
       cumulativeBestBall: number;
       rounds: { roundId: number; roundName: string; totalBestBall: number; holesPlayed: number }[];
+      countback: CountbackBreakdown;
+      countbackRoundDate: Date;
     }
   >();
 
@@ -961,18 +987,21 @@ export async function getTripFourBBBLeaderboard(
         if (!p1 || !p2) continue;
         let roundBestBall = 0;
         let holesPlayed = 0;
+        const holePoints: Array<{ holeNumber: number; value: number | null }> = [];
         for (const hole of courseHoles) {
           const s1 = p1.scores.find((s) => s.holeId === hole.id);
           const s2 = p2.scores.find((s) => s.holeId === hole.id);
           const points1 = s1?.stablefordPoints ?? null;
           const points2 = s2?.stablefordPoints ?? null;
           const best = getBestBallStablefordPoints(points1, points2).bestNet;
+          holePoints.push({ holeNumber: hole.holeNumber, value: best });
           if (best !== null) {
             roundBestBall += best;
             holesPlayed++;
           }
         }
         if (holesPlayed === 0) continue;
+        const roundCountback = calculateCountback(holePoints);
         const ids = [gp.userId, gp.partnerId].sort((a, b) => a - b);
         const teamKey = ids.join("-");
         const existing = teamMap.get(teamKey);
@@ -980,6 +1009,10 @@ export async function getTripFourBBBLeaderboard(
           existing.cumulativeBestBall += roundBestBall;
           existing.roundsPlayed += 1;
           existing.rounds.push({ roundId: round.id, roundName: round.name, totalBestBall: roundBestBall, holesPlayed });
+          if (new Date(round.roundDate).getTime() >= new Date(existing.countbackRoundDate).getTime()) {
+            existing.countback = roundCountback;
+            existing.countbackRoundDate = round.roundDate;
+          }
         } else {
           // Look up photo URLs from trip players
           const tp1 = await getTripPlayer(tripId, gp.userId);
@@ -992,6 +1025,8 @@ export async function getTripFourBBBLeaderboard(
             roundsPlayed: 1,
             cumulativeBestBall: roundBestBall,
             rounds: [{ roundId: round.id, roundName: round.name, totalBestBall: roundBestBall, holesPlayed }],
+            countback: roundCountback,
+            countbackRoundDate: round.roundDate,
           });
         }
       }
@@ -999,7 +1034,7 @@ export async function getTripFourBBBLeaderboard(
   }
 
   const results = Array.from(teamMap.entries()).map(([teamKey, v]) => ({ teamKey, ...v, position: 0 }));
-  results.sort((a, b) => b.cumulativeBestBall - a.cumulativeBestBall);
+  results.sort((a, b) => b.cumulativeBestBall - a.cumulativeBestBall || compareCountback(a.countback, b.countback, "higher"));
   results.forEach((r, i) => (r.position = i + 1));
   return results;
 }

@@ -404,6 +404,9 @@ export default function DailyLeaderboard() {
           <div className="text-center py-12 text-muted-foreground">Round not found.</div>
         ) : (
           <Tabs defaultValue={(data.round as any).ambroseEnabled ? "ambrose" : data.round.fourBBBEnabled ? "4bbb" : "stroke"}>
+            <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-center text-xs text-muted-foreground">
+              Ties are resolved by countback: back 9, then last 6, last 3, and Hole 18.
+            </div>
             <TabsList className="mb-6 w-full flex-wrap gap-1">
               {data.round.strokePlayEnabled && <TabsTrigger value="stroke" className="flex-1 gap-2"><Trophy className="w-4 h-4" />Stroke Play</TabsTrigger>}
               {data.round.fourBBBEnabled && <TabsTrigger value="4bbb" className="flex-1 gap-2"><Users className="w-4 h-4" />4BBB</TabsTrigger>}
@@ -444,6 +447,9 @@ export default function DailyLeaderboard() {
                               )}
                             </div>
                             <p className="text-xs text-muted-foreground">HCP {p.handicap} · {p.holesPlayed} holes</p>
+                            {((data as any)?.roundScoringMode !== "net_stroke" ? (p as any).stablefordCountback : (p as any).netCountback)?.back9 !== null && (
+                              <p className="mt-1 text-[11px] text-muted-foreground">Countback: B9 {((data as any)?.roundScoringMode !== "net_stroke" ? (p as any).stablefordCountback : (p as any).netCountback).back9} · L6 {((data as any)?.roundScoringMode !== "net_stroke" ? (p as any).stablefordCountback : (p as any).netCountback).last6 ?? "—"} · L3 {((data as any)?.roundScoringMode !== "net_stroke" ? (p as any).stablefordCountback : (p as any).netCountback).last3 ?? "—"} · 18 {((data as any)?.roundScoringMode !== "net_stroke" ? (p as any).stablefordCountback : (p as any).netCountback).hole18 ?? "—"}</p>
+                            )}
                           </div>
                           <div className="text-right flex items-center gap-2">
                             <div>
@@ -491,6 +497,7 @@ export default function DailyLeaderboard() {
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-foreground truncate">{t.teamName}</p>
                           <p className="text-xs text-muted-foreground">{t.holesPlayed} holes played</p>
+                          {(t as any).countback?.back9 !== null && <p className="mt-1 text-[11px] text-muted-foreground">Countback: B9 {(t as any).countback.back9} · L6 {(t as any).countback.last6 ?? "—"} · L3 {(t as any).countback.last3 ?? "—"} · 18 {(t as any).countback.hole18 ?? "—"}</p>}
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-bold text-foreground">{t.totalBestBall}</p>

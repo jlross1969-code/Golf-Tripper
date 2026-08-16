@@ -733,3 +733,14 @@
 - [x] Trace the Long Drive Set action, backend update, and round query refresh
 - [x] Fix persistence or cache invalidation so a selected Long Drive hole is immediately displayed as enabled
 - [x] Run regression coverage, validate the mobile admin flow, checkpoint, and publish
+
+## Session - Countback Tie-Breaks and Scorecard Image Import
+
+- [x] Audit individual, 4BBB, daily, trip, highlight, PDF, and notification leaderboard ordering
+- [x] Add standard countback calculations: back 9, last 6, last 3, then 18th hole
+- [x] Apply countback ordering and clear tie-break explanation to individual and 4BBB daily/trip leaderboards
+- [x] Add secure server-side scorecard image upload and structured AI vision extraction
+- [x] Detect multiple tee columns and require the admin to select the tee before importing
+- [x] Add editable import preview for course name, hole par, stroke index, and selected-tee distances
+- [x] Save the confirmed import as a course and its 18 holes without duplicating entries
+- [x] Add tests, validate mobile UI, checkpoint, and publish

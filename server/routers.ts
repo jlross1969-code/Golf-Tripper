@@ -110,6 +110,9 @@ import {
   formatAchievementType,
   matchPlayHoleResult,
 } from "../shared/scoring";
+import { calculateCountback, compareCountback } from "../shared/countback";
+import { extractCourseScorecard } from "./courseScorecardImport";
+import { getImportedTeeNames, selectImportedTee } from "../shared/courseScorecardImport";
 import {
   createMatchPlayResult,
   getMatchPlayResult,
@@ -181,6 +184,7 @@ export const appRouter = router({
               holeNumber: z.number().min(1).max(18),
               par: z.number().min(3).max(5),
               strokeIndex: z.number().min(1).max(18),
+              distanceMeters: z.number().int().min(40).max(900).nullable().optional(),
             })
           ),
         })
@@ -189,6 +193,38 @@ export const appRouter = router({
         const courseId = await createCourse(input.name, input.holes.length);
         await createHoles(courseId, input.holes);
         return { courseId };
+      }),
+
+    previewScorecardImport: adminProcedure
+      .input(z.object({ imageKey: z.string().min(1) }))
+      .mutation(async ({ input }) => {
+        const scorecard = await extractCourseScorecard(input.imageKey);
+        const teeNames = getImportedTeeNames(scorecard);
+        if (teeNames.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No complete tee sets could be read from this scorecard." });
+        return { ...scorecard, teeNames };
+      }),
+
+    importScorecard: adminProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        teeName: z.string().min(1).max(64),
+        measurement: z.enum(["meters", "yards"]),
+        holes: z.array(z.object({
+          holeNumber: z.number().int().min(1).max(18),
+          par: z.number().int().min(3).max(6),
+          strokeIndex: z.number().int().min(1).max(18),
+          distanceMeters: z.number().int().min(40).max(900),
+        })).length(18),
+      }))
+      .mutation(async ({ input }) => {
+        const uniqueHoles = new Set(input.holes.map((hole) => hole.holeNumber));
+        const uniqueStrokeIndexes = new Set(input.holes.map((hole) => hole.strokeIndex));
+        if (uniqueHoles.size !== 18 || uniqueStrokeIndexes.size !== 18) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Imported holes must contain one of each hole number and stroke index from 1 to 18." });
+        }
+        const courseId = await createCourse(input.name, 18, input.teeName);
+        await createHoles(courseId, input.holes);
+        return { courseId, teeName: input.teeName };
       }),
   }),
 
@@ -1358,10 +1394,28 @@ export const appRouter = router({
           ? (roundScoringMode === "stableford" ? 34 : 70)
           : tripBaseline + (round.dailyAdjustment ?? 0);
 
-        // Stroke Play leaderboard — sorted by net score ascending
-        const strokePlay = [...scorecard]
+        const individualRows = scorecard
           .filter((p) => p.holesPlayed > 0)
-          .sort((a, b) => a.totalNet - b.totalNet)
+          .map((player) => {
+            const scoresByHole = new Map(player.scores.map((score) => [score.holeId, score]));
+            return {
+              ...player,
+              stablefordCountback: calculateCountback(courseHoles.map((hole) => ({
+                holeNumber: hole.holeNumber,
+                value: scoresByHole.get(hole.id)?.stablefordPoints ?? null,
+              }))),
+              netCountback: calculateCountback(courseHoles.map((hole) => ({
+                holeNumber: hole.holeNumber,
+                value: scoresByHole.get(hole.id)?.netScore ?? null,
+              }))),
+            };
+          });
+
+        // The tournament mode determines both the primary total and standard countback direction.
+        const strokePlay = [...individualRows]
+          .sort((a, b) => roundScoringMode === "net_stroke"
+            ? a.totalNet - b.totalNet || compareCountback(a.netCountback, b.netCountback, "lower")
+            : b.totalStableford - a.totalStableford || compareCountback(a.stablefordCountback, b.stablefordCountback, "higher"))
           .map((p, i) => ({ ...p, position: i + 1 }));
 
         // 4BBB leaderboard — group by partnerships
@@ -1372,6 +1426,7 @@ export const appRouter = router({
           player2: string;
           totalBestBall: number;
           holesPlayed: number;
+          countback: ReturnType<typeof calculateCountback>;
           position: number;
         }[] = [];
 
@@ -1390,11 +1445,13 @@ export const appRouter = router({
 
               let totalBestBall = 0;
               let holesPlayed = 0;
+              const holePoints: Array<{ holeNumber: number; value: number | null }> = [];
 
               for (const hole of courseHoles) {
                 const s1 = p1.scores.find((s) => s.holeId === hole.id);
                 const s2 = p2.scores.find((s) => s.holeId === hole.id);
                 const bestBall = calculate4BBBStablefordPoints(s1?.stablefordPoints ?? null, s2?.stablefordPoints ?? null);
+                holePoints.push({ holeNumber: hole.holeNumber, value: bestBall });
                 if (bestBall !== null) {
                   totalBestBall += bestBall;
                   holesPlayed++;
@@ -1407,11 +1464,12 @@ export const appRouter = router({
                 player2: p2.userName ?? "Player",
                 totalBestBall,
                 holesPlayed,
+                countback: calculateCountback(holePoints),
                 position: 0,
               });
             }
           }
-          fourBBBResults.sort((a, b) => b.totalBestBall - a.totalBestBall);
+          fourBBBResults.sort((a, b) => b.totalBestBall - a.totalBestBall || compareCountback(a.countback, b.countback, "higher"));
           fourBBBResults.forEach((r, i) => (r.position = i + 1));
         }
 
@@ -1470,10 +1528,10 @@ export const appRouter = router({
         }
         const withAch = leaderboard.map((p) => ({ ...p, achievements: achMap[p.userId] ?? { hio: 0, eagle: 0, birdie: 0 } }));
         const strokePlay = [...withAch]
-          .sort((a, b) => a.cumulativeNet - b.cumulativeNet)
+          .sort((a, b) => a.cumulativeNet - b.cumulativeNet || compareCountback(a.netCountback, b.netCountback, "lower"))
           .map((p, i) => ({ ...p, position: i + 1 }));
         const stableford = [...withAch]
-          .sort((a, b) => b.cumulativeStableford - a.cumulativeStableford)
+          .sort((a, b) => b.cumulativeStableford - a.cumulativeStableford || compareCountback(a.stablefordCountback, b.stablefordCountback, "higher"))
           .map((p, i) => ({ ...p, position: i + 1 }));
         const fourBBB = await getTripFourBBBLeaderboard(input.tripId);
         const ambrose = await getTripAmbroseLeaderboard(input.tripId);
@@ -1488,7 +1546,7 @@ export const appRouter = router({
             bestDayStableford: p.rounds.length > 0 ? Math.max(...p.rounds.map((r) => r.totalStableford)) : 0,
             position: 0,
           }))
-          .sort((a, b) => b.bestDayStableford - a.bestDayStableford)
+          .sort((a, b) => b.bestDayStableford - a.bestDayStableford || compareCountback(a.stablefordCountback, b.stablefordCountback, "higher"))
           .map((p, i) => ({ ...p, position: i + 1 }));
         const bestDayStroke = [...withAch]
           .filter((p) => p.rounds.some((r) => r.holesPlayed > 0))
@@ -1500,7 +1558,7 @@ export const appRouter = router({
               position: 0,
             };
           })
-          .sort((a, b) => a.bestDayNet - b.bestDayNet)
+          .sort((a, b) => a.bestDayNet - b.bestDayNet || compareCountback(a.netCountback, b.netCountback, "lower"))
           .map((p, i) => ({ ...p, position: i + 1 }));
 
         const trip = await getTrip(input.tripId);

@@ -34,6 +34,16 @@ function PlayerAvatar({ name, photoUrl }: { name: string | null; photoUrl?: stri
   );
 }
 
+function CountbackSummary({ countback, mode = "stableford" }: { countback?: { back9: number | null; last6: number | null; last3: number | null; hole18: number | null }; mode?: "stableford" | "stroke" }) {
+  if (!countback || countback.back9 === null) return null;
+  const suffix = mode === "stableford" ? "pts" : "net";
+  return (
+    <p className="mt-1 text-[11px] text-muted-foreground">
+      Countback: B9 {countback.back9} · L6 {countback.last6 ?? "—"} · L3 {countback.last3 ?? "—"} · 18 {countback.hole18 ?? "—"} {suffix}
+    </p>
+  );
+}
+
 function PlayerRow({ player, mode, onScorecardClick }: { player: any; mode: "stroke" | "stableford"; onScorecardClick?: (p: any) => void }) {
   const [expanded, setExpanded] = useState(false);
   const score = mode === "stroke" ? player.cumulativeNet : player.cumulativeStableford;
@@ -83,6 +93,7 @@ function PlayerRow({ player, mode, onScorecardClick }: { player: any; mode: "str
               </div>
             </div>
           ))}
+          <CountbackSummary countback={mode === "stableford" ? player.stablefordCountback : player.netCountback} mode={mode} />
         </div>
       )}
     </div>
@@ -513,6 +524,9 @@ export default function TripLeaderboard() {
             : (data as any).hasFourBBBRound ? "4bbb"
             : "stroke"
           }>
+            <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-center text-xs text-muted-foreground">
+              Ties are resolved by countback: back 9, then last 6, last 3, and Hole 18.
+            </div>
             <TabsList className="mb-6 w-full flex-wrap gap-1">
               {isMatchPlayTrip && hasMatchPlayRound && (
                 <TabsTrigger value="pennant" className="flex-1 gap-2">🏆 Match Play</TabsTrigger>
@@ -598,6 +612,7 @@ export default function TripLeaderboard() {
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-foreground truncate">{t.player1Name} & {t.player2Name}</p>
                           <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""} · tap for hole scores</p>
+                          <CountbackSummary countback={(t as any).countback} />
                         </div>
                         <div className="text-right">
                           <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
@@ -778,6 +793,7 @@ export default function TripLeaderboard() {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-foreground truncate">{t.player1Name} & {t.player2Name}</p>
                             <p className="text-xs text-muted-foreground">{t.roundsPlayed} round{t.roundsPlayed !== 1 ? "s" : ""} · tap for hole scores</p>
+                            <CountbackSummary countback={(t as any).countback} />
                           </div>
                           <div className="text-right">
                             <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>

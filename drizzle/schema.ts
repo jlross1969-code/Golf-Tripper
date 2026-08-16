@@ -43,6 +43,7 @@ export type InsertUser = typeof users.$inferInsert;
 export const courses = mysqlTable("courses", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
+  teeName: varchar("teeName", { length: 64 }),
   totalHoles: int("totalHoles").default(18).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -55,6 +56,7 @@ export const holes = mysqlTable("holes", {
   holeNumber: int("holeNumber").notNull(),
   par: int("par").notNull(),
   strokeIndex: int("strokeIndex").notNull(), // 1–18 difficulty ranking
+  distanceMeters: int("distanceMeters"),
 });
 
 export type Hole = typeof holes.$inferSelect;
