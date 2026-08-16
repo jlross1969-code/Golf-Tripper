@@ -56,6 +56,7 @@ import {
   matchPlayFixtureHoles,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { isAutomaticFourBBBReady, resolveMutualScoreMarkerPairs } from "../shared/sideMatchAutomation";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1287,12 +1288,12 @@ export async function setPair(
   // Update player1: partner = player2, scorer = player2 (player2 scores for player1)
   await db
     .update(groupPlayers)
-    .set({ partnerId: player2UserId, pairId, scorerId: player2UserId })
+    .set({ partnerId: player2UserId, pairId, selectedMarkerId: player2UserId, scorerId: player2UserId })
     .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, player1UserId)));
   // Update player2: partner = player1, scorer = player1
   await db
     .update(groupPlayers)
-    .set({ partnerId: player1UserId, pairId, scorerId: player1UserId })
+    .set({ partnerId: player1UserId, pairId, selectedMarkerId: player1UserId, scorerId: player1UserId })
     .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, player2UserId)));
 }
 
@@ -1304,9 +1305,18 @@ export async function selfPair(
   groupId: number,
   requestingUserId: number,
   chosenPartnerId: number
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{
+  success: boolean;
+  error?: string;
+  awaitingReciprocalChoice?: boolean;
+  automaticTeamMatchId?: number | null;
+  automaticSinglesMatchIds?: number[];
+}> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
+  if (requestingUserId === chosenPartnerId) {
+    return { success: false, error: "Choose another player to mark your card" };
+  }
   // Check group is not locked
   const grp = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
   if (!grp[0]) return { success: false, error: "Group not found" };
@@ -1317,12 +1327,117 @@ export async function selfPair(
   if (!memberIds.includes(requestingUserId) || !memberIds.includes(chosenPartnerId)) {
     return { success: false, error: "Both players must be in the same group" };
   }
-  // Determine pairId — assign 1 if no pairs yet, else 2
-  const existingPairs = members.filter((m) => m.pairId !== null);
+
+  const requester = members.find((m) => m.userId === requestingUserId);
+  const chosenMarker = members.find((m) => m.userId === chosenPartnerId);
+  if (!requester || !chosenMarker) return { success: false, error: "Player is not available in this group" };
+  if (requester.partnerId && requester.partnerId !== chosenPartnerId) {
+    return { success: false, error: "You already have a confirmed score marker" };
+  }
+  if (chosenMarker.partnerId && chosenMarker.partnerId !== requestingUserId) {
+    return { success: false, error: "That player already has a confirmed score marker" };
+  }
+
+  // A player may revise an unconfirmed selection. Clear the prior recipient's pending scorer reference.
+  if (requester.selectedMarkerId && requester.selectedMarkerId !== chosenPartnerId && !requester.partnerId) {
+    await db.update(groupPlayers)
+      .set({ scorerId: null })
+      .where(and(
+        eq(groupPlayers.groupId, groupId),
+        eq(groupPlayers.userId, requester.selectedMarkerId)
+      ));
+  }
+
+  await db.update(groupPlayers)
+    .set({ selectedMarkerId: chosenPartnerId })
+    .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.userId, requestingUserId)));
+
+  // A pair is only confirmed when both golfers independently select each other.
+  if (chosenMarker.selectedMarkerId !== requestingUserId) {
+    return { success: true, awaitingReciprocalChoice: true };
+  }
+
+  // Determine the remaining pair slot. A previously confirmed mutual selection keeps its slot.
+  const currentMembers = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+  const currentRequester = currentMembers.find((m) => m.userId === requestingUserId);
+  const existingPairs = currentMembers.filter((m) => m.pairId !== null && m.userId !== requestingUserId && m.userId !== chosenPartnerId);
   const usedPairIds = Array.from(new Set(existingPairs.map((m) => m.pairId)));
-  const pairId = (usedPairIds.length === 0 || (usedPairIds.length === 1 && !usedPairIds.includes(1))) ? 1 : 2;
+  const pairId = currentRequester?.pairId ?? (usedPairIds.includes(1) ? 2 : 1);
   await setPair(groupId, requestingUserId, chosenPartnerId, pairId as 1 | 2);
-  return { success: true };
+  const automatic = await ensureAutomaticMatchesForGroup(groupId);
+  return {
+    success: true,
+    automaticTeamMatchId: automatic.teamMatchId,
+    automaticSinglesMatchIds: automatic.singlesMatchIds,
+  };
+}
+
+/**
+ * Create the default side matches that follow score-marker choices:
+ * each mutually marking pair receives a Singles Match Play record; when a four-ball
+ * contains two mutual pairs, their default 4BBB Match Play record is created as well.
+ */
+export async function ensureAutomaticMatchesForGroup(groupId: number): Promise<{
+  teamMatchId: number | null;
+  singlesMatchIds: number[];
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const groupRow = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  if (!groupRow[0]) throw new Error("Group not found");
+  const members = (await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId)))
+    .filter((member) => member.userId !== null);
+  const mutualMarkerPairs = resolveMutualScoreMarkerPairs(members);
+  const confirmedPairs = [1, 2].map((pairId) => members.filter((member) => member.pairId === pairId));
+  const validPairs = confirmedPairs.filter((pair) =>
+    pair.length === 2 &&
+    pair[0].userId !== null &&
+    pair[1].userId !== null &&
+    pair[0].partnerId === pair[1].userId &&
+    pair[1].partnerId === pair[0].userId &&
+    mutualMarkerPairs.some(([playerAId, playerBId]) =>
+      (playerAId === pair[0].userId && playerBId === pair[1].userId) ||
+      (playerAId === pair[1].userId && playerBId === pair[0].userId)
+    )
+  );
+
+  const existing = await db.select().from(matchPlayResults).where(and(
+    eq(matchPlayResults.roundId, groupRow[0].roundId),
+    eq(matchPlayResults.groupId, groupId)
+  ));
+  const singlesMatchIds: number[] = [];
+  for (const pair of validPairs) {
+    const playerAId = pair[0].userId!;
+    const playerBId = pair[1].userId!;
+    const existingSingles = existing.find((match) =>
+      match.player1PartnerId === null &&
+      match.player2PartnerId === null &&
+      ((match.player1Id === playerAId && match.player2Id === playerBId) ||
+        (match.player1Id === playerBId && match.player2Id === playerAId))
+    );
+    if (existingSingles) {
+      singlesMatchIds.push(existingSingles.id);
+      continue;
+    }
+    const [result] = await db.insert(matchPlayResults).values({
+      roundId: groupRow[0].roundId,
+      groupId,
+      player1Id: playerAId,
+      player2Id: playerBId,
+      holeResults: "[]",
+      matchStatus: 0,
+      winner: "pending",
+    });
+    singlesMatchIds.push((result as any).insertId);
+  }
+
+  // The default 4BBB side match is ready once both score-marker pairs are confirmed.
+  if (validPairs.length !== 2 || !isAutomaticFourBBBReady(members)) {
+    return { teamMatchId: null, singlesMatchIds };
+  }
+  const team = await lockGroupPairs(groupId, groupRow[0].roundId);
+  if (!team.matchId && team.error) throw new Error(team.error);
+  return { teamMatchId: team.matchId, singlesMatchIds };
 }
 
 /**
@@ -1344,9 +1459,11 @@ export async function lockGroupPairs(groupId: number, roundId: number): Promise<
   const existing = await db
     .select()
     .from(matchPlayResults)
-    .where(and(eq(matchPlayResults.roundId, roundId), eq(matchPlayResults.groupId, groupId)))
-    .limit(1);
-  if (existing[0]) return { matchId: existing[0].id };
+    .where(and(eq(matchPlayResults.roundId, roundId), eq(matchPlayResults.groupId, groupId)));
+  const existingTeamMatch = existing.find((match) =>
+    match.player1PartnerId !== null && match.player2PartnerId !== null
+  );
+  if (existingTeamMatch) return { matchId: existingTeamMatch.id };
   const [result] = await db.insert(matchPlayResults).values({
     roundId,
     groupId,
@@ -1457,6 +1574,24 @@ export async function recalcGroupMatch(matchId: number): Promise<void> {
     matchStatus: status,
     winner,
   }).where(eq(matchPlayResults.id, matchId));
+}
+
+/** Recalculate every team or singles match involving a player after their score changes. */
+export async function recalcMatchesForPlayerScore(roundId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const playerGroups = await db.select({ groupId: groupPlayers.groupId })
+    .from(groupPlayers)
+    .where(eq(groupPlayers.userId, userId));
+  const groupIds = [...new Set(playerGroups.map((row) => row.groupId))];
+  if (groupIds.length === 0) return;
+  const candidates = await db.select().from(matchPlayResults)
+    .where(eq(matchPlayResults.roundId, roundId));
+  const affectedMatchIds = candidates
+    .filter((match) => groupIds.includes(match.groupId))
+    .filter((match) => [match.player1Id, match.player1PartnerId, match.player2Id, match.player2PartnerId].includes(userId))
+    .map((match) => match.id);
+  await Promise.all(affectedMatchIds.map((matchId) => recalcGroupMatch(matchId)));
 }
 
 // ─── Auto-Group with Handicap-Biased Pairing ─────────────────────────────────

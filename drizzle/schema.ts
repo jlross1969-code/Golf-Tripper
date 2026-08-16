@@ -190,6 +190,8 @@ export const groupPlayers = mysqlTable("group_players", {
   partnerId: int("partnerId"),
   // pairId groups two players into Pair A (1) or Pair B (2) within the group
   pairId: int("pairId"),
+  // Player selected to mark this player's scorecard; mutual selections create a pair
+  selectedMarkerId: int("selectedMarkerId"),
   // The user who will enter scores for this player (cross-scoring)
   scorerId: int("scorerId"),
   // Optional team name for the pair (shared by both players in a pair)

@@ -62,6 +62,7 @@ import {
   unlockGroupPairs,
   getMyGroupForRound,
   recalcGroupMatch,
+  recalcMatchesForPlayerScore,
   removePlayerFromGroup,
   autoGroupRound,
   getAwardsByTrip,
@@ -726,7 +727,7 @@ export const appRouter = router({
         if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
         const result = await selfPair(input.groupId, ctx.user.id, input.chosenPartnerId);
         if (!result.success) throw new TRPCError({ code: "BAD_REQUEST", message: result.error });
-        return { success: true };
+        return result;
       }),
 
     // Player: set team name for their pair (both players share the same teamName)
@@ -946,7 +947,8 @@ export const appRouter = router({
     getByRound: publicProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
-        const matches = await import("./db").then(db => db.getMatchPlayResultsByRound(input.roundId));
+        const matches = (await import("./db").then(db => db.getMatchPlayResultsByRound(input.roundId)))
+          .filter((match) => match.player1PartnerId !== null && match.player2PartnerId !== null);
         // Enrich with player names and team names
         const enriched = await Promise.all(matches.map(async (m) => {
           const { users: usersTable, tripPlayers: tpTable, groupPlayers: gpTable, groups: grpTable } = await import("../drizzle/schema");
@@ -1116,6 +1118,7 @@ export const appRouter = router({
           stablefordPoints,
           mercyCapped: effectiveGross !== input.grossScore,
         });
+        await recalcMatchesForPlayerScore(input.roundId, input.userId);
 
         // Detect achievement (use original gross so eagles/HIO aren't suppressed)
         const achievementType = detectAchievement(input.grossScore, input.par);
@@ -1157,6 +1160,7 @@ export const appRouter = router({
           netScore,
           stablefordPoints,
         });
+        await recalcMatchesForPlayerScore(input.roundId, input.userId);
         // Detect achievement so the frontend can prompt for confirmation
         const achievementType = detectAchievement(input.grossScore, input.par);
         return { netScore, stablefordPoints, achievementType };

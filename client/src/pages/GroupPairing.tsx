@@ -26,8 +26,15 @@ export default function GroupPairing() {
   const [editingTeamName, setEditingTeamName] = useState(false);
 
   const selfPair = trpc.groups.selfPair.useMutation({
-    onSuccess: () => {
-      toast.success("Partner selected! You will score each other's round.");
+    onSuccess: (result) => {
+      if (result.awaitingReciprocalChoice) {
+        toast.success("Score-marker choice saved — waiting for them to choose you back.");
+      } else if (result.automaticTeamMatchId) {
+        toast.success("Score markers confirmed — Singles and 4BBB Team Match Play are ready.");
+      } else {
+        toast.success("Score markers confirmed — your Singles Match Play is ready.");
+      }
+      setSelectedPartnerId(null);
       refetch();
     },
     onError: (e) => toast.error(e.message),
@@ -69,6 +76,9 @@ export default function GroupPairing() {
   const isLocked = myGroup.pairsLocked;
   const hasPartner = !!myGroup.partner;
   const myPairId = myGroup.myEntry?.pairId ?? null;
+  const selectedMarker = myGroup.myEntry?.selectedMarkerId
+    ? myGroup.allMembers.find((p: any) => p.userId === myGroup.myEntry?.selectedMarkerId)
+    : null;
 
   // Current team name: from myEntry or partner's entry
   const currentTeamName = (myGroup.myEntry as any)?.teamName as string | null | undefined;
@@ -126,16 +136,24 @@ export default function GroupPairing() {
                 You're paired with{" "}
                 <span className="text-primary">{playerDisplayName(myGroup.partner)}</span>
               </p>
-              <p className="text-xs text-muted-foreground">You will score each other's round.</p>
+              <p className="text-xs text-muted-foreground">You selected each other to mark scorecards. Your Singles Match Play is active.</p>
+            </div>
+          </div>
+        ) : selectedMarker ? (
+          <div className="flex items-center gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+            <Users className="w-5 h-5 text-amber-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Waiting for {playerDisplayName(selectedMarker)}</p>
+              <p className="text-xs text-muted-foreground">They need to choose you back before your score-marker pair and Singles Match Play are confirmed.</p>
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
             <Users className="w-5 h-5 text-amber-400 flex-shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-foreground">Choose your partner</p>
+              <p className="text-sm font-semibold text-foreground">Choose who marks your scorecard</p>
               <p className="text-xs text-muted-foreground">
-                Select a partner from your group. You will score each other's round and compete as a pair in the 4BBB Matchplay.
+                Select a player from your group. When you both choose each other, you will mark each other’s cards and receive a Singles Match Play. Two confirmed pairs automatically form the default 4BBB Team Match Play.
               </p>
             </div>
           </div>
@@ -282,7 +300,7 @@ export default function GroupPairing() {
             })}
           >
             <CheckCircle className="w-4 h-4" />
-            Confirm Partner — {playerDisplayName(myGroup.allMembers.find((p: any) => p.userId === selectedPartnerId))}
+            Confirm Score Marker — {playerDisplayName(myGroup.allMembers.find((p: any) => p.userId === selectedPartnerId))}
           </Button>
         )}
 
@@ -290,12 +308,12 @@ export default function GroupPairing() {
         <div className="px-4 py-3 bg-muted/50 rounded-xl text-xs text-muted-foreground space-y-1">
           <p className="font-medium text-foreground flex items-center gap-1">
             <Swords className="w-3.5 h-3.5 text-primary" />
-            How Group Matchplay Works
+            How automatic Side Matches work
           </p>
-          <p>• Pair A plays a 4BBB Stableford Matchplay against Pair B within your group.</p>
-          <p>• Each hole: the best Stableford score from each pair is compared. Higher score wins the hole.</p>
-          <p>• The pair that wins the most holes wins the group match.</p>
-          <p>• This is separate from the main round leaderboard.</p>
+          <p>• Two players who choose each other mark each other’s card and automatically receive a Singles Match Play.</p>
+          <p>• When both pairs in a four-ball are confirmed, a default 4BBB Match Play is created between the two pairs.</p>
+          <p>• Each team hole uses the best Stableford score from the pair; higher points win the hole.</p>
+          <p>• These matches are separate from the main round leaderboard.</p>
         </div>
       </div>
     </div>

@@ -179,6 +179,94 @@ function HoleByHoleSheet({ matchId, onClose }: HoleByHoleSheetProps) {
   );
 }
 
+// ─── Automatic Team / Singles Matchboard ──────────────────────────────────────
+
+function AutomaticMatchGrid({ matchId, labelA, labelB }: { matchId: number; labelA: string; labelB: string }) {
+  const { data, isLoading } = trpc.groupMatch.getHoleByHole.useQuery({ matchId });
+  if (isLoading) return <Skeleton className="h-80 rounded-xl" />;
+  if (!data) return <div className="rounded-xl border border-border p-5 text-center text-sm text-muted-foreground">Match details are not available yet.</div>;
+
+  const running = buildRunningStatus(data.holes.map((hole: any) => ({ result: hole.result })), data.holes.length);
+  const summary = (start: number, end: number) => {
+    const results = data.holes.slice(start, end).map((hole: any) => hole.result);
+    const a = results.filter((result: string) => result === "A").length;
+    const b = results.filter((result: string) => result === "B").length;
+    if (a === b) return "A/S";
+    return `${a > b ? labelA : labelB} ${Math.abs(a - b)} UP`;
+  };
+
+  return (
+    <div className="rounded-2xl overflow-hidden border border-slate-700/50 bg-card shadow-sm">
+      <div className="grid grid-cols-[52px_1fr_94px_1fr] bg-slate-900 px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-100">
+        <span>Hole</span><span className="text-center truncate">{labelA}</span><span className="text-center">Match</span><span className="text-center truncate">{labelB}</span>
+      </div>
+      <div className="max-h-[58vh] overflow-y-auto">
+        {data.holes.map((hole: any, index: number) => {
+          const isA = hole.result === "A";
+          const isB = hole.result === "B";
+          const isHalved = hole.result === "H";
+          return (
+            <div key={hole.holeNumber} className={`grid grid-cols-[52px_1fr_94px_1fr] items-center min-h-12 px-3 text-sm ${index % 2 === 0 ? "bg-slate-100/70 dark:bg-slate-800/45" : "bg-background"}`}>
+              <span className="w-8 h-8 rounded-full border-2 border-slate-400 flex items-center justify-center font-bold text-foreground">{hole.holeNumber}</span>
+              <span className={`mx-auto min-w-10 rounded-sm px-3 py-1.5 text-center font-bold ${isA ? "bg-sky-300 text-slate-950" : "text-foreground"}`}>{hole.pairABestPoints ?? "—"}</span>
+              <span className={`text-center font-bold ${isHalved ? "text-foreground" : isA ? "text-sky-500" : isB ? "text-orange-500" : "text-muted-foreground"}`}>{running[index] ?? "—"}</span>
+              <span className={`mx-auto min-w-10 rounded-sm px-3 py-1.5 text-center font-bold ${isB ? "bg-sky-300 text-slate-950" : "text-foreground"}`}>{hole.pairBBestPoints ?? "—"}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-[1fr_94px_1fr] border-t border-slate-700 bg-slate-100 px-3 py-3 text-sm font-bold dark:bg-slate-800">
+        <span>Out</span><span className="text-center">{summary(0, 9)}</span><span className="text-right">{summary(0, 9).includes("A/S") ? "Halved" : "Winner"}</span>
+      </div>
+      <div className="grid grid-cols-[1fr_94px_1fr] border-t border-slate-700 bg-slate-900 px-3 py-3 text-sm font-bold text-white">
+        <span>Overall</span><span className="text-center">{data.winner === "pending" ? (running.filter(Boolean).at(-1) ?? "A/S") : data.winner === "halved" ? "A/S" : `${data.winner === "player1" ? labelA : labelB} Wins`}</span><span className="text-right">{data.winner === "pending" ? "In play" : data.winner === "halved" ? "Halved" : "Winner"}</span>
+      </div>
+    </div>
+  );
+}
+
+function AutomaticMatchBoard({
+  teamMatch,
+  singlesMatches,
+  roundId,
+}: {
+  teamMatch: any | null;
+  singlesMatches: any[];
+  roundId: number;
+}) {
+  if (!teamMatch && singlesMatches.length === 0) return null;
+  const teamA = teamMatch?.pairATeamName ?? teamMatch?.pairANames?.join(" & ") ?? "Us";
+  const teamB = teamMatch?.pairBTeamName ?? teamMatch?.pairBNames?.join(" & ") ?? "Them";
+  return (
+    <section className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-foreground flex items-center gap-2"><Swords className="w-4 h-4 text-primary" /> Your automatic side matches</h2>
+          <p className="text-xs text-muted-foreground mt-1">Created from score-marker pairs. Team uses best Stableford score; Single is between card markers.</p>
+        </div>
+        <Badge variant="outline" className="border-primary/40 text-primary whitespace-nowrap">Auto</Badge>
+      </div>
+      <Tabs defaultValue={teamMatch ? "team" : "single"}>
+        <TabsList className="w-full grid grid-cols-2 rounded-full p-1 bg-sky-100/70 dark:bg-slate-800">
+          <TabsTrigger value="team" disabled={!teamMatch} className="rounded-full data-[state=active]:bg-slate-900 data-[state=active]:text-white">Team</TabsTrigger>
+          <TabsTrigger value="single" disabled={singlesMatches.length === 0} className="rounded-full data-[state=active]:bg-slate-900 data-[state=active]:text-white">Single</TabsTrigger>
+        </TabsList>
+        <TabsContent value="team" className="mt-4 space-y-3">
+          {teamMatch ? <AutomaticMatchGrid matchId={teamMatch.id} labelA={teamA} labelB={teamB} /> : <div className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">Confirm the other score-marker pair to create the default 4BBB Team Match Play.</div>}
+        </TabsContent>
+        <TabsContent value="single" className="mt-4 space-y-5">
+          {singlesMatches.map((match) => {
+            const playerA = match.player1Name ?? "Player A";
+            const playerB = match.player2Name ?? "Player B";
+            return <AutomaticMatchGrid key={match.id} matchId={match.id} labelA={playerA} labelB={playerB} />;
+          })}
+          {singlesMatches.length > 0 && <Link href={`/round/${roundId}/match-play`}><Button variant="outline" className="w-full gap-2"><Swords className="w-4 h-4" /> Enter or review Singles Match Play</Button></Link>}
+        </TabsContent>
+      </Tabs>
+    </section>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SideMatches() {
@@ -190,6 +278,20 @@ export default function SideMatches() {
   const { data: groups } = trpc.groups.list.useQuery({ roundId: id });
   const { data: sideMatches, refetch } = trpc.sideMatches.list.useQuery({ roundId: id });
   const { data: groupMatches, isLoading: gmLoading } = trpc.groupMatch.getByRound.useQuery({ roundId: id });
+  const { data: myGroup } = trpc.groups.getMyGroup.useQuery({ roundId: id }, { enabled: !!user });
+  const { data: allMatchPlay = [] } = trpc.matchPlay.getByRound.useQuery({ roundId: id });
+
+  const myTeamMatch = myGroup
+    ? groupMatches?.find((match: any) => match.groupId === myGroup.groupId) ?? null
+    : null;
+  const mySinglesMatches = myGroup
+    ? allMatchPlay.filter((match: any) =>
+      match.groupId === myGroup.groupId &&
+      match.player1PartnerId === null &&
+      match.player2PartnerId === null &&
+      (match.player1Id === user?.id || match.player2Id === user?.id)
+    )
+    : [];
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
@@ -263,6 +365,8 @@ export default function SideMatches() {
       </header>
 
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-8">
+
+        <AutomaticMatchBoard teamMatch={myTeamMatch} singlesMatches={mySinglesMatches} roundId={id} />
 
         {/* ── Group 4BBB Matchplay section ── */}
         <section>

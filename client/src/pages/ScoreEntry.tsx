@@ -675,6 +675,17 @@ export default function ScoreEntry() {
       </header>
 
       {/* Group match banner */}
+      {!myGroup?.partner && (
+        <div className="px-4 py-2.5 border-b border-amber-500/20 bg-amber-500/5 flex items-center justify-between gap-3">
+          <div className="min-w-0 flex items-center gap-2 text-xs text-muted-foreground">
+            <Users className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <span>Choose who marks your card to activate your automatic Singles and 4BBB side matches.</span>
+          </div>
+          <Link href={`/trip/${round.tripId}/my-group/${id}`}>
+            <Button size="sm" variant="outline" className="text-xs border-amber-500/40 text-amber-300">Choose</Button>
+          </Link>
+        </div>
+      )}
       {myGroupMatch && (
         <div className="px-4 py-2 bg-primary/5 border-b border-primary/20 flex items-center justify-between text-xs">
           <span className="text-primary font-medium flex items-center gap-1">

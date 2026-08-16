@@ -560,6 +560,17 @@
 - [x] Frontend: TripLeaderboard — Best Day tab (each player's best single round), 4BBB tab, Ambrose tab (all conditionally shown)
 - [x] TypeScript check (0 errors), all 51 tests passing, checkpoint
 
+## Session - Automatic Score-Marker Side Matches
+
+- [x] Define and persist each player’s selected score marker at the start of an active round
+- [x] Add a player-facing score-marker selection flow that makes mutual selections clear before scoring begins
+- [x] Automatically create a default 4BBB Match Play side match when two mutual marker pairs exist in the same four-player group
+- [x] Automatically create linked Singles Match Play side matches between mutually marking players
+- [x] Prevent duplicate automatic matches and retain existing results when score-marker selections are revisited
+- [x] Update score-entry integration so automatic match status reflects submitted hole scores
+- [x] Redesign Side Matches with a Team / Single toggle, hole-by-hole score grid, front-nine/back-nine/overall summaries, and winner states
+- [x] Add tests, verify TypeScript and the live UI, save checkpoint, and publish
+
 ## Session - Side Match Audit & Fixes
 
 - [x] Backend: matchPlay.getByRound — change from protectedProcedure to publicProcedure so unauthenticated users can view match results
@@ -670,29 +681,29 @@
 ## Session - 5 New Features
 
 ### Feature 1: Auto-seed groups in Create Round dialog
-- [ ] Frontend: AdminRounds Create Round dialog — add optional "Auto-seed groups" section with Smart Seed controls
-- [ ] Backend: rounds.create — if autoSeed params provided, create groups and seed them immediately after round creation
-- [ ] Backend: new helper createAndSeedGroups(roundId, tripId, seedParams) reusing previewSmartSeed + applyCustom logic
+- [x] Frontend: AdminRounds Create Round dialog — add optional "Auto-seed groups" section with Smart Seed controls
+- [x] Backend: rounds.create — if autoSeed params provided, create groups and seed them immediately after round creation
+- [x] Backend: new helper createAndSeedGroups(roundId, tripId, seedParams) reusing previewSmartSeed + applyCustom logic
 
 ### Feature 2: Format lock for specialty trip types
-- [ ] Frontend: AdminRounds Create/Edit Round dialogs — when trip tournamentType is ambrose or alternate_shot, lock format toggles and show explanation
-- [ ] Frontend: AdminRounds — when trip tournamentType is matchplay, lock round to matchPlay format only
-- [ ] Frontend: Show tooltip/badge explaining why toggles are locked
+- [x] Frontend: AdminRounds Create/Edit Round dialogs — when trip tournamentType is ambrose or alternate_shot, lock format toggles and show explanation
+- [x] Frontend: AdminRounds — when trip tournamentType is matchplay, lock round to matchPlay format only
+- [x] Frontend: Show tooltip/badge explaining why toggles are locked
 
 ### Feature 3: Match Play trip leaderboard
-- [ ] Backend: leaderboard.tripMatchPlay procedure — return team wins/halves/losses/points from pennant fixtures
-- [ ] Frontend: TripLeaderboard — when tournamentType is matchplay, show Pennant Team Score view as primary tab
-- [ ] Frontend: Team cards with W/H/L record, points total, fixture list
+- [x] Backend: leaderboard.tripMatchPlay procedure — return team wins/halves/losses/points from pennant fixtures
+- [x] Frontend: TripLeaderboard — when tournamentType is matchplay, show Pennant Team Score view as primary tab
+- [x] Frontend: Team cards with W/H/L record, points total, fixture list
 
 ### Feature 4: Auto-link pending players on invite acceptance
-- [ ] Backend: promoteInviteToUser(inviteId, userId) helper in db.ts — updates groupPlayers + matchPlayTeamPlayers
-- [ ] Backend: Call promoteInviteToUser in joinViaToken handler after trip_players insert
+- [x] Backend: promoteInviteToUser(inviteId, userId) helper in db.ts — updates groupPlayers + matchPlayTeamPlayers
+- [x] Backend: Call promoteInviteToUser in joinViaToken handler after trip_players insert
 
 ### Feature 5: Round format badge on round cards
-- [ ] Frontend: AdminRounds — show small format badge on each round card derived from round format flags
-- [ ] Frontend: Badge shows "Stableford", "4BBB", "Stroke", "Match Play", "Ambrose", "Alt Shot" etc.
+- [x] Frontend: AdminRounds — show small format badge on each round card derived from round format flags
+- [x] Frontend: Badge shows "Stableford", "4BBB", "Stroke", "Match Play", "Ambrose", "Alt Shot" etc.
 
-- [ ] TypeScript check (0 errors), tests passing, checkpoint
+- [x] TypeScript check (0 errors), tests passing, checkpoint
 
 ## Session - 5 New Features
 
