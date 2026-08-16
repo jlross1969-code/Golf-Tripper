@@ -727,3 +727,9 @@
 - [x] Return the counting best Stableford points in the pair scorecard query
 - [x] Update 4BBB leaderboard rankings, totals, labels, and scorecard columns to use points
 - [x] Add Stableford 4BBB best-points tests, validate TypeScript and UI, checkpoint, and publish
+
+## Session - Long Drive Selection Persistence
+
+- [x] Trace the Long Drive Set action, backend update, and round query refresh
+- [x] Fix persistence or cache invalidation so a selected Long Drive hole is immediately displayed as enabled
+- [x] Run regression coverage, validate the mobile admin flow, checkpoint, and publish

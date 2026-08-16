@@ -10,16 +10,24 @@ export default function AdminLongDrive() {
   const { tripId, roundId } = useParams<{ tripId: string; roundId: string }>();
   const tId = Number(tripId);
   const rId = Number(roundId);
+  const utils = trpc.useUtils();
 
   const { data: trip } = trpc.trips.get.useQuery({ id: tId });
-  const { data: roundData } = trpc.rounds.get.useQuery({ id: rId });
+  const { data: roundData, refetch: refetchRound } = trpc.rounds.get.useQuery({ id: rId });
   const round = roundData?.round;
   const holes = roundData?.holes;
 
   const { data: ldEntries, refetch } = trpc.longDrive.getByRound.useQuery({ roundId: rId });
 
   const configure = trpc.longDrive.configure.useMutation({
-    onSuccess: () => { toast.success("Long Drive updated"); refetch(); },
+    onSuccess: async () => {
+      await Promise.all([
+        refetchRound(),
+        refetch(),
+        utils.rounds.list.invalidate({ tripId: tId }),
+      ]);
+      toast.success("Long Drive updated");
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
