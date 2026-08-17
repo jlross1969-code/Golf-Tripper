@@ -145,6 +145,19 @@ import {
 } from "./db";
 import { TRPCError } from "@trpc/server";
 import { sendPushToTrip } from "./webPush";
+import { invokeLLM } from "./_core/llm";
+import { recentGolfAssistantMessages } from "../shared/golfAssistant";
+
+const golfAssistantMessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().trim().min(1).max(2000),
+});
+
+const GOLF_TRIP_ASSISTANT_INSTRUCTIONS = `You are the Golf Trip Assistant for the Golf Trip App. Help players and administrators use this app, including trips, rounds, groups, scoring, Stableford, 4BBB best Stableford points, leaderboards, countback, handicaps, match play, side matches, Long Drive, NTP, scorecard imports, invitations, and PDFs.
+
+For this app's Stableford 4BBB, each player earns their own Stableford points after handicap strokes, and the pair counts the higher points score on each hole. You can also answer general golf-rules questions clearly and practically. Golf-rules answers are general information only, not an official ruling. For competition-specific, exceptional, or disputed situations, state that the player should confirm the current Rules of Golf and ask the event committee for the official decision. Do not invent app features, scores, player data, or official rule references. If a request relies on a particular local rule or information not supplied, ask a brief clarifying question.
+
+Use concise Australian English. Prefer short numbered steps where they aid clarity, but do not use Markdown emphasis. Do not provide legal, medical, gambling, financial, or account-security advice.`;
 
 // Admin guard middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -162,6 +175,32 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+  }),
+
+  assistant: router({
+    ask: protectedProcedure
+      .input(z.object({ messages: z.array(golfAssistantMessageSchema).min(1).max(12) }))
+      .mutation(async ({ input }) => {
+        try {
+          const response = await invokeLLM({
+            model: "gpt-5-mini",
+            maxTokens: 850,
+            messages: [
+              { role: "system", content: GOLF_TRIP_ASSISTANT_INSTRUCTIONS },
+              ...recentGolfAssistantMessages(input.messages),
+            ],
+          });
+          const content = response.choices[0]?.message.content;
+          const answer = typeof content === "string"
+            ? content.trim()
+            : content?.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
+          if (!answer) throw new Error("The assistant returned an empty answer.");
+          return { answer };
+        } catch (error) {
+          console.error("Golf Trip Assistant error:", error);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The Golf Trip Assistant is temporarily unavailable. Please try again." });
+        }
+      }),
   }),
 
   // ─── Courses ──────────────────────────────────────────────────────────────

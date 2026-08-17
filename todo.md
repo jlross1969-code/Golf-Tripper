@@ -744,3 +744,12 @@
 - [x] Add editable import preview for course name, hole par, stroke index, and selected-tee distances
 - [x] Save the confirmed import as a course and its 18 holes without duplicating entries
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Golf Trip AI Assistant
+
+- [x] Audit existing chat and navigation patterns for the assistant entry point
+- [x] Add a protected server-side AI assistant procedure using the built-in model service
+- [x] Scope assistant guidance to the app and general golf rules, with an official-ruling disclaimer
+- [x] Build a mobile-friendly assistant page with prompts, question history, loading and error states
+- [x] Add assistant access from player and admin navigation
+- [x] Add tests, validate mobile UI, checkpoint, and publish

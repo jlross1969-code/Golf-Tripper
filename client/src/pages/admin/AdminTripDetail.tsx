@@ -1,6 +1,6 @@
 import { Link, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users, Calendar, BarChart2, Flag, Mail, Trophy } from "lucide-react";
+import { ArrowLeft, Users, Calendar, BarChart2, Flag, Mail, Trophy, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { PremiumFeatureBadge } from "@/components/PremiumFeatureBadge";
 import { EditTripDialog } from "@/components/EditTripDialog";
@@ -34,6 +34,7 @@ export default function AdminTripDetail() {
         />
       ),
     },
+    { href: "/assistant", icon: Sparkles, label: "Golf Trip AI Assistant" },
     { href: `/trip/${tripId}`, icon: Flag, label: "View Trip Dashboard" },
   ];
 

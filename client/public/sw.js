@@ -1,8 +1,9 @@
 // Golf Trip App — Service Worker v1.0
 // Strategy: Network-first for API calls, cache-first for static assets, offline fallback for navigation
 
-const CACHE_NAME = 'golf-trip-v1';
+const CACHE_NAME = 'golf-trip-v2';
 const OFFLINE_URL = '/offline.html';
+const IS_DEVELOPMENT = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1' || self.location.hostname.endsWith('.manus.computer');
 
 const PRECACHE_ASSETS = [
   '/',
@@ -12,6 +13,10 @@ const PRECACHE_ASSETS = [
 
 // ── Install: precache shell assets ──────────────────────────────────────────
 self.addEventListener('install', (event) => {
+  if (IS_DEVELOPMENT) {
+    self.skipWaiting();
+    return;
+  }
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_ASSETS))
   );
@@ -20,6 +25,14 @@ self.addEventListener('install', (event) => {
 
 // ── Activate: clean up old caches ───────────────────────────────────────────
 self.addEventListener('activate', (event) => {
+  if (IS_DEVELOPMENT) {
+    event.waitUntil(
+      caches.keys()
+        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        .then(() => self.registration.unregister())
+    );
+    return;
+  }
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
@@ -30,6 +43,7 @@ self.addEventListener('activate', (event) => {
 
 // ── Fetch: routing strategy ──────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
+  if (IS_DEVELOPMENT) return;
   const { request } = event;
   const url = new URL(request.url);
 

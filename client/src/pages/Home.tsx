@@ -3,7 +3,7 @@ import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
-import { Trophy, Flag, Users, BarChart2, Bell, ChevronRight, LogIn, Radio } from "lucide-react";
+import { Trophy, Flag, Users, BarChart2, Bell, ChevronRight, LogIn, Radio, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function Home() {
@@ -30,6 +30,9 @@ export default function Home() {
           {isAuthenticated && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-muted-foreground">{user?.name}</span>
+              <Link href="/assistant">
+                <Button variant="outline" size="sm" className="gap-2"><Sparkles className="w-3.5 h-3.5" /> Assistant</Button>
+              </Link>
               {(user?.role === "admin" || trips?.some((t) => (t as any).isCoAdmin)) && (
                 <Link href="/admin">
                   <Button variant="outline" size="sm">Admin Panel</Button>

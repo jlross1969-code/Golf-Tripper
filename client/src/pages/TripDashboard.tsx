@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User, Zap, BookOpen } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User, Zap, BookOpen, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -79,6 +79,12 @@ export default function TripDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/assistant">
+            <Button variant="outline" size="sm" className="gap-2">
+              <Sparkles className="w-4 h-4" />
+              Ask AI
+            </Button>
+          </Link>
           <Link href={`/trip/${id}/chat`}>
             <Button variant="outline" size="sm" className="gap-2">
               <MessageCircle className="w-4 h-4" />
@@ -144,6 +150,19 @@ export default function TripDashboard() {
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </div>
+          </Link>
+
+          <Link href="/assistant">
+            <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-primary/15 transition-colors active:scale-[0.97]">
+              <div className="flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="font-semibold text-foreground text-sm">Golf Trip Assistant</p>
+                  <p className="text-xs text-muted-foreground">App help and general golf rules</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-primary" />
             </div>
           </Link>
 

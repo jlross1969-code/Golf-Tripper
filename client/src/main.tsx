@@ -72,13 +72,19 @@ const trpcClient = trpc.createClient({
   ],
 });
 
-// Register service worker for PWA support
-if ('serviceWorker' in navigator) {
+// PWA caching is production-only. Development previews use Vite modules that
+// must always be fetched fresh; an older service worker can otherwise mix React
+// module versions and trigger invalid-hook-call errors.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')
       .then((reg) => console.log('[SW] Registered, scope:', reg.scope))
       .catch((err) => console.warn('[SW] Registration failed:', err));
+  });
+} else if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => registration.unregister());
   });
 }
 
