@@ -98,6 +98,9 @@ export const trips = mysqlTable("trips", {
   coursesRevealed: boolean("coursesRevealed").default(false).notNull(),
   courseRevealAt: timestamp("courseRevealAt"),
   courseRevealCronTaskUid: varchar("courseRevealCronTaskUid", { length: 65 }),
+  paymentDueAt: timestamp("paymentDueAt"),
+  paymentReminderAt: timestamp("paymentReminderAt"),
+  paymentReminderCronTaskUid: varchar("paymentReminderCronTaskUid", { length: 65 }),
   // Optional co-admin trusted to manage the organiser's trip payment ledger.
   financialManagerUserId: int("financialManagerUserId"),
   createdBy: int("createdBy").notNull(),
@@ -195,6 +198,54 @@ export const tripScheduledAnnouncements = mysqlTable("trip_scheduled_announcemen
 });
 
 export type TripScheduledAnnouncement = typeof tripScheduledAnnouncements.$inferSelect;
+
+// ─── Trip Itinerary ───────────────────────────────────────────────────────────
+
+export const tripItineraryItems = mysqlTable("trip_itinerary_items", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  type: mysqlEnum("type", ["transport", "accommodation", "activity", "other"]).notNull(),
+  title: varchar("title", { length: 180 }).notNull(),
+  location: varchar("location", { length: 255 }),
+  startsAt: timestamp("startsAt"),
+  endsAt: timestamp("endsAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripItineraryItem = typeof tripItineraryItems.$inferSelect;
+
+export const tripItineraryAssignments = mysqlTable("trip_itinerary_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  itineraryItemId: int("itineraryItemId").notNull(),
+  userId: int("userId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripItineraryAssignment = typeof tripItineraryAssignments.$inferSelect;
+
+// ─── Trip Financial Calculator ─────────────────────────────────────────────────
+
+export const tripFinancialSettings = mysqlTable("trip_financial_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull().unique(),
+  contingencyPercent: float("contingencyPercent").default(0).notNull(),
+  rolloverCents: int("rolloverCents").default(0).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TripFinancialSettings = typeof tripFinancialSettings.$inferSelect;
+
+export const tripFinancialLineItems = mysqlTable("trip_financial_line_items", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  type: mysqlEnum("type", ["fixed_cost", "per_person_cost", "prize", "income"]).notNull(),
+  label: varchar("label", { length: 180 }).notNull(),
+  amountCents: int("amountCents").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripFinancialLineItem = typeof tripFinancialLineItems.$inferSelect;
 
 // ─── Rounds ───────────────────────────────────────────────────────────────────
 

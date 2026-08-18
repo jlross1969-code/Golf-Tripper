@@ -16,6 +16,8 @@ import {
   createNotification,
   createTripPayment,
   createTripScheduledAnnouncement,
+  createTripFinancialLineItem,
+  createTripItineraryItem,
   createRound,
   createSideMatch,
   createTrip,
@@ -40,6 +42,9 @@ import {
   getSideMatchesByGroup,
   getSideMatchesByRound,
   getTrip,
+  getTripByPaymentReminderTaskUid,
+  getTripFinancialPlan,
+  getTripItinerary,
   getTripPaymentSummary,
   getTripPayments,
   getTripScheduledAnnouncements,
@@ -67,7 +72,11 @@ import {
   updateRound,
   updateSideMatchStatus,
   deleteTrip,
+  deleteTripFinancialLineItem,
+  deleteTripItineraryItem,
   updateTrip,
+  updateTripItineraryAssignments,
+  setTripFinancialSettings,
   setTripPlayerPrice,
   reviewTripPayment,
   setTripScheduledAnnouncementTask,
@@ -725,6 +734,32 @@ export const appRouter = router({
       }),
   }),
 
+  tripItinerary: router({
+    list: protectedProcedure.input(z.object({ tripId: z.number() })).query(async ({ ctx, input }) => {
+      await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      return getTripItinerary(input.tripId);
+    }),
+    create: protectedProcedure.input(z.object({ tripId: z.number(), type: z.enum(["transport", "accommodation", "activity", "other"]), title: z.string().trim().min(1).max(180), location: z.string().trim().max(255).optional(), startsAt: z.string().optional(), endsAt: z.string().optional(), notes: z.string().trim().max(2000).optional(), assignedUserIds: z.array(z.number()).max(200).default([]) })).mutation(async ({ ctx, input }) => {
+      await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      for (const userId of input.assignedUserIds) if (!(await getTripPlayer(input.tripId, userId))) throw new TRPCError({ code: "BAD_REQUEST", message: "Assignments must be trip players." });
+      const id = await createTripItineraryItem({ ...input, location: input.location || undefined, notes: input.notes || undefined, startsAt: input.startsAt ? new Date(input.startsAt) : undefined, endsAt: input.endsAt ? new Date(input.endsAt) : undefined });
+      return { id };
+    }),
+    setAssignments: protectedProcedure.input(z.object({ tripId: z.number(), itemId: z.number(), userIds: z.array(z.number()).max(200) })).mutation(async ({ ctx, input }) => {
+      await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      if (!(await getTripItinerary(input.tripId)).some((item) => item.id === input.itemId)) throw new TRPCError({ code: "NOT_FOUND", message: "Itinerary item not found" });
+      for (const userId of input.userIds) if (!(await getTripPlayer(input.tripId, userId))) throw new TRPCError({ code: "BAD_REQUEST", message: "Assignments must be trip players." });
+      await updateTripItineraryAssignments(input.itemId, input.userIds);
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ tripId: z.number(), itemId: z.number() })).mutation(async ({ ctx, input }) => {
+      await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      if (!(await getTripItinerary(input.tripId)).some((item) => item.id === input.itemId)) throw new TRPCError({ code: "NOT_FOUND", message: "Itinerary item not found" });
+      await deleteTripItineraryItem(input.itemId);
+      return { success: true };
+    }),
+  }),
+
   tripFinances: router({
     access: protectedProcedure
       .input(z.object({ tripId: z.number() }))
@@ -748,6 +783,48 @@ export const appRouter = router({
         const summary = await getTripPaymentSummary(input.tripId);
         return summary.find((entry) => entry.userId === ctx.user.id) ?? { userId: ctx.user.id, displayName: "Player", priceCents: 0, confirmedCents: 0, outstandingCents: 0, payments: [] };
       }),
+    plan: protectedProcedure.input(z.object({ tripId: z.number() })).query(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      return getTripFinancialPlan(input.tripId);
+    }),
+    setPaymentSchedule: protectedProcedure.input(z.object({ tripId: z.number(), dueAt: z.string().optional(), reminderAt: z.string().optional() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const dueAt = input.dueAt ? new Date(input.dueAt) : undefined;
+      const reminderAt = input.reminderAt ? new Date(input.reminderAt) : undefined;
+      if (dueAt && Number.isNaN(dueAt.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a valid payment due date." });
+      if (reminderAt && (Number.isNaN(reminderAt.getTime()) || !isFutureSchedule(reminderAt))) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a reminder time at least one minute in the future." });
+      let taskUid: string | undefined;
+      if (reminderAt) {
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        const job = await createHeartbeatJob({ name: `payment-reminder-${input.tripId}-${reminderAt.getTime()}`, cron: toOneTimeUtcCron(reminderAt), path: "/api/scheduled/payment-reminder", payload: {}, description: `Payment due reminder for trip ${input.tripId}` }, sessionToken);
+        taskUid = job.taskUid;
+      }
+      await updateTrip(input.tripId, { paymentDueAt: dueAt, paymentReminderAt: reminderAt, paymentReminderCronTaskUid: taskUid ?? null } as any);
+      return { success: true };
+    }),
+    savePlanSettings: protectedProcedure.input(z.object({ tripId: z.number(), contingencyPercent: z.number().min(0).max(100), rolloverCents: z.number().int().min(0).max(100_000_000) })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      await setTripFinancialSettings(input.tripId, input.contingencyPercent, input.rolloverCents);
+      return { success: true };
+    }),
+    addPlanLine: protectedProcedure.input(z.object({ tripId: z.number(), type: z.enum(["fixed_cost", "per_person_cost", "prize", "income"]), label: z.string().trim().min(1).max(180), amountCents: z.number().int().min(0).max(100_000_000) })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      return { id: await createTripFinancialLineItem(input) };
+    }),
+    removePlanLine: protectedProcedure.input(z.object({ tripId: z.number(), lineId: z.number() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const plan = await getTripFinancialPlan(input.tripId);
+      if (!plan.lines.some((line) => line.id === input.lineId)) throw new TRPCError({ code: "NOT_FOUND", message: "Financial line item not found" });
+      await deleteTripFinancialLineItem(input.lineId);
+      return { success: true };
+    }),
+    applySuggestedPrice: protectedProcedure.input(z.object({ tripId: z.number() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const plan = await getTripFinancialPlan(input.tripId);
+      const players = await getTripPlayers(input.tripId);
+      await Promise.all(players.map((player) => setTripPlayerPrice(input.tripId, player.userId, plan.suggestedPricePerPersonCents)));
+      return { priceCents: plan.suggestedPricePerPersonCents };
+    }),
     setFinancialManager: protectedProcedure
       .input(z.object({ tripId: z.number(), userId: z.number().nullable() }))
       .mutation(async ({ ctx, input }) => {

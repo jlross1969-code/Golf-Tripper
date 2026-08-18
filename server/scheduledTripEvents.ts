@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
-import { createNotification, getTrip, getTripByCourseRevealTaskUid, getTripScheduledAnnouncementByTaskUid, markTripScheduledAnnouncementSent, sendTripMessage, updateTrip } from "./db";
-import { sendPushToTrip } from "./webPush";
+import { createNotification, getTrip, getTripByCourseRevealTaskUid, getTripByPaymentReminderTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, markTripScheduledAnnouncementSent, sendTripMessage, updateTrip } from "./db";
+import { sendPushToTrip, sendPushToUsers } from "./webPush";
 
 function cronOnly(user: Awaited<ReturnType<typeof sdk.authenticateRequest>>, res: Response) {
   if (!user.isCron || !user.taskUid) {
@@ -46,6 +46,26 @@ export function registerScheduledTripEventRoutes(app: Express) {
       res.json({ ok: true, revealed: trip.id });
     } catch (error) {
       console.error("[ScheduledTripEvents] course reveal error", error);
+      res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/scheduled/payment-reminder", async (req: Request, res: Response) => {
+    try {
+      const taskUid = cronOnly(await sdk.authenticateRequest(req), res);
+      if (!taskUid) return;
+      const trip = await getTripByPaymentReminderTaskUid(taskUid);
+      if (!trip) return res.json({ ok: true, skipped: "orphan" });
+      const balances = await getTripPaymentSummary(trip.id);
+      const recipients = balances.filter((balance) => balance.outstandingCents > 0).map((balance) => balance.userId);
+      if (!recipients.length) return res.json({ ok: true, skipped: "all-paid" });
+      const dueLabel = trip.paymentDueAt ? new Date(trip.paymentDueAt).toLocaleDateString("en-AU") : "soon";
+      const message = `A payment is still outstanding for ${trip.name}. Due date: ${dueLabel}.`;
+      await createNotification({ tripId: trip.id, message, type: "general" });
+      void sendPushToUsers(recipients, { title: `Payment reminder · ${trip.name}`, body: message, tag: `payment-reminder-${trip.id}`, url: `/trip/${trip.id}/payments` });
+      res.json({ ok: true, reminded: recipients.length });
+    } catch (error) {
+      console.error("[ScheduledTripEvents] payment reminder error", error);
       res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
     }
   });

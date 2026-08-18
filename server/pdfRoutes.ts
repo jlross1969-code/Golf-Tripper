@@ -1,6 +1,7 @@
 import { Express, Request, Response } from "express";
 import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
 import { calculate4BBBStablefordPoints, calculateSkins } from "../shared/scoring";
+import { sdk } from "./_core/sdk";
 import {
   getAchievementsByTrip,
   getAchievementsByRound,
@@ -12,11 +13,35 @@ import {
   getRoundScorecard,
   getScoresByRoundAndUser,
   getTrip,
+  getTripPaymentSummary,
   getTripPlayers,
   getDailySideMatchResults,
 } from "./db";
 
 export function registerPdfRoutes(app: Express) {
+  app.get("/api/export/payment-ledger/:tripId", async (req: Request, res: Response) => {
+    try {
+      const tripId = Number(req.params.tripId);
+      if (!Number.isInteger(tripId)) return res.status(400).json({ error: "Invalid tripId" });
+      const user = await sdk.authenticateRequest(req);
+      const trip = await getTrip(tripId);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      if (user.role !== "admin" && trip.createdBy !== user.id && trip.financialManagerUserId !== user.id) return res.status(403).json({ error: "Financial manager access required" });
+      const summary = await getTripPaymentSummary(tripId);
+      const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+      const rows = [
+        ["Player", "Trip price", "Confirmed", "Outstanding", "Payment status", "Payment amount", "Submitted", "Reviewed", "Note"],
+        ...summary.flatMap((entry) => entry.payments.length ? entry.payments.map((payment) => [entry.displayName, (entry.priceCents / 100).toFixed(2), (entry.confirmedCents / 100).toFixed(2), (entry.outstandingCents / 100).toFixed(2), payment.status, (payment.amountCents / 100).toFixed(2), new Date(payment.createdAt).toISOString(), payment.reviewedAt ? new Date(payment.reviewedAt).toISOString() : "", payment.note ?? ""]) : [[entry.displayName, (entry.priceCents / 100).toFixed(2), (entry.confirmedCents / 100).toFixed(2), (entry.outstandingCents / 100).toFixed(2), "", "", "", "", ""]]),
+      ];
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${trip.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-payment-ledger.csv"`);
+      res.send(rows.map((row) => row.map(escape).join(",")).join("\n"));
+    } catch (error) {
+      console.error("[Export] payment ledger error", error);
+      res.status(500).json({ error: "Failed to export payment ledger" });
+    }
+  });
+
   app.get("/api/pdf/side-matches/:roundId", async (req: Request, res: Response) => {
     try {
       const roundId = Number(req.params.roundId);

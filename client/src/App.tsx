@@ -44,6 +44,7 @@ import AppSettings from "./pages/AppSettings";
 import AdminTripAppearance from "./pages/admin/AdminTripAppearance";
 import AdminTripFinances from "./pages/admin/AdminTripFinances";
 import TripPayments from "./pages/TripPayments";
+import TripItinerary from "./pages/TripItinerary";
 
 function Router() {
   return (
@@ -63,6 +64,7 @@ function Router() {
       <Route path="/trip/:tripId/my-handicap" component={MyHandicap} />
       <Route path="/trip/:tripId/my-profile" component={MyProfile} />
       <Route path="/trip/:tripId/payments" component={TripPayments} />
+      <Route path="/trip/:tripId/itinerary" component={TripItinerary} />
       <Route path="/round/:roundId/ntp" component={NTPResults} />
       <Route path="/round/:roundId/long-drive" component={LongDriveResults} />
       <Route path="/trip/:tripId/my-group/:roundId" component={GroupPairing} />

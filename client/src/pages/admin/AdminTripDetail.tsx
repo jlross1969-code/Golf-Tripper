@@ -1,6 +1,6 @@
 import { Link, useParams } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users, Calendar, BarChart2, Flag, Mail, Trophy, Sparkles, MessageCircleQuestion, Palette, Banknote } from "lucide-react";
+import { ArrowLeft, Users, Calendar, BarChart2, Flag, Mail, Trophy, Sparkles, MessageCircleQuestion, Palette, Banknote, Plane } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { PremiumFeatureBadge } from "@/components/PremiumFeatureBadge";
 import { EditTripDialog } from "@/components/EditTripDialog";
@@ -37,6 +37,7 @@ export default function AdminTripDetail() {
     { href: `/admin/trips/${tripId}/faqs`, icon: MessageCircleQuestion, label: "Trip FAQs for AI" },
     { href: `/admin/trips/${tripId}/appearance`, icon: Palette, label: "Trip Appearance & Event Days" },
     { href: `/admin/trips/${tripId}/finances`, icon: Banknote, label: "Trip Finances & Payments" },
+    { href: `/trip/${tripId}/itinerary`, icon: Plane, label: "Travel & Accommodation Itinerary" },
     { href: `/assistant?tripId=${tripId}`, icon: Sparkles, label: "Golf Trip AI Assistant" },
     { href: `/trip/${tripId}`, icon: Flag, label: "View Trip Dashboard" },
   ];

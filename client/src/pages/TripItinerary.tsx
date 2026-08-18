@@ -1,0 +1,34 @@
+import { useMemo, useState } from "react";
+import { Link, useParams } from "wouter";
+import { ArrowLeft, BedDouble, Bus, CalendarDays, MapPin, Plus, Trash2, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+
+const iconFor = (type: string) => type === "accommodation" ? BedDouble : type === "transport" ? Bus : CalendarDays;
+const labelFor = (type: string) => ({ transport: "Transport", accommodation: "Accommodation", activity: "Activity", other: "Other" } as Record<string, string>)[type] ?? type;
+
+export default function TripItinerary() {
+  const { tripId } = useParams<{ tripId: string }>();
+  const id = Number(tripId);
+  const { data: trip } = trpc.trips.get.useQuery({ id });
+  const { data: items = [], refetch } = trpc.tripItinerary.list.useQuery({ tripId: id }, { enabled: !!id });
+  const { data: players = [] } = trpc.players.tripPlayers.useQuery({ tripId: id }, { enabled: !!id });
+  const { data: moderation } = trpc.chat.moderationStatus.useQuery({ tripId: id }, { enabled: !!id });
+  const [adding, setAdding] = useState(false);
+  const [type, setType] = useState<"transport" | "accommodation" | "activity" | "other">("transport");
+  const [title, setTitle] = useState("");
+  const [location, setLocation] = useState("");
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const [assignedUserIds, setAssignedUserIds] = useState<number[]>([]);
+  const create = trpc.tripItinerary.create.useMutation({ onSuccess: () => { toast.success("Itinerary item added"); setAdding(false); setTitle(""); setLocation(""); setStartsAt(""); setEndsAt(""); setNotes(""); setAssignedUserIds([]); refetch(); }, onError: (error) => toast.error(error.message) });
+  const remove = trpc.tripItinerary.remove.useMutation({ onSuccess: () => { toast.success("Itinerary item removed"); refetch(); }, onError: (error) => toast.error(error.message) });
+  const grouped = useMemo(() => [...items].sort((a, b) => (a.startsAt ? new Date(a.startsAt).getTime() : Number.MAX_SAFE_INTEGER) - (b.startsAt ? new Date(b.startsAt).getTime() : Number.MAX_SAFE_INTEGER)), [items]);
+
+  return <div className="min-h-screen bg-background"><header className="border-b border-border px-6 py-4"><div className="mx-auto flex max-w-3xl items-center gap-3"><Link href={`/trip/${id}`}><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link><CalendarDays className="h-5 w-5 text-primary" /><div className="min-w-0 flex-1"><h1 className="font-bold text-foreground">Trip itinerary</h1><p className="truncate text-xs text-muted-foreground">{trip?.name}</p></div>{moderation?.canModerate && <Button size="sm" onClick={() => setAdding((current) => !current)}><Plus className="mr-1 h-4 w-4" />Add</Button>}</div></header><main className="mx-auto max-w-3xl space-y-4 px-6 py-8">{adding && <Card><CardHeader><CardTitle className="text-base">Add travel or accommodation</CardTitle></CardHeader><CardContent className="space-y-3"><div className="grid grid-cols-2 gap-2"><select value={type} onChange={(event) => setType(event.target.value as typeof type)} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="transport">Transport</option><option value="accommodation">Accommodation</option><option value="activity">Activity</option><option value="other">Other</option></select><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Airport coach" /></div><Input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Location or meeting point" /><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><Input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /><Input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} /></div><Textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Booking reference, room notes, departure instructions…" maxLength={2000} /><div><p className="mb-2 text-sm font-medium text-foreground">Assign players</p><div className="flex flex-wrap gap-2">{players.map((player) => { const selected = assignedUserIds.includes(player.userId); const name = player.nickname ?? player.user?.name ?? `Player ${player.userId}`; return <Button type="button" key={player.userId} size="sm" variant={selected ? "default" : "outline"} onClick={() => setAssignedUserIds((current) => selected ? current.filter((value) => value !== player.userId) : [...current, player.userId])}>{name}</Button>; })}</div></div><Button className="w-full" disabled={!title.trim() || create.isPending} onClick={() => create.mutate({ tripId: id, type, title: title.trim(), location: location.trim() || undefined, startsAt: startsAt ? new Date(startsAt).toISOString() : undefined, endsAt: endsAt ? new Date(endsAt).toISOString() : undefined, notes: notes.trim() || undefined, assignedUserIds })}>{create.isPending ? "Saving…" : "Add to itinerary"}</Button></CardContent></Card>}{grouped.length === 0 ? <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No travel or accommodation items have been added yet.</CardContent></Card> : grouped.map((item) => { const Icon = iconFor(item.type); return <Card key={item.id}><CardContent className="p-4"><div className="flex gap-3"><div className="rounded-lg bg-primary/10 p-2 text-primary"><Icon className="h-5 w-5" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold text-foreground">{item.title}</p><p className="text-xs text-primary">{labelFor(item.type)}</p></div>{moderation?.canModerate && <Button size="icon" variant="ghost" className="text-destructive" onClick={() => remove.mutate({ tripId: id, itemId: item.id })}><Trash2 className="h-4 w-4" /></Button>}</div>{item.location && <p className="mt-2 flex items-center gap-1 text-sm text-muted-foreground"><MapPin className="h-3.5 w-3.5" />{item.location}</p>}{item.startsAt && <p className="mt-1 text-sm text-muted-foreground">{new Date(item.startsAt).toLocaleString()} {item.endsAt ? `– ${new Date(item.endsAt).toLocaleString()}` : ""}</p>}{item.notes && <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">{item.notes}</p>}{item.assignments.length > 0 && <p className="mt-3 flex items-center gap-1 text-xs text-muted-foreground"><Users className="h-3.5 w-3.5" />{item.assignments.map((assignment) => assignment.user?.name ?? `Player ${assignment.userId}`).join(", ")}</p>}</div></div></CardContent></Card>; })}</main></div>;
+}

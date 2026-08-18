@@ -904,3 +904,12 @@
 - [x] Add player payment submissions, balances, and admin confirmation/partial-payment management
 - [x] Add a trip financial-manager permission and access-controlled financial views
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Payment Reminders, Itinerary, and Financial Calculator
+
+- [x] Review payment scheduling, finance ledger, player roster, and trip planning flows
+- [x] Add secure storage and procedures for payment reminders, itinerary assignments, and calculator line items
+- [x] Implement scheduled due-date payment reminders and payment-ledger CSV export
+- [x] Build accommodation and transport itinerary management with player assignments
+- [x] Build trip cost and income calculator with fixed/per-person costs, prizes, sponsorship, rollover funds, contingency, and per-player price output
+- [x] Add tests, validate mobile UI, checkpoint, and publish

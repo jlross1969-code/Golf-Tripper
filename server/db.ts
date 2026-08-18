@@ -47,6 +47,10 @@ import {
   tripMessageReactions,
   tripAppearanceSchedules,
   tripAppearanceTemplates,
+  tripFinancialLineItems,
+  tripFinancialSettings,
+  tripItineraryAssignments,
+  tripItineraryItems,
   tripPayments,
   tripScheduledAnnouncements,
   tripPlayers,
@@ -83,6 +87,7 @@ import { calculateCountback, compareCountback, type CountbackBreakdown } from ".
 import { filterTripFaqsForRound } from "../shared/tripFaqVisibility";
 import { getSideMatchDailyLeader, sortSideMatchDailyPlayers } from "../shared/sideMatchDailyResults";
 import { calculateTripPaymentBalance } from "../shared/tripPayments";
+import { calculateTripFinancialPlan } from "../shared/tripFinanceCalculator";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -487,6 +492,86 @@ export async function getTripPaymentSummary(tripId: number) {
     const balance = calculateTripPaymentBalance(player.tripPriceCents, playerPayments);
     return { userId: player.userId, displayName: player.nickname ?? player.user?.name ?? `Player ${player.userId}`, priceCents: player.tripPriceCents, ...balance, payments: playerPayments };
   });
+}
+
+export async function getTripByPaymentReminderTaskUid(taskUid: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [trip] = await db.select().from(trips).where(eq(trips.paymentReminderCronTaskUid, taskUid)).limit(1);
+  return trip;
+}
+
+export async function getTripItinerary(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const items = await db.select().from(tripItineraryItems).where(eq(tripItineraryItems.tripId, tripId)).orderBy(tripItineraryItems.startsAt, tripItineraryItems.createdAt);
+  const itemIds = items.map((item) => item.id);
+  if (!itemIds.length) return [];
+  const assignments = await db.select().from(tripItineraryAssignments).where(inArray(tripItineraryAssignments.itineraryItemId, itemIds));
+  const userIds = [...new Set(assignments.map((assignment) => assignment.userId))];
+  const assignedUsers = userIds.length ? await db.select().from(users).where(inArray(users.id, userIds)) : [];
+  const userMap = new Map(assignedUsers.map((user) => [user.id, user]));
+  return items.map((item) => ({ ...item, assignments: assignments.filter((assignment) => assignment.itineraryItemId === item.id).map((assignment) => ({ ...assignment, user: userMap.get(assignment.userId) })) }));
+}
+
+export async function createTripItineraryItem(data: { tripId: number; type: "transport" | "accommodation" | "activity" | "other"; title: string; location?: string; startsAt?: Date; endsAt?: Date; notes?: string; assignedUserIds: number[] }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripItineraryItems).values({ tripId: data.tripId, type: data.type, title: data.title, location: data.location, startsAt: data.startsAt, endsAt: data.endsAt, notes: data.notes });
+  const id = (result as any).insertId as number;
+  if (data.assignedUserIds.length) await db.insert(tripItineraryAssignments).values([...new Set(data.assignedUserIds)].map((userId) => ({ itineraryItemId: id, userId })));
+  return id;
+}
+
+export async function updateTripItineraryAssignments(itemId: number, userIds: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripItineraryAssignments).where(eq(tripItineraryAssignments.itineraryItemId, itemId));
+  if (userIds.length) await db.insert(tripItineraryAssignments).values([...new Set(userIds)].map((userId) => ({ itineraryItemId: itemId, userId })));
+}
+
+export async function deleteTripItineraryItem(itemId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripItineraryAssignments).where(eq(tripItineraryAssignments.itineraryItemId, itemId));
+  await db.delete(tripItineraryItems).where(eq(tripItineraryItems.id, itemId));
+}
+
+export async function getTripFinancialSettings(tripId: number) {
+  const db = await getDb();
+  if (!db) return { contingencyPercent: 0, rolloverCents: 0 };
+  const [settings] = await db.select().from(tripFinancialSettings).where(eq(tripFinancialSettings.tripId, tripId)).limit(1);
+  return settings ?? { contingencyPercent: 0, rolloverCents: 0 };
+}
+
+export async function setTripFinancialSettings(tripId: number, contingencyPercent: number, rolloverCents: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(tripFinancialSettings).values({ tripId, contingencyPercent, rolloverCents }).onDuplicateKeyUpdate({ set: { contingencyPercent, rolloverCents } });
+}
+
+export async function getTripFinancialLineItems(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripFinancialLineItems).where(eq(tripFinancialLineItems.tripId, tripId)).orderBy(desc(tripFinancialLineItems.createdAt));
+}
+
+export async function createTripFinancialLineItem(data: { tripId: number; type: "fixed_cost" | "per_person_cost" | "prize" | "income"; label: string; amountCents: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripFinancialLineItems).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function deleteTripFinancialLineItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripFinancialLineItems).where(eq(tripFinancialLineItems.id, id));
+}
+
+export async function getTripFinancialPlan(tripId: number) {
+  const [settings, lines, players] = await Promise.all([getTripFinancialSettings(tripId), getTripFinancialLineItems(tripId), getTripPlayers(tripId)]);
+  return { settings, lines, ...calculateTripFinancialPlan(lines, players.length, settings.contingencyPercent, settings.rolloverCents) };
 }
 
 export async function removePlayerFromTrip(tripId: number, userId: number): Promise<void> {
