@@ -3,7 +3,7 @@ import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
-import { Trophy, Flag, Users, BarChart2, Bell, ChevronRight, LogIn, Radio, Sparkles } from "lucide-react";
+import { Trophy, Flag, Users, BarChart2, Bell, ChevronRight, LogIn, Radio, Settings, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export default function Home() {
@@ -32,6 +32,9 @@ export default function Home() {
               <span className="text-sm text-muted-foreground">{user?.name}</span>
               <Link href="/assistant">
                 <Button variant="outline" size="sm" className="gap-2"><Sparkles className="w-3.5 h-3.5" /> Assistant</Button>
+              </Link>
+              <Link href="/settings">
+                <Button variant="outline" size="sm" className="gap-2"><Settings className="w-3.5 h-3.5" /> Settings</Button>
               </Link>
               {(user?.role === "admin" || trips?.some((t) => (t as any).isCoAdmin)) && (
                 <Link href="/admin">

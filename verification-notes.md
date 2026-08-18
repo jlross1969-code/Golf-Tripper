@@ -26,3 +26,9 @@
 
 - `/trip/1/chat` renders message bubbles, the photo-picker button, optional-comment input, and send control without horizontal overflow at 390px width.
 - The chat composer remains visible above the mobile install prompt after adding responsive bottom spacing.
+
+## Photo Actions and Appearance Settings
+
+- `/settings` renders all four colour-scheme cards with a clear selected indicator on the Fairway Green default at 390px width.
+- `/trip/1/chat` retains a reachable photo-picker control and stable mobile composer layout after the new viewer actions were added.
+- The install prompt overlaps the lower edge of long settings content in the capture, but the page remains vertically scrollable to reach each option.

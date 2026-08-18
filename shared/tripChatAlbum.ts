@@ -22,3 +22,7 @@ export function reorderTripChatPhotos<T>(photos: readonly T[], fromIndex: number
   reordered.splice(toIndex, 0, moved);
   return reordered;
 }
+
+export function canManageTripChatAttachment(authorUserId: number, currentUserId: number): boolean {
+  return authorUserId === currentUserId;
+}

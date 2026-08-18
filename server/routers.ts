@@ -169,6 +169,7 @@ import { recentGolfAssistantMessages } from "../shared/golfAssistant";
 import { createAssistantConversationTitle, formatTripFaqContext } from "../shared/assistantEnhancements";
 import { TRIP_FAQ_CATEGORIES } from "../shared/tripFaq";
 import { isTripChatImageReference } from "../shared/tripChatAttachment";
+import { canManageTripChatAttachment } from "../shared/tripChatAlbum";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -2032,8 +2033,19 @@ export const appRouter = router({
         await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
         const result = await getTripChatAttachment(input.attachmentId);
         if (!result || result.tripId !== input.tripId || result.attachment.isRemoved) throw new TRPCError({ code: "NOT_FOUND", message: "Attachment not found" });
-        if (result.messageUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Only the photo author can edit its caption" });
+        if (!canManageTripChatAttachment(result.messageUserId, ctx.user.id)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the photo author can edit its caption" });
         await updateTripChatAttachmentCaption(input.attachmentId, input.caption?.trim() || undefined);
+        return { success: true };
+      }),
+
+    deleteOwnAttachment: protectedProcedure
+      .input(z.object({ tripId: z.number(), attachmentId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const result = await getTripChatAttachment(input.attachmentId);
+        if (!result || result.tripId !== input.tripId || result.attachment.isRemoved) throw new TRPCError({ code: "NOT_FOUND", message: "Attachment not found" });
+        if (!canManageTripChatAttachment(result.messageUserId, ctx.user.id)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the photo author can remove it" });
+        await removeTripChatAttachment(input.attachmentId, ctx.user.id);
         return { success: true };
       }),
 

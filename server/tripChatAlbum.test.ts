@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_TRIP_CHAT_IMAGES, isTripChatReactionEmoji, normaliseTripChatPhotoCaption, remainingTripChatImageSlots, reorderTripChatPhotos } from "../shared/tripChatAlbum";
+import { MAX_TRIP_CHAT_IMAGES, canManageTripChatAttachment, isTripChatReactionEmoji, normaliseTripChatPhotoCaption, remainingTripChatImageSlots, reorderTripChatPhotos } from "../shared/tripChatAlbum";
 
 describe("Trip Chat albums and reactions", () => {
   it("limits a chat album to four images", () => {
@@ -27,5 +27,10 @@ describe("Trip Chat albums and reactions", () => {
     expect(reorderTripChatPhotos(original, 0, 2)).toEqual(["second", "third", "first"]);
     expect(reorderTripChatPhotos(original, 2, 0)).toEqual(["third", "first", "second"]);
     expect(original).toEqual(["first", "second", "third"]);
+  });
+
+  it("allows only an attachment author to manage their photo", () => {
+    expect(canManageTripChatAttachment(12, 12)).toBe(true);
+    expect(canManageTripChatAttachment(12, 19)).toBe(false);
   });
 });

@@ -6,14 +6,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { formatDistanceToNow } from "date-fns";
-import { AlertCircle, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Flag, ImagePlus, Loader2, MessageCircle, Pencil, Send, ShieldAlert, SmilePlus, Trash2, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Download, Flag, ImagePlus, Loader2, MessageCircle, Pencil, RotateCcw, Send, Share2, ShieldAlert, SmilePlus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { TRIP_CHAT_IMAGE_MAX_BYTES, isTripChatImageType } from "../../../shared/tripChatAttachment";
 import { MAX_TRIP_CHAT_IMAGES, TRIP_CHAT_REACTION_OPTIONS, normaliseTripChatPhotoCaption, reorderTripChatPhotos } from "../../../shared/tripChatAlbum";
 
 type PendingImage = { file: File; previewUrl: string; caption: string };
-type ViewerImage = { id: number; imageUrl: string; imageAlt?: string | null; caption?: string | null };
+type ViewerImage = { id: number; imageUrl: string; imageAlt?: string | null; caption?: string | null; isOwn?: boolean };
 const REACTION_OPTIONS = TRIP_CHAT_REACTION_OPTIONS;
 const MAX_CHAT_IMAGES = MAX_TRIP_CHAT_IMAGES;
 
@@ -30,11 +30,15 @@ export default function TripChat() {
   const [reportReason, setReportReason] = useState("");
   const [reportsOpen, setReportsOpen] = useState(false);
   const [captionEditingAttachment, setCaptionEditingAttachment] = useState<{ id: number; caption: string } | null>(null);
+  const [deletingOwnAttachmentId, setDeletingOwnAttachmentId] = useState<number | null>(null);
   const [viewer, setViewer] = useState<{ images: ViewerImage[]; index: number } | null>(null);
+  const [viewerZoom, setViewerZoom] = useState(1);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
   const viewerTouchStart = useRef<number | null>(null);
+  const viewerPinchStart = useRef<number | null>(null);
+  const viewerPinchBase = useRef(1);
   const utils = trpc.useUtils();
 
   const { data: messages = [], isLoading } = trpc.chat.getMessages.useQuery(
@@ -69,11 +73,48 @@ export default function TripChat() {
     });
   }
   function changeViewerImage(direction: -1 | 1) {
+    setViewerZoom(1);
     setViewer((current) => {
       if (!current) return null;
       const index = Math.min(Math.max(current.index + direction, 0), current.images.length - 1);
       return { ...current, index };
     });
+  }
+  function touchDistance(touches: React.TouchList) {
+    if (touches.length < 2) return null;
+    return Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+  }
+  async function downloadViewerPhoto(image: ViewerImage) {
+    try {
+      const response = await fetch(image.imageUrl);
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "golf-trip-photo";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      window.open(image.imageUrl, "_blank", "noopener,noreferrer");
+    }
+  }
+  async function shareViewerPhoto(image: ViewerImage) {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Golf Trip photo", text: image.caption || "Shared from Golf Trip App", url: image.imageUrl });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(image.imageUrl);
+        setUploadError("Photo link copied to your clipboard.");
+      } else {
+        window.open(image.imageUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setUploadError("Unable to share this photo. Try downloading it instead.");
+    }
   }
 
   const sendMutation = trpc.chat.sendMessage.useMutation({
@@ -88,6 +129,7 @@ export default function TripChat() {
   const removeAttachmentMutation = trpc.chat.removeAttachment.useMutation({ onSuccess: () => { void utils.chat.getMessages.invalidate({ tripId: parsedTripId }); void utils.chat.listAttachmentReports.invalidate({ tripId: parsedTripId }); } });
   const dismissReportMutation = trpc.chat.dismissAttachmentReport.useMutation({ onSuccess: () => { void utils.chat.listAttachmentReports.invalidate({ tripId: parsedTripId }); } });
   const updateCaptionMutation = trpc.chat.updateAttachmentCaption.useMutation({ onSuccess: () => { setCaptionEditingAttachment(null); void utils.chat.getMessages.invalidate({ tripId: parsedTripId }); } });
+  const deleteOwnAttachmentMutation = trpc.chat.deleteOwnAttachment.useMutation({ onSuccess: () => { setDeletingOwnAttachmentId(null); setViewer(null); void utils.chat.getMessages.invalidate({ tripId: parsedTripId }); } });
 
   const chooseImages = (files: FileList | null) => {
     setUploadError(null);
@@ -149,7 +191,7 @@ export default function TripChat() {
               return <div key={msg.id} className={`group flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
                 {!isOwn && <span className="px-1 text-xs font-medium text-muted-foreground">{msg.userName ?? "Unknown"}</span>}
                 <div className={`max-w-[88%] overflow-hidden rounded-2xl text-sm leading-relaxed ${attachments.length ? "p-1" : "px-4 py-2"} ${isOwn ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted text-foreground"}`}>
-                  {attachments.length > 0 && <div className={`grid gap-1 ${attachments.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>{attachments.map((attachment, attachmentIndex) => <figure key={attachment.id} className="relative"><div className="relative"><button type="button" onClick={() => setViewer({ images: attachments, index: attachmentIndex })} className="block w-full" aria-label={`Open photo ${attachmentIndex + 1} full screen`}><img src={attachment.imageUrl} alt={attachment.imageAlt || "Trip chat attachment"} loading="lazy" className={`w-full rounded-xl object-cover ${attachments.length === 1 ? "max-h-80" : "aspect-square"}`} /></button>{attachment.id > 0 && <><Button type="button" variant="secondary" size="icon" onClick={() => setReportingAttachmentId(attachment.id)} className="absolute right-1 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Report photo"><Flag className="h-3.5 w-3.5 text-destructive" /></Button>{isOwn && <Button type="button" variant="secondary" size="icon" onClick={() => setCaptionEditingAttachment({ id: attachment.id, caption: attachment.caption || "" })} className="absolute right-9 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Edit photo caption"><Pencil className="h-3.5 w-3.5" /></Button>}</>}</div>{attachment.caption && <figcaption className="px-1 pb-1 pt-1 text-xs font-medium leading-snug">{attachment.caption}</figcaption>}</figure>)}</div>}
+                  {attachments.length > 0 && <div className={`grid gap-1 ${attachments.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>{attachments.map((attachment, attachmentIndex) => <figure key={attachment.id} className="relative"><div className="relative"><button type="button" onClick={() => { setViewerZoom(1); setViewer({ images: attachments.map((image) => ({ ...image, isOwn })), index: attachmentIndex }); }} className="block w-full" aria-label={`Open photo ${attachmentIndex + 1} full screen`}><img src={attachment.imageUrl} alt={attachment.imageAlt || "Trip chat attachment"} loading="lazy" className={`w-full rounded-xl object-cover ${attachments.length === 1 ? "max-h-80" : "aspect-square"}`} /></button>{attachment.id > 0 && <><Button type="button" variant="secondary" size="icon" onClick={() => setReportingAttachmentId(attachment.id)} className="absolute right-1 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Report photo"><Flag className="h-3.5 w-3.5 text-destructive" /></Button>{isOwn && <Button type="button" variant="secondary" size="icon" onClick={() => setCaptionEditingAttachment({ id: attachment.id, caption: attachment.caption || "" })} className="absolute right-9 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Edit photo caption"><Pencil className="h-3.5 w-3.5" /></Button>}</>}</div>{attachment.caption && <figcaption className="px-1 pb-1 pt-1 text-xs font-medium leading-snug">{attachment.caption}</figcaption>}</figure>)}</div>}
                   {msg.message && <p className={attachments.length ? "px-2 pb-2 pt-1" : ""}>{msg.message}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-1 px-1 pt-0.5">
@@ -179,7 +221,54 @@ export default function TripChat() {
 
       <Dialog open={captionEditingAttachment !== null} onOpenChange={(open) => { if (!open) setCaptionEditingAttachment(null); }}><DialogContent><DialogHeader><DialogTitle>Edit photo caption</DialogTitle><DialogDescription>Only you can edit captions on photos you posted.</DialogDescription></DialogHeader><Textarea value={captionEditingAttachment?.caption || ""} onChange={(event) => setCaptionEditingAttachment((current) => current ? { ...current, caption: event.target.value } : null)} placeholder="Add a caption (optional)" maxLength={240} /><DialogFooter><Button variant="outline" onClick={() => setCaptionEditingAttachment(null)}>Cancel</Button><Button disabled={updateCaptionMutation.isPending} onClick={() => captionEditingAttachment && updateCaptionMutation.mutate({ tripId: parsedTripId, attachmentId: captionEditingAttachment.id, caption: captionEditingAttachment.caption.trim() || undefined })}>{updateCaptionMutation.isPending ? "Saving…" : "Save caption"}</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={viewer !== null} onOpenChange={(open) => { if (!open) setViewer(null); }}><DialogContent className="h-[100dvh] max-w-none rounded-none border-0 bg-black p-3 text-white sm:h-[92vh] sm:max-w-4xl sm:rounded-xl"><DialogTitle className="sr-only">Trip Chat photo viewer</DialogTitle>{viewer && <div className="relative flex h-full min-h-0 flex-col" onTouchStart={(event) => { viewerTouchStart.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => { const start = viewerTouchStart.current; const end = event.changedTouches[0]?.clientX; viewerTouchStart.current = null; if (start === null || end === undefined) return; const delta = end - start; if (Math.abs(delta) >= 44) changeViewerImage(delta < 0 ? 1 : -1); }}><div className="flex items-center justify-between gap-3 pb-2"><span className="text-sm font-medium">Photo {viewer.index + 1} of {viewer.images.length}</span><Button type="button" variant="secondary" size="icon" onClick={() => setViewer(null)} className="rounded-full" aria-label="Close photo viewer"><X className="h-4 w-4" /></Button></div><div className="relative flex min-h-0 flex-1 items-center justify-center"><img src={viewer.images[viewer.index].imageUrl} alt={viewer.images[viewer.index].imageAlt || "Trip chat photo"} className="max-h-full max-w-full object-contain" />{viewer.images.length > 1 && <><Button type="button" variant="secondary" size="icon" disabled={viewer.index === 0} onClick={() => changeViewerImage(-1)} className="absolute left-1 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full bg-background/85" aria-label="Previous photo"><ChevronLeft className="h-5 w-5" /></Button><Button type="button" variant="secondary" size="icon" disabled={viewer.index === viewer.images.length - 1} onClick={() => changeViewerImage(1)} className="absolute right-1 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full bg-background/85" aria-label="Next photo"><ChevronRight className="h-5 w-5" /></Button></>}</div>{viewer.images[viewer.index].caption && <p className="px-2 pt-3 text-center text-sm leading-relaxed text-white/90">{viewer.images[viewer.index].caption}</p>}<p className="pb-1 pt-2 text-center text-xs text-white/60">Swipe left or right to browse</p></div>}</DialogContent></Dialog>
+      <Dialog open={viewer !== null} onOpenChange={(open) => { if (!open) { setViewer(null); setViewerZoom(1); } }}>
+        <DialogContent className="h-[100dvh] max-w-none rounded-none border-0 bg-black p-3 text-white sm:h-[92vh] sm:max-w-4xl sm:rounded-xl">
+          <DialogTitle className="sr-only">Trip Chat photo viewer</DialogTitle>
+          {viewer && <div
+            className="relative flex h-full min-h-0 flex-col"
+            onTouchStart={(event) => {
+              const distance = touchDistance(event.touches);
+              if (distance) { viewerPinchStart.current = distance; viewerPinchBase.current = viewerZoom; viewerTouchStart.current = null; }
+              else viewerTouchStart.current = event.touches[0]?.clientX ?? null;
+            }}
+            onTouchMove={(event) => {
+              const distance = touchDistance(event.touches);
+              if (distance && viewerPinchStart.current) setViewerZoom(Math.min(3, Math.max(1, viewerPinchBase.current * distance / viewerPinchStart.current)));
+            }}
+            onTouchEnd={(event) => {
+              if (viewerPinchStart.current) { viewerPinchStart.current = null; return; }
+              const start = viewerTouchStart.current;
+              const end = event.changedTouches[0]?.clientX;
+              viewerTouchStart.current = null;
+              if (start === null || end === undefined || viewerZoom > 1) return;
+              const delta = end - start;
+              if (Math.abs(delta) >= 44) changeViewerImage(delta < 0 ? 1 : -1);
+            }}
+          >
+            <div className="flex items-center justify-between gap-3 pb-2">
+              <span className="text-sm font-medium">Photo {viewer.index + 1} of {viewer.images.length}</span>
+              <div className="flex items-center gap-1">
+                <Button type="button" variant="secondary" size="icon" onClick={() => void downloadViewerPhoto(viewer.images[viewer.index])} className="rounded-full" aria-label="Download photo"><Download className="h-4 w-4" /></Button>
+                <Button type="button" variant="secondary" size="icon" onClick={() => void shareViewerPhoto(viewer.images[viewer.index])} className="rounded-full" aria-label="Share photo"><Share2 className="h-4 w-4" /></Button>
+                {viewerZoom > 1 && <Button type="button" variant="secondary" size="icon" onClick={() => setViewerZoom(1)} className="rounded-full" aria-label="Reset zoom"><RotateCcw className="h-4 w-4" /></Button>}
+                {viewer.images[viewer.index].isOwn && viewer.images[viewer.index].id > 0 && <Button type="button" variant="destructive" size="icon" onClick={() => setDeletingOwnAttachmentId(viewer.images[viewer.index].id)} className="rounded-full" aria-label="Remove my photo"><Trash2 className="h-4 w-4" /></Button>}
+                <Button type="button" variant="secondary" size="icon" onClick={() => { setViewer(null); setViewerZoom(1); }} className="rounded-full" aria-label="Close photo viewer"><X className="h-4 w-4" /></Button>
+              </div>
+            </div>
+            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+              <img src={viewer.images[viewer.index].imageUrl} alt={viewer.images[viewer.index].imageAlt || "Trip chat photo"} style={{ transform: `scale(${viewerZoom})` }} className="max-h-full max-w-full object-contain transition-transform duration-150" />
+              {viewer.images.length > 1 && viewerZoom === 1 && <>
+                <Button type="button" variant="secondary" size="icon" disabled={viewer.index === 0} onClick={() => changeViewerImage(-1)} className="absolute left-1 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full bg-background/85" aria-label="Previous photo"><ChevronLeft className="h-5 w-5" /></Button>
+                <Button type="button" variant="secondary" size="icon" disabled={viewer.index === viewer.images.length - 1} onClick={() => changeViewerImage(1)} className="absolute right-1 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full bg-background/85" aria-label="Next photo"><ChevronRight className="h-5 w-5" /></Button>
+              </>}
+            </div>
+            {viewer.images[viewer.index].caption && <p className="px-2 pt-3 text-center text-sm leading-relaxed text-white/90">{viewer.images[viewer.index].caption}</p>}
+            <p className="pb-1 pt-2 text-center text-xs text-white/60">Pinch to zoom · swipe left or right to browse</p>
+          </div>}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deletingOwnAttachmentId !== null} onOpenChange={(open) => { if (!open) setDeletingOwnAttachmentId(null); }}><DialogContent><DialogHeader><DialogTitle>Remove this photo?</DialogTitle><DialogDescription>This hides the photo from everyone in the trip chat. It cannot be restored from the chat.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDeletingOwnAttachmentId(null)}>Cancel</Button><Button variant="destructive" disabled={deleteOwnAttachmentMutation.isPending} onClick={() => deletingOwnAttachmentId && deleteOwnAttachmentMutation.mutate({ tripId: parsedTripId, attachmentId: deletingOwnAttachmentId })}>{deleteOwnAttachmentMutation.isPending ? "Removing…" : "Remove photo"}</Button></DialogFooter></DialogContent></Dialog>
     </div>
   );
 }

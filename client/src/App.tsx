@@ -40,12 +40,14 @@ import AdminPennant from "./pages/admin/AdminPennant";
 import PennantFixtureScoring from "./pages/PennantFixtureScoring";
 import GolfAssistant from "./pages/GolfAssistant";
 import AdminTripFaqs from "./pages/admin/AdminTripFaqs";
+import AppSettings from "./pages/AppSettings";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/assistant" component={GolfAssistant} />
+      <Route path="/settings" component={AppSettings} />
       <Route path="/trip/:tripId" component={TripDashboard} />
       <Route path="/trip/:tripId/leaderboard" component={TripLeaderboard} />
       <Route path="/trip/:tripId/notifications" component={NotificationFeed} />

@@ -811,3 +811,13 @@
 - [x] Add author caption edit controls for posted photos
 - [x] Build an accessible full-screen album viewer with previous/next and touch swipe navigation
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Photo Actions and Appearance Settings
+
+- [x] Inspect current photo viewer, chat author access, profile navigation, and theme implementation
+- [x] Add an author-only Trip Chat photo removal procedure and interface action
+- [x] Add per-photo browser download and native share actions
+- [x] Add touch pinch-to-zoom and reset controls to the full-screen photo viewer
+- [x] Add a user-facing Settings page with persisted app colour-scheme choices
+- [x] Add Settings navigation and apply the selected scheme throughout the app
+- [x] Add tests, validate mobile UI, checkpoint, and publish
