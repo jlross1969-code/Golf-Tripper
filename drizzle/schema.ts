@@ -103,6 +103,10 @@ export const trips = mysqlTable("trips", {
   paymentReminderCronTaskUid: varchar("paymentReminderCronTaskUid", { length: 65 }),
   // Optional co-admin trusted to manage the organiser's trip payment ledger.
   financialManagerUserId: int("financialManagerUserId"),
+  financialDigestEnabled: boolean("financialDigestEnabled").default(false).notNull(),
+  financialDigestHourUtc: int("financialDigestHourUtc").default(8).notNull(),
+  financialDigestCronTaskUid: varchar("financialDigestCronTaskUid", { length: 65 }),
+  financialDigestLastSentAt: timestamp("financialDigestLastSentAt"),
   createdBy: int("createdBy").notNull(),
   // ─── Billing ──────────────────────────────────────────────────────────────
   // planTier for this trip. 'free' = up to 8 players, core features only.
@@ -265,6 +269,9 @@ export const tripSuppliers = mysqlTable("trip_suppliers", {
   invoiceReminderAt: timestamp("invoiceReminderAt"),
   invoiceReminderCronTaskUid: varchar("invoiceReminderCronTaskUid", { length: 65 }),
   invoiceReminderSentAt: timestamp("invoiceReminderSentAt"),
+  invoiceAttachmentKey: varchar("invoiceAttachmentKey", { length: 512 }),
+  invoiceAttachmentUrl: varchar("invoiceAttachmentUrl", { length: 512 }),
+  invoiceAttachmentFileName: varchar("invoiceAttachmentFileName", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -275,6 +282,8 @@ export const tripDocuments = mysqlTable("trip_documents", {
   tripId: int("tripId").notNull(),
   uploadedByUserId: int("uploadedByUserId").notNull(),
   title: varchar("title", { length: 180 }).notNull(),
+  folder: varchar("folder", { length: 120 }).default("General").notNull(),
+  tags: varchar("tags", { length: 500 }),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
   fileUrl: varchar("fileUrl", { length: 512 }).notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),

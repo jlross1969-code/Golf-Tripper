@@ -94,6 +94,7 @@ import {
   setTripPlayerPrice,
   setTripTravelChecklistReminderTask,
   setTripSupplierInvoiceReminder,
+  setTripSupplierInvoiceAttachment,
   updateTripSupplierPayment,
   getTripSupplierByInvoiceReminderTaskUid,
   markTripSupplierInvoiceReminderSent,
@@ -226,7 +227,7 @@ import {
 } from "./db";
 import { TRPCError } from "@trpc/server";
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
-import { createHeartbeatJob } from "./_core/heartbeat";
+import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { invokeLLM } from "./_core/llm";
 import { recentGolfAssistantMessages } from "../shared/golfAssistant";
 import { createAssistantConversationTitle, formatTripFaqContext } from "../shared/assistantEnhancements";
@@ -845,6 +846,28 @@ export const appRouter = router({
       await setTripSupplierInvoiceReminder(supplier.id, invoiceDueAt, reminderAt, taskUid);
       return { success: true };
     }),
+    attachSupplierInvoice: protectedProcedure.input(z.object({ tripId: z.number(), supplierId: z.number(), fileKey: z.string().min(1).max(512), fileUrl: z.string().min(1).max(512), fileName: z.string().min(1).max(255) })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      if (!(await getTripSuppliers(input.tripId)).some((supplier) => supplier.id === input.supplierId)) throw new TRPCError({ code: "NOT_FOUND", message: "Supplier not found" });
+      await setTripSupplierInvoiceAttachment(input.supplierId, input.fileKey, input.fileUrl, input.fileName);
+      return { success: true };
+    }),
+    setDailyFinancialDigest: protectedProcedure.input(z.object({ tripId: z.number(), enabled: z.boolean(), hourUtc: z.number().int().min(0).max(23) })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const trip = await getTrip(input.tripId);
+      if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+      const cron = `0 0 ${input.hourUtc} * * *`;
+      let taskUid = (trip as any).financialDigestCronTaskUid as string | null | undefined;
+      if (taskUid) {
+        await updateHeartbeatJob(taskUid, { cron, enable: input.enabled, description: `Daily financial digest for ${trip.name}` }, sessionToken);
+      } else if (input.enabled) {
+        const job = await createHeartbeatJob({ name: `financial-digest-${input.tripId}`, cron, path: "/api/scheduled/financial-digest", payload: {}, description: `Daily financial digest for ${trip.name}` }, sessionToken);
+        taskUid = job.taskUid;
+      }
+      await updateTrip(input.tripId, { financialDigestEnabled: input.enabled, financialDigestHourUtc: input.hourUtc, financialDigestCronTaskUid: taskUid ?? null } as any);
+      return { success: true };
+    }),
     setPaymentSchedule: protectedProcedure.input(z.object({ tripId: z.number(), dueAt: z.string().optional(), reminderAt: z.string().optional() })).mutation(async ({ ctx, input }) => {
       await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
       const dueAt = input.dueAt ? new Date(input.dueAt) : undefined;
@@ -970,7 +993,7 @@ export const appRouter = router({
       if (!(await getTripPlayer(input.tripId, ctx.user.id)) && ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "You are not a trip player" });
       return getTripDocuments(input.tripId);
     }),
-    create: protectedProcedure.input(z.object({ tripId: z.number(), title: z.string().trim().min(1).max(180), fileKey: z.string().min(1).max(512), fileUrl: z.string().min(1).max(512), fileName: z.string().min(1).max(255), mimeType: z.string().min(1).max(120), sizeBytes: z.number().int().min(1).max(15 * 1024 * 1024) })).mutation(async ({ ctx, input }) => {
+    create: protectedProcedure.input(z.object({ tripId: z.number(), title: z.string().trim().min(1).max(180), folder: z.string().trim().min(1).max(120).default("General"), tags: z.string().trim().max(500).optional(), fileKey: z.string().min(1).max(512), fileUrl: z.string().min(1).max(512), fileName: z.string().min(1).max(255), mimeType: z.string().min(1).max(120), sizeBytes: z.number().int().min(1).max(15 * 1024 * 1024) })).mutation(async ({ ctx, input }) => {
       await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
       return { id: await createTripDocument({ ...input, uploadedByUserId: ctx.user.id }) };
     }),

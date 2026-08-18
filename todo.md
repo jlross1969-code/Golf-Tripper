@@ -947,3 +947,11 @@
 - [x] Add category-report CSV/PDF export and supplier invoice due-date reminder scheduling
 - [x] Build the financial-manager upload and player-facing trip document vault
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Document Organization, Supplier Invoices, and Daily Digests
+
+- [x] Review document vault, supplier invoice, attachment storage, and financial digest flows
+- [x] Add secure storage and procedures for document folders/tags, supplier invoice attachments, and digest schedules
+- [x] Build financial-manager document organization and supplier invoice attachment workflows
+- [x] Implement daily financial-summary digest scheduling and organiser delivery
+- [x] Add tests, validate mobile UI, checkpoint, and publish

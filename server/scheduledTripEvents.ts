@@ -1,7 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
-import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripByCourseRevealTaskUid, getTripByPaymentReminderTaskUid, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, getTripSupplierByInvoiceReminderTaskUid, getTripTravelChecklistByReminderTaskUid, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, markTripSupplierInvoiceReminderSent, markTripTravelChecklistReminderSent, sendTripMessage, updateTrip } from "./db";
+import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripByCourseRevealTaskUid, getTripByFinancialDigestTaskUid, getTripByPaymentReminderTaskUid, getTripFinancialPlan, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, getTripSupplierByInvoiceReminderTaskUid, getTripSuppliers, getTripTravelChecklistByReminderTaskUid, markTripFinancialDigestSent, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, markTripSupplierInvoiceReminderSent, markTripTravelChecklistReminderSent, sendTripMessage, updateTrip } from "./db";
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
+import { buildFinancialDigestMessage } from "../shared/financialDigest";
 
 function cronOnly(user: Awaited<ReturnType<typeof sdk.authenticateRequest>>, res: Response) {
   if (!user.isCron || !user.taskUid) {
@@ -136,6 +137,28 @@ export function registerScheduledTripEventRoutes(app: Express) {
       res.json({ ok: true, supplierId: supplier.id });
     } catch (error) {
       console.error("[ScheduledTripEvents] supplier invoice reminder error", error);
+      res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/scheduled/financial-digest", async (req: Request, res: Response) => {
+    try {
+      const taskUid = cronOnly(await sdk.authenticateRequest(req), res);
+      if (!taskUid) return;
+      const trip = await getTripByFinancialDigestTaskUid(taskUid);
+      if (!trip) return res.json({ ok: true, skipped: "orphan" });
+      if (!trip.financialDigestEnabled) return res.json({ ok: true, skipped: "disabled" });
+      const [plan, payments, suppliers] = await Promise.all([getTripFinancialPlan(trip.id), getTripPaymentSummary(trip.id), getTripSuppliers(trip.id)]);
+      const outstandingPlayers = payments.filter((entry) => entry.outstandingCents > 0).length;
+      const outstandingSupplierCents = suppliers.reduce((sum, supplier) => sum + Math.max(0, supplier.paymentDueCents - supplier.paidCents), 0);
+      const message = buildFinancialDigestMessage({ actualExpensesCents: plan.actualExpensesCents, totalCostsCents: plan.totalCostsCents, actualVarianceCents: plan.actualVarianceCents, outstandingPlayers, outstandingSupplierCents });
+      const recipients = [...new Set([trip.createdBy, ...(trip.financialManagerUserId ? [trip.financialManagerUserId] : [])])];
+      await createNotification({ tripId: trip.id, message, type: "general" });
+      void sendPushToUsers(recipients, { title: `Daily finances · ${trip.name}`, body: message, tag: `financial-digest-${trip.id}`, url: `/admin/trips/${trip.id}/finances` });
+      await markTripFinancialDigestSent(trip.id);
+      res.json({ ok: true, recipients: recipients.length });
+    } catch (error) {
+      console.error("[ScheduledTripEvents] financial digest error", error);
       res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
     }
   });

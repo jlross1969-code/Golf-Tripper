@@ -620,6 +620,12 @@ export async function setTripSupplierInvoiceReminder(id: number, invoiceDueAt: D
   await db.update(tripSuppliers).set({ invoiceDueAt, invoiceReminderAt, invoiceReminderCronTaskUid: invoiceReminderCronTaskUid ?? null, invoiceReminderSentAt: null }).where(eq(tripSuppliers.id, id));
 }
 
+export async function setTripSupplierInvoiceAttachment(id: number, invoiceAttachmentKey: string, invoiceAttachmentUrl: string, invoiceAttachmentFileName: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripSuppliers).set({ invoiceAttachmentKey, invoiceAttachmentUrl, invoiceAttachmentFileName }).where(eq(tripSuppliers.id, id));
+}
+
 export async function getTripSupplierByInvoiceReminderTaskUid(invoiceReminderCronTaskUid: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -639,7 +645,7 @@ export async function getTripDocuments(tripId: number) {
   return db.select().from(tripDocuments).where(eq(tripDocuments.tripId, tripId)).orderBy(desc(tripDocuments.createdAt));
 }
 
-export async function createTripDocument(data: { tripId: number; uploadedByUserId: number; title: string; fileKey: string; fileUrl: string; fileName: string; mimeType: string; sizeBytes: number }) {
+export async function createTripDocument(data: { tripId: number; uploadedByUserId: number; title: string; folder?: string; tags?: string; fileKey: string; fileUrl: string; fileName: string; mimeType: string; sizeBytes: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripDocuments).values(data);
@@ -650,6 +656,19 @@ export async function deleteTripDocument(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.delete(tripDocuments).where(eq(tripDocuments.id, id));
+}
+
+export async function getTripByFinancialDigestTaskUid(financialDigestCronTaskUid: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [trip] = await db.select().from(trips).where(eq(trips.financialDigestCronTaskUid, financialDigestCronTaskUid)).limit(1);
+  return trip;
+}
+
+export async function markTripFinancialDigestSent(tripId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(trips).set({ financialDigestLastSentAt: new Date() }).where(eq(trips.id, tripId));
 }
 
 export async function getTripFinancialLineItems(tripId: number) {
