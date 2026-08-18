@@ -9,9 +9,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useParams } from "wouter";
 import {
   ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download,
-  Target, Star, Share2, ChevronRight, Sparkles,
+  Target, Star, Share2, ChevronRight, MessageCircleQuestion, Sparkles,
 } from "lucide-react";
 import AchievementAlert from "@/components/AchievementAlert";
+import { buildHoleAssistantPrompt } from "../../../shared/holeAssistantPrompt";
 
 // ─── Ambrose Daily Leaderboard ────────────────────────────────────────────────
 function AmbroseLeaderboardTab({ roundId }: { roundId: number }) {
@@ -97,9 +98,10 @@ interface ScorecardDrawerProps {
   handicap: number;
   isStableford?: boolean;
   onExplain?: () => void;
+  onAskAboutHole?: (input: { holeNumber: number; par: number; strokeIndex: number; grossScore: number | null; netScore: number | null; stablefordPoints: number | null }) => void;
 }
 
-function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap, isStableford, onExplain }: ScorecardDrawerProps) {
+function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap, isStableford, onExplain, onAskAboutHole }: ScorecardDrawerProps) {
   const { data, isLoading } = trpc.scores.getPlayerScorecard.useQuery(
     { roundId, userId },
     { enabled: open && userId > 0 }
@@ -145,7 +147,7 @@ function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap,
     const strokesReceived = handicap > 0 ? Math.floor(handicap / 18) + (hole.strokeIndex <= (handicap % 18) ? 1 : 0) : 0;
     return (
       <tr key={hole.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-        <td className="px-3 py-2 font-semibold text-foreground text-center">{hole.holeNumber}</td>
+        <td className="px-3 py-2 font-semibold text-foreground text-center"><div className="flex items-center justify-center gap-1"><span>{hole.holeNumber}</span>{onAskAboutHole && <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={() => onAskAboutHole({ holeNumber: hole.holeNumber, par: hole.par, strokeIndex: hole.strokeIndex, grossScore: gross, netScore: net, stablefordPoints: pts })} aria-label={`Ask about hole ${hole.holeNumber}`}><MessageCircleQuestion className="h-3.5 w-3.5" /></Button>}</div></td>
         <td className="px-2 py-2 text-center text-muted-foreground">{hole.par}</td>
         <td className="px-2 py-2 text-center text-muted-foreground">{hole.strokeIndex}</td>
         <td className={`px-2 py-2 text-center rounded ${scoreCellClass(gross, hole.par)}`}>
@@ -715,6 +717,11 @@ export default function DailyLeaderboard() {
           handicap={drawerPlayer.handicap}
         isStableford={(data as any)?.roundScoringMode !== "net_stroke"}
         onExplain={() => drawerPlayer && explainDailyPlayer(drawerPlayer.userId)}
+        onAskAboutHole={(hole) => {
+          if (!drawerPlayer || !tripId || !data?.round) return;
+          const prompt = buildHoleAssistantPrompt({ playerName: drawerPlayer.userName ?? "this player", roundName: data.round.name, ...hole });
+          window.location.assign(`/assistant?tripId=${tripId}&roundId=${id}&prompt=${encodeURIComponent(prompt)}`);
+        }}
       />
       )}
     </div>

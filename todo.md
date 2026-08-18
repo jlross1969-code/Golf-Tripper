@@ -857,3 +857,12 @@
 - [x] Build custom template management and use controls in Trip Appearance
 - [x] Build an accessible calendar view of planned event-day themes
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - FAQ Search, Round Visibility, and Hole Assistant Prompts
+
+- [x] Review current trip FAQ, player scorecard, and AI assistant flows
+- [x] Add round-based FAQ visibility storage, helpers, and protected procedures
+- [x] Add keyword search and round visibility controls to the trip FAQ admin interface
+- [x] Filter player-facing and assistant FAQ context based on the relevant round
+- [x] Add scorecard hole-context actions that open the assistant with a pre-filled prompt
+- [x] Add tests, validate mobile UI, checkpoint, and publish

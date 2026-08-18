@@ -73,6 +73,7 @@ import { ENV } from "./_core/env";
 import { isAutomaticFourBBBReady, resolveMutualScoreMarkerPairs } from "../shared/sideMatchAutomation";
 import { getBestBallStablefordPoints } from "../shared/fourBBBScorecard";
 import { calculateCountback, compareCountback, type CountbackBreakdown } from "../shared/countback";
+import { filterTripFaqsForRound } from "../shared/tripFaqVisibility";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1491,14 +1492,26 @@ export async function getTripFaqs(tripId: number): Promise<TripFaq[]> {
   return db.select().from(tripFaqs).where(eq(tripFaqs.tripId, tripId)).orderBy(desc(tripFaqs.isPinned), desc(tripFaqs.updatedAt));
 }
 
-export async function createTripFaq(data: { tripId: number; category?: string; isPinned?: boolean; question: string; answer: string; createdByUserId: number }): Promise<number> {
+export async function getTripFaq(id: number): Promise<TripFaq | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [faq] = await db.select().from(tripFaqs).where(eq(tripFaqs.id, id)).limit(1);
+  return faq;
+}
+
+export async function getVisibleTripFaqs(tripId: number, activeRoundId?: number | null): Promise<TripFaq[]> {
+  const [faqs, tripRounds] = await Promise.all([getTripFaqs(tripId), getRoundsByTrip(tripId)]);
+  return filterTripFaqsForRound(faqs, tripRounds, activeRoundId);
+}
+
+export async function createTripFaq(data: { tripId: number; category?: string; isPinned?: boolean; visibleFromRoundId?: number | null; question: string; answer: string; createdByUserId: number }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripFaqs).values(data);
   return (result as any).insertId as number;
 }
 
-export async function updateTripFaq(id: number, data: { category?: string; isPinned?: boolean; question?: string; answer?: string }): Promise<void> {
+export async function updateTripFaq(id: number, data: { category?: string; isPinned?: boolean; visibleFromRoundId?: number | null; question?: string; answer?: string }): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(tripFaqs).set({ ...data, updatedAt: new Date() }).where(eq(tripFaqs.id, id));

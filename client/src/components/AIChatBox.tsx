@@ -56,6 +56,9 @@ export type AIChatBoxProps = {
    * Click to send directly
    */
   suggestedPrompts?: string[];
+
+  /** Optional text placed in the composer when opening a contextual chat. */
+  initialInput?: string;
 };
 
 /**
@@ -118,12 +121,19 @@ export function AIChatBox({
   height = "600px",
   emptyStateMessage = "Start a conversation with AI",
   suggestedPrompts,
+  initialInput,
 }: AIChatBoxProps) {
   const [input, setInput] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputAreaRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!initialInput) return;
+    setInput(initialInput);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [initialInput]);
 
   // Filter out system messages
   const displayMessages = messages.filter((msg) => msg.role !== "system");

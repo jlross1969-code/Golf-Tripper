@@ -47,6 +47,8 @@ import {
   appendAssistantMessages,
   deleteAssistantConversation,
   getTripFaqs,
+  getTripFaq,
+  getVisibleTripFaqs,
   createTripFaq,
   updateTripFaq,
   deleteTripFaq,
@@ -221,9 +223,10 @@ async function assertAssistantTripAccess(userId: number, tripId: number, isPlatf
 async function answerGolfAssistant(
   messages: { role: "user" | "assistant"; content: string }[],
   tripId?: number | null,
-  scoreContext?: string
+  scoreContext?: string,
+  activeRoundId?: number | null,
 ): Promise<string> {
-  const faqs = tripId ? await getTripFaqs(tripId) : [];
+  const faqs = tripId ? await getVisibleTripFaqs(tripId, activeRoundId) : [];
   const response = await invokeLLM({
     model: "gpt-5-mini",
     maxTokens: 850,
@@ -260,7 +263,7 @@ export const appRouter = router({
 
   assistant: router({
     ask: protectedProcedure
-      .input(z.object({ messages: z.array(golfAssistantMessageSchema).min(1).max(12), conversationId: z.number().optional(), tripId: z.number().optional(), saveConversation: z.boolean().default(false) }))
+      .input(z.object({ messages: z.array(golfAssistantMessageSchema).min(1).max(12), conversationId: z.number().optional(), tripId: z.number().optional(), roundId: z.number().optional(), saveConversation: z.boolean().default(false) }))
       .mutation(async ({ input, ctx }) => {
         try {
           const existingConversation = input.conversationId
@@ -269,7 +272,11 @@ export const appRouter = router({
           if (input.conversationId && !existingConversation) throw new TRPCError({ code: "NOT_FOUND", message: "Saved chat not found" });
           const tripId = existingConversation?.tripId ?? input.tripId ?? null;
           if (tripId) await assertAssistantTripAccess(ctx.user.id, tripId, ctx.user.role === "admin");
-          const answer = await answerGolfAssistant(input.messages, tripId);
+          if (input.roundId) {
+            const round = await getRound(input.roundId);
+            if (!round || round.tripId !== tripId) throw new TRPCError({ code: "BAD_REQUEST", message: "The selected round does not belong to this trip." });
+          }
+          const answer = await answerGolfAssistant(input.messages, tripId, undefined, input.roundId);
           const latestQuestion = [...input.messages].reverse().find((message) => message.role === "user")?.content ?? "Golf Trip question";
           const shouldSave = input.saveConversation || Boolean(existingConversation);
           if (!shouldSave) return { answer, conversationId: null, tripId };
@@ -400,12 +407,37 @@ export const appRouter = router({
         await assertAssistantTripAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
         return getTripFaqs(input.tripId);
       }),
+    listVisible: protectedProcedure
+      .input(z.object({ tripId: z.number(), roundId: z.number().optional() }))
+      .query(async ({ input, ctx }) => {
+        await assertAssistantTripAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        if (input.roundId) {
+          const round = await getRound(input.roundId);
+          if (!round || round.tripId !== input.tripId) throw new TRPCError({ code: "BAD_REQUEST", message: "The selected round does not belong to this trip." });
+        }
+        return getVisibleTripFaqs(input.tripId, input.roundId);
+      }),
     create: adminProcedure
-      .input(z.object({ tripId: z.number(), category: z.enum(TRIP_FAQ_CATEGORIES.map((entry) => entry.value) as [string, ...string[]]).default("general"), isPinned: z.boolean().default(false), question: z.string().trim().min(3).max(300), answer: z.string().trim().min(3).max(4000) }))
-      .mutation(async ({ input, ctx }) => ({ id: await createTripFaq({ ...input, createdByUserId: ctx.user.id }) })),
+      .input(z.object({ tripId: z.number(), category: z.enum(TRIP_FAQ_CATEGORIES.map((entry) => entry.value) as [string, ...string[]]).default("general"), isPinned: z.boolean().default(false), visibleFromRoundId: z.number().nullable().optional(), question: z.string().trim().min(3).max(300), answer: z.string().trim().min(3).max(4000) }))
+      .mutation(async ({ input, ctx }) => {
+        if (input.visibleFromRoundId) {
+          const round = await getRound(input.visibleFromRoundId);
+          if (!round || round.tripId !== input.tripId) throw new TRPCError({ code: "BAD_REQUEST", message: "The selected round does not belong to this trip." });
+        }
+        return { id: await createTripFaq({ ...input, createdByUserId: ctx.user.id }) };
+      }),
     update: adminProcedure
-      .input(z.object({ id: z.number(), category: z.enum(TRIP_FAQ_CATEGORIES.map((entry) => entry.value) as [string, ...string[]]).optional(), isPinned: z.boolean().optional(), question: z.string().trim().min(3).max(300).optional(), answer: z.string().trim().min(3).max(4000).optional() }))
-      .mutation(async ({ input }) => { await updateTripFaq(input.id, input); return { success: true }; }),
+      .input(z.object({ id: z.number(), category: z.enum(TRIP_FAQ_CATEGORIES.map((entry) => entry.value) as [string, ...string[]]).optional(), isPinned: z.boolean().optional(), visibleFromRoundId: z.number().nullable().optional(), question: z.string().trim().min(3).max(300).optional(), answer: z.string().trim().min(3).max(4000).optional() }))
+      .mutation(async ({ input }) => {
+        const existing = await getTripFaq(input.id);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "FAQ not found" });
+        if (input.visibleFromRoundId) {
+          const round = await getRound(input.visibleFromRoundId);
+          if (!round || round.tripId !== existing.tripId) throw new TRPCError({ code: "BAD_REQUEST", message: "The selected round does not belong to this trip." });
+        }
+        await updateTripFaq(input.id, input);
+        return { success: true };
+      }),
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteTripFaq(input.id); return { success: true }; }),

@@ -31,18 +31,26 @@ export default function GolfAssistant() {
   const explainTeamKey = initialParams.get("explainTeamKey");
   const dailyPlayerId = Number(initialParams.get("dailyPlayerId")) || null;
   const dailyTeamKey = initialParams.get("dailyTeamKey");
+  const initialRoundId = Number(initialParams.get("roundId")) || null;
+  const initialHolePrompt = initialParams.get("prompt")?.slice(0, 2000) ?? "";
   const explanationStarted = useRef(false);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [activeTripId, setActiveTripId] = useState<number | null>(initialTripId);
+  const [activeRoundId, setActiveRoundId] = useState<number | null>(initialRoundId);
   const [error, setError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saveConversation, setSaveConversation] = useState(false);
 
   const utils = trpc.useUtils();
   const { data: conversations = [] } = trpc.assistant.listConversations.useQuery();
-  const { data: tripFaqs = [] } = trpc.tripFaqs.list.useQuery(
+  const { data: tripRounds = [] } = trpc.rounds.list.useQuery(
     { tripId: activeTripId ?? 0 },
+    { enabled: activeTripId !== null }
+  );
+  const effectiveRoundId = activeRoundId ?? tripRounds.find((round) => round.status === "active")?.id ?? null;
+  const { data: tripFaqs = [] } = trpc.tripFaqs.listVisible.useQuery(
+    { tripId: activeTripId ?? 0, ...(effectiveRoundId ? { roundId: effectiveRoundId } : {}) },
     { enabled: activeTripId !== null }
   );
   const selectedConversation = trpc.assistant.getConversation.useQuery(
@@ -55,7 +63,8 @@ export default function GolfAssistant() {
     setMessages(selectedConversation.data.messages.length
       ? selectedConversation.data.messages.map((message) => ({ role: message.role, content: message.content }))
       : [WELCOME_MESSAGE]);
-    setActiveTripId(selectedConversation.data.conversation.tripId ?? null);
+      setActiveTripId(selectedConversation.data.conversation.tripId ?? null);
+      setActiveRoundId(null);
   }, [selectedConversation.data]);
 
   const askAssistant = trpc.assistant.ask.useMutation({
@@ -121,6 +130,7 @@ export default function GolfAssistant() {
         .map((message) => ({ role: message.role as "user" | "assistant", content: message.content })),
       ...(conversationId ? { conversationId } : {}),
       ...(activeTripId ? { tripId: activeTripId } : {}),
+      ...(effectiveRoundId ? { roundId: effectiveRoundId } : {}),
       saveConversation: saveConversation || conversationId !== null,
     });
   };
@@ -131,6 +141,7 @@ export default function GolfAssistant() {
     setConversationId(null);
     setError(null);
     window.history.replaceState({}, "", activeTripId ? `/assistant?tripId=${activeTripId}` : "/assistant");
+    setActiveRoundId(null);
   };
 
   const openConversation = (id: number) => {
@@ -192,6 +203,7 @@ export default function GolfAssistant() {
           <div className="flex items-start gap-2"><BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /><p><strong>Rules guidance:</strong> answers are general information, not an official ruling. Confirm local rules and disputed competition decisions with your committee.</p></div>
         </div>
         {activeTripId && <p className="mb-3 text-xs text-primary">This chat uses the selected trip’s administrator FAQs where relevant.</p>}
+        {initialHolePrompt && <div className="mb-3 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2 text-xs text-sky-800 dark:text-sky-100">Hole context is ready in the message box. Review or adjust the question, then send it to the assistant.</div>}
         {pinnedTripFaqs.length > 0 && (
           <section className="mb-3 rounded-xl border border-primary/25 bg-primary/5 p-3" aria-label="Important trip information">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">Important trip information</p>
@@ -203,7 +215,7 @@ export default function GolfAssistant() {
           Save this chat to my private history
         </label>
         {error && <div role="alert" className="mb-3 rounded-lg border border-destructive/35 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
-        <AIChatBox messages={messages} onSendMessage={handleSend} isLoading={loading} height="min(68vh, 680px)" placeholder="Ask about the app or a golf rule…" emptyStateMessage="Ask about your trip, scoring, or a golf rule" suggestedPrompts={PROMPTS} />
+        <AIChatBox messages={messages} onSendMessage={handleSend} isLoading={loading} height="min(68vh, 680px)" placeholder="Ask about the app or a golf rule…" emptyStateMessage="Ask about your trip, scoring, or a golf rule" suggestedPrompts={PROMPTS} initialInput={initialHolePrompt} />
       </main>
     </div>
   );

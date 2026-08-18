@@ -6,9 +6,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download, Star, Users, Share2, Sparkles } from "lucide-react";
+import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download, MessageCircleQuestion, Star, Users, Share2, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
+import { buildHoleAssistantPrompt } from "../../../shared/holeAssistantPrompt";
 
 function positionBadge(pos: number) {
   if (pos === 1) return <span className="text-yellow-400 font-bold text-lg">🥇</span>;
@@ -146,12 +147,13 @@ function TripAwardCard({ award }: { award: { id: number; name: string; descripti
 
 // ─── Trip Scorecard Drawer ────────────────────────────────────────────────────
 function TripScorecardDrawer({
-  open, onClose, player, isStableford,
+  open, onClose, player, isStableford, tripId,
 }: {
   open: boolean;
   onClose: () => void;
   player: { userId: number; userName: string | null; currentHandicap: number; rounds: { roundId: number; roundName: string }[] } | null;
   isStableford: boolean;
+  tripId: number;
 }) {
   const [selectedRoundId, setSelectedRoundId] = useState<number | null>(null);
   const roundId = selectedRoundId ?? (player?.rounds[0]?.roundId ?? 0);
@@ -161,6 +163,7 @@ function TripScorecardDrawer({
   );
 
   if (!player) return null;
+  const selectedPlayer = player;
 
   const handicap = player.currentHandicap;
   const played = (data ?? []).filter((h) => h.score !== null);
@@ -204,7 +207,7 @@ function TripScorecardDrawer({
     const pts = h.score?.stablefordPoints ?? 0;
     return (
       <tr key={h.hole.id} className="border-b border-border/40 hover:bg-muted/20">
-        <td className="px-3 py-2 text-foreground">{h.hole.holeNumber}</td>
+        <td className="px-3 py-2 text-foreground"><div className="flex items-center gap-1"><span>{h.hole.holeNumber}</span><Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={() => { const roundName = selectedPlayer.rounds.find((round) => round.roundId === roundId)?.roundName ?? "Round"; const prompt = buildHoleAssistantPrompt({ playerName: selectedPlayer.userName ?? "this player", roundName, holeNumber: h.hole.holeNumber, par: h.hole.par, strokeIndex: si, grossScore: h.score?.grossScore ?? null, netScore: h.score?.netScore ?? null, stablefordPoints: h.score?.stablefordPoints ?? null }); window.location.assign(`/assistant?tripId=${tripId}&roundId=${roundId}&prompt=${encodeURIComponent(prompt)}`); }} aria-label={`Ask about hole ${h.hole.holeNumber}`}><MessageCircleQuestion className="h-3.5 w-3.5" /></Button></div></td>
         <td className="px-2 py-2 text-center text-muted-foreground">{h.hole.par}</td>
         <td className="px-2 py-2 text-center text-muted-foreground text-xs">{si}</td>
         <td className={`px-2 py-2 text-center ${grossClass(gross, h.hole.par)}`}>{gross || "—"}</td>
@@ -851,6 +854,7 @@ export default function TripLeaderboard() {
         onClose={() => setDrawerPlayer(null)}
         player={drawerPlayer}
         isStableford={isStableford}
+        tripId={id}
       />
       <FourBBBPairScorecardDrawer
         key={drawerPair ? `${drawerPair.player1Id}-${drawerPair.player2Id}` : "closed"}
