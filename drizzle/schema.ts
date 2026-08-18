@@ -356,10 +356,13 @@ export const tripMessages = mysqlTable("trip_messages", {
   id: int("id").autoincrement().primaryKey(),
   tripId: int("tripId").notNull(),
   userId: int("userId").notNull(),
+  parentMessageId: int("parentMessageId"),
   message: text("message").notNull(),
   imageUrl: varchar("imageUrl", { length: 1024 }),
   imageKey: varchar("imageKey", { length: 1024 }),
   imageAlt: varchar("imageAlt", { length: 180 }),
+  pinnedAt: timestamp("pinnedAt"),
+  pinnedByUserId: int("pinnedByUserId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -374,6 +377,15 @@ export const tripMessageMentions = mysqlTable("trip_message_mentions", {
 });
 
 export type TripMessageMention = typeof tripMessageMentions.$inferSelect;
+
+export const tripMessageMentionReads = mysqlTable("trip_message_mention_reads", {
+  id: int("id").autoincrement().primaryKey(),
+  mentionId: int("mentionId").notNull(),
+  userId: int("userId").notNull(),
+  readAt: timestamp("readAt").defaultNow().notNull(),
+});
+
+export type TripMessageMentionRead = typeof tripMessageMentionReads.$inferSelect;
 
 export const tripMessageAttachments = mysqlTable("trip_message_attachments", {
   id: int("id").autoincrement().primaryKey(),

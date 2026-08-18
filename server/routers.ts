@@ -133,6 +133,10 @@ import {
   getTripMessages,
   sendTripMessage,
   getTripChatModerationAudit,
+  getUnreadTripChatMentions,
+  markTripChatMentionsRead,
+  getPinnedTripMessages,
+  setTripChatMessagePinned,
   getTripChatMessage,
   toggleTripMessageReaction,
   getTripChatAttachment,
@@ -2070,6 +2074,7 @@ export const appRouter = router({
     sendMessage: protectedProcedure
       .input(z.object({
         tripId: z.number(),
+        parentMessageId: z.number().optional(),
         message: z.string().max(1000),
         mentionedUserIds: z.array(z.number()).max(10).optional(),
         attachments: z.array(z.object({ imageUrl: z.string().max(1024), imageKey: z.string().max(1024), imageAlt: z.string().max(180).optional(), caption: z.string().trim().max(240).optional() }).refine((attachment) => isTripChatImageReference(attachment.imageUrl, attachment.imageKey), { message: "Invalid image attachment" })).max(4).optional(),
@@ -2084,9 +2089,14 @@ export const appRouter = router({
         const roster = await getTripPlayers(input.tripId);
         const rosterUserIds = new Set(roster.map((player) => player.userId));
         const mentionedUserIds = normaliseTripChatMentionedUserIds(input.mentionedUserIds, ctx.user.id).filter((userId) => rosterUserIds.has(userId));
+        if (input.parentMessageId) {
+          const parent = await getTripChatMessage(input.parentMessageId);
+          if (!parent || parent.tripId !== input.tripId || parent.parentMessageId !== null) throw new TRPCError({ code: "BAD_REQUEST", message: "Replies must belong to a top-level Trip Chat message." });
+        }
         const id = await sendTripMessage({
           tripId: input.tripId,
           userId: ctx.user.id,
+          parentMessageId: input.parentMessageId,
           message: input.message.trim(),
           attachments,
           mentionedUserIds,
@@ -2099,6 +2109,34 @@ export const appRouter = router({
         await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
         const players = await getTripPlayers(input.tripId);
         return players.filter((player) => player.userId !== ctx.user.id).map((player) => ({ userId: player.userId, displayName: player.nickname ?? player.user?.name ?? "Player" }));
+      }),
+    unreadMentions: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getUnreadTripChatMentions(input.tripId, ctx.user.id);
+      }),
+    markMentionsRead: protectedProcedure
+      .input(z.object({ tripId: z.number(), mentionIds: z.array(z.number()).max(100) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        await markTripChatMentionsRead(input.tripId, ctx.user.id, [...new Set(input.mentionIds)]);
+        return { success: true };
+      }),
+    pinnedMessages: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getPinnedTripMessages(input.tripId);
+      }),
+    setPinned: protectedProcedure
+      .input(z.object({ tripId: z.number(), messageId: z.number(), pinned: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const message = await getTripChatMessage(input.messageId);
+        if (!message || message.tripId !== input.tripId || message.parentMessageId !== null) throw new TRPCError({ code: "NOT_FOUND", message: "Chat message not found" });
+        await setTripChatMessagePinned(input.messageId, ctx.user.id, input.pinned);
+        return { success: true };
       }),
 
     toggleReaction: protectedProcedure

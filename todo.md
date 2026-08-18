@@ -876,3 +876,12 @@
 - [x] Notify trip players when an activated round makes new round-specific FAQs visible
 - [x] Build mobile chat controls and moderator audit history
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Unread Mentions, Threads, and Pinned Chat Messages
+
+- [x] Review current Trip Chat message, mention, and moderator controls
+- [x] Add secure storage and procedures for mention read state, threaded replies, and pinned messages
+- [x] Add unread mention indicators and an accessible unread-mentions view
+- [x] Add threaded reply composition and display
+- [x] Add moderator-only pin and unpin controls for important chat messages
+- [x] Add tests, validate mobile UI, checkpoint, and publish

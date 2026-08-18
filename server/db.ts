@@ -37,6 +37,7 @@ import {
   TripMessageMention,
   TripMessageModerationAudit,
   tripMessageMentions,
+  tripMessageMentionReads,
   tripMessageModerationAudit,
   TripMessageAttachment,
   TripMessageAttachmentReport,
@@ -1167,7 +1168,7 @@ export async function updateMatchPlayResult(
 
 export type TripChatAttachmentInput = { imageUrl: string; imageKey: string; imageAlt?: string; caption?: string };
 
-export async function sendTripMessage(data: { tripId: number; userId: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string; attachments?: TripChatAttachmentInput[]; mentionedUserIds?: number[] }): Promise<number> {
+export async function sendTripMessage(data: { tripId: number; userId: number; parentMessageId?: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string; attachments?: TripChatAttachmentInput[]; mentionedUserIds?: number[] }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const { attachments, mentionedUserIds, ...messageData } = data;
@@ -1202,10 +1203,13 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
       id: tripMessages.id,
       tripId: tripMessages.tripId,
       userId: tripMessages.userId,
+      parentMessageId: tripMessages.parentMessageId,
       message: tripMessages.message,
       imageUrl: tripMessages.imageUrl,
       imageKey: tripMessages.imageKey,
       imageAlt: tripMessages.imageAlt,
+      pinnedAt: tripMessages.pinnedAt,
+      pinnedByUserId: tripMessages.pinnedByUserId,
       createdAt: tripMessages.createdAt,
       userName: users.name,
       userNickname: tripPlayers.nickname,
@@ -1256,6 +1260,44 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     mentions: mentionsByMessage.get(row.id) ?? [],
     reactions: Array.from(reactionsByMessage.get(row.id)?.entries() ?? []).map(([emoji, summary]) => ({ emoji, ...summary })),
   }));
+}
+
+export async function getUnreadTripChatMentions(tripId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ mentionId: tripMessageMentions.id, message: tripMessages, authorName: users.name, authorNickname: tripPlayers.nickname })
+    .from(tripMessageMentions)
+    .innerJoin(tripMessages, eq(tripMessageMentions.messageId, tripMessages.id))
+    .leftJoin(users, eq(tripMessages.userId, users.id))
+    .leftJoin(tripPlayers, and(eq(tripPlayers.userId, tripMessages.userId), eq(tripPlayers.tripId, tripId)))
+    .leftJoin(tripMessageMentionReads, and(eq(tripMessageMentionReads.mentionId, tripMessageMentions.id), eq(tripMessageMentionReads.userId, userId)))
+    .where(and(eq(tripMessageMentions.tripId, tripId), eq(tripMessageMentions.mentionedUserId, userId), sql`${tripMessageMentionReads.id} is null`))
+    .orderBy(desc(tripMessages.createdAt));
+}
+
+export async function markTripChatMentionsRead(tripId: number, userId: number, mentionIds: number[]): Promise<void> {
+  const db = await getDb();
+  if (!db || !mentionIds.length) return;
+  const validMentions = await db.select({ id: tripMessageMentions.id }).from(tripMessageMentions)
+    .where(and(inArray(tripMessageMentions.id, mentionIds), eq(tripMessageMentions.tripId, tripId), eq(tripMessageMentions.mentionedUserId, userId)));
+  if (validMentions.length) await db.insert(tripMessageMentionReads).values(validMentions.map((mention) => ({ mentionId: mention.id, userId })));
+}
+
+export async function getPinnedTripMessages(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ message: tripMessages, authorName: users.name, authorNickname: tripPlayers.nickname })
+    .from(tripMessages)
+    .leftJoin(users, eq(tripMessages.userId, users.id))
+    .leftJoin(tripPlayers, and(eq(tripPlayers.userId, tripMessages.userId), eq(tripPlayers.tripId, tripId)))
+    .where(and(eq(tripMessages.tripId, tripId), sql`${tripMessages.pinnedAt} is not null`))
+    .orderBy(desc(tripMessages.pinnedAt));
+}
+
+export async function setTripChatMessagePinned(messageId: number, moderatorUserId: number, pinned: boolean): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripMessages).set(pinned ? { pinnedAt: new Date(), pinnedByUserId: moderatorUserId } : { pinnedAt: null, pinnedByUserId: null }).where(eq(tripMessages.id, messageId));
 }
 
 export async function getTripChatMessage(messageId: number) {
