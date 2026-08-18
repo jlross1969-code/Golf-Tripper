@@ -37,6 +37,12 @@ import {
   tripPlayers,
   trips,
   users,
+  AssistantConversation,
+  AssistantMessage,
+  TripFaq,
+  assistantConversations,
+  assistantMessages,
+  tripFaqs,
   InsertTripAward,
   TripAward,
   TripAwardWinner,
@@ -1175,6 +1181,108 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     .orderBy(desc(tripMessages.id))
     .limit(limit);
   return rows.map((r) => ({ ...r, userName: r.userNickname ?? r.userName ?? null }));
+}
+
+// ─── Golf Trip AI Assistant ───────────────────────────────────────────────────
+
+export async function getAssistantConversations(userId: number): Promise<AssistantConversation[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(assistantConversations)
+    .where(eq(assistantConversations.userId, userId))
+    .orderBy(desc(assistantConversations.updatedAt));
+}
+
+export async function createAssistantConversation(data: { userId: number; tripId?: number | null; title: string }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(assistantConversations).values({
+    userId: data.userId,
+    tripId: data.tripId ?? null,
+    title: data.title,
+  });
+  return (result as any).insertId as number;
+}
+
+export async function getAssistantConversation(conversationId: number, userId: number): Promise<AssistantConversation | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(assistantConversations)
+    .where(and(eq(assistantConversations.id, conversationId), eq(assistantConversations.userId, userId)))
+    .limit(1);
+  return rows[0];
+}
+
+export async function getAssistantMessages(conversationId: number, userId: number): Promise<AssistantMessage[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const conversation = await getAssistantConversation(conversationId, userId);
+  if (!conversation) return [];
+  return db
+    .select()
+    .from(assistantMessages)
+    .where(eq(assistantMessages.conversationId, conversationId))
+    .orderBy(assistantMessages.id);
+}
+
+export async function appendAssistantMessages(data: {
+  conversationId: number;
+  userId: number;
+  messages: { role: "user" | "assistant"; content: string }[];
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const conversation = await getAssistantConversation(data.conversationId, data.userId);
+  if (!conversation) throw new Error("Assistant conversation not found");
+  if (data.messages.length > 0) {
+    await db.insert(assistantMessages).values(
+      data.messages.map((message) => ({
+        conversationId: data.conversationId,
+        role: message.role,
+        content: message.content,
+      }))
+    );
+  }
+  await db.update(assistantConversations).set({ updatedAt: new Date() }).where(eq(assistantConversations.id, data.conversationId));
+}
+
+export async function deleteAssistantConversation(conversationId: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const conversation = await getAssistantConversation(conversationId, userId);
+  if (!conversation) return false;
+  await db.delete(assistantMessages).where(eq(assistantMessages.conversationId, conversationId));
+  await db.delete(assistantConversations).where(eq(assistantConversations.id, conversationId));
+  return true;
+}
+
+export async function getTripFaqs(tripId: number): Promise<TripFaq[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripFaqs).where(eq(tripFaqs.tripId, tripId)).orderBy(desc(tripFaqs.updatedAt));
+}
+
+export async function createTripFaq(data: { tripId: number; question: string; answer: string; createdByUserId: number }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripFaqs).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function updateTripFaq(id: number, data: { question?: string; answer?: string }): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripFaqs).set({ ...data, updatedAt: new Date() }).where(eq(tripFaqs.id, id));
+}
+
+export async function deleteTripFaq(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripFaqs).where(eq(tripFaqs.id, id));
 }
 
 // ─── Trip Invites ─────────────────────────────────────────────────────────────

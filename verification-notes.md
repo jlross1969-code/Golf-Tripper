@@ -9,3 +9,9 @@
 - Clearing the local Vite cache and restarting removed the displayed error, but the capture surface remained blank; browser-console and network diagnostics remain required before release.
 - Disabling development service-worker caching did not restore rendered content in the screenshot capture; the preview now presents as blank white and needs further React runtime diagnosis before release.
 - Direct browser inspection confirmed that the assistant page and its dashboard entry render correctly despite the separate preview-capture issue. A representative 4BBB scoring question was submitted to verify the server response flow.
+
+## Golf Trip AI Assistant Enhancements
+
+- `/assistant` renders saved-chat controls, the rules disclaimer, welcome response, prompt input, and compact mobile header without overflow at 390px width.
+- `/admin/trips/1/faqs` renders the trip FAQ authoring form and empty state correctly at 390px width.
+- `/trip/1/leaderboard` renders individual standings and the expandable score rows correctly at 390px width; the score-explanation action is available after expanding a row.

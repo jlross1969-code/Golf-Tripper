@@ -753,3 +753,15 @@
 - [x] Build a mobile-friendly assistant page with prompts, question history, loading and error states
 - [x] Add assistant access from player and admin navigation
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - AI Assistant Enhancements
+
+- [x] Audit current assistant, leaderboard, and admin trip implementations for extension points
+- [x] Add persisted, user-private assistant conversation and message schema with trip context support
+- [x] Add secure procedures to create, list, resume, and delete saved assistant conversations
+- [x] Add admin-managed trip FAQ schema and CRUD procedures
+- [x] Include relevant trip FAQs in assistant answers for questions asked in a trip context
+- [x] Add score-explanation assistant prompt with player, round, format, standing, and score breakdown context
+- [x] Add Explain This Score actions to individual and 4BBB leaderboard rows
+- [x] Build conversation picker/history and contextual FAQ management interfaces
+- [x] Add tests, validate mobile UI, checkpoint, and publish

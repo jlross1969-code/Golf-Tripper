@@ -79,7 +79,7 @@ export default function TripDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/assistant">
+          <Link href={`/assistant?tripId=${id}`}>
             <Button variant="outline" size="sm" className="gap-2">
               <Sparkles className="w-4 h-4" />
               Ask AI
@@ -153,7 +153,7 @@ export default function TripDashboard() {
             </div>
           </Link>
 
-          <Link href="/assistant">
+          <Link href={`/assistant?tripId=${id}`}>
             <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-primary/15 transition-colors active:scale-[0.97]">
               <div className="flex items-center gap-3">
                 <Sparkles className="w-5 h-5 text-primary" />

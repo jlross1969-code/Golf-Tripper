@@ -40,6 +40,16 @@ import {
   getTripLeaderboard,
   getTripFourBBBLeaderboard,
   getFourBBBPairScorecard,
+  getAssistantConversations,
+  createAssistantConversation,
+  getAssistantConversation,
+  getAssistantMessages,
+  appendAssistantMessages,
+  deleteAssistantConversation,
+  getTripFaqs,
+  createTripFaq,
+  updateTripFaq,
+  deleteTripFaq,
   getTripPlayer,
   getTripPlayers,
   markAchievementBroadcast,
@@ -147,6 +157,7 @@ import { TRPCError } from "@trpc/server";
 import { sendPushToTrip } from "./webPush";
 import { invokeLLM } from "./_core/llm";
 import { recentGolfAssistantMessages } from "../shared/golfAssistant";
+import { createAssistantConversationTitle, formatTripFaqContext } from "../shared/assistantEnhancements";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -158,6 +169,37 @@ const GOLF_TRIP_ASSISTANT_INSTRUCTIONS = `You are the Golf Trip Assistant for th
 For this app's Stableford 4BBB, each player earns their own Stableford points after handicap strokes, and the pair counts the higher points score on each hole. You can also answer general golf-rules questions clearly and practically. Golf-rules answers are general information only, not an official ruling. For competition-specific, exceptional, or disputed situations, state that the player should confirm the current Rules of Golf and ask the event committee for the official decision. Do not invent app features, scores, player data, or official rule references. If a request relies on a particular local rule or information not supplied, ask a brief clarifying question.
 
 Use concise Australian English. Prefer short numbered steps where they aid clarity, but do not use Markdown emphasis. Do not provide legal, medical, gambling, financial, or account-security advice.`;
+
+async function assertAssistantTripAccess(userId: number, tripId: number, isPlatformAdmin: boolean): Promise<void> {
+  const trip = await getTrip(tripId);
+  if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+  const player = await getTripPlayer(tripId, userId);
+  if (!player && trip.createdBy !== userId && !isPlatformAdmin) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "You do not have access to this trip's assistant context." });
+  }
+}
+
+async function answerGolfAssistant(
+  messages: { role: "user" | "assistant"; content: string }[],
+  tripId?: number | null,
+  scoreContext?: string
+): Promise<string> {
+  const faqs = tripId ? await getTripFaqs(tripId) : [];
+  const response = await invokeLLM({
+    model: "gpt-5-mini",
+    maxTokens: 850,
+    messages: [
+      { role: "system", content: `${GOLF_TRIP_ASSISTANT_INSTRUCTIONS}${formatTripFaqContext(faqs)}${scoreContext ? `\n\nAuthoritative score context for this explanation:\n${scoreContext}` : ""}` },
+      ...recentGolfAssistantMessages(messages),
+    ],
+  });
+  const content = response.choices[0]?.message.content;
+  const answer = typeof content === "string"
+    ? content.trim()
+    : content?.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
+  if (!answer) throw new Error("The assistant returned an empty answer.");
+  return answer;
+}
 
 // Admin guard middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -179,28 +221,100 @@ export const appRouter = router({
 
   assistant: router({
     ask: protectedProcedure
-      .input(z.object({ messages: z.array(golfAssistantMessageSchema).min(1).max(12) }))
-      .mutation(async ({ input }) => {
+      .input(z.object({ messages: z.array(golfAssistantMessageSchema).min(1).max(12), conversationId: z.number().optional(), tripId: z.number().optional(), saveConversation: z.boolean().default(false) }))
+      .mutation(async ({ input, ctx }) => {
         try {
-          const response = await invokeLLM({
-            model: "gpt-5-mini",
-            maxTokens: 850,
-            messages: [
-              { role: "system", content: GOLF_TRIP_ASSISTANT_INSTRUCTIONS },
-              ...recentGolfAssistantMessages(input.messages),
-            ],
+          const existingConversation = input.conversationId
+            ? await getAssistantConversation(input.conversationId, ctx.user.id)
+            : undefined;
+          if (input.conversationId && !existingConversation) throw new TRPCError({ code: "NOT_FOUND", message: "Saved chat not found" });
+          const tripId = existingConversation?.tripId ?? input.tripId ?? null;
+          if (tripId) await assertAssistantTripAccess(ctx.user.id, tripId, ctx.user.role === "admin");
+          const answer = await answerGolfAssistant(input.messages, tripId);
+          const latestQuestion = [...input.messages].reverse().find((message) => message.role === "user")?.content ?? "Golf Trip question";
+          const shouldSave = input.saveConversation || Boolean(existingConversation);
+          if (!shouldSave) return { answer, conversationId: null, tripId };
+          const conversationId = existingConversation?.id ?? await createAssistantConversation({
+            userId: ctx.user.id,
+            tripId,
+            title: createAssistantConversationTitle(latestQuestion),
           });
-          const content = response.choices[0]?.message.content;
-          const answer = typeof content === "string"
-            ? content.trim()
-            : content?.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
-          if (!answer) throw new Error("The assistant returned an empty answer.");
-          return { answer };
+          await appendAssistantMessages({
+            conversationId,
+            userId: ctx.user.id,
+            messages: [{ role: "user", content: latestQuestion }, { role: "assistant", content: answer }],
+          });
+          return { answer, conversationId, tripId };
         } catch (error) {
+          if (error instanceof TRPCError) throw error;
           console.error("Golf Trip Assistant error:", error);
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The Golf Trip Assistant is temporarily unavailable. Please try again." });
         }
       }),
+
+    listConversations: protectedProcedure.query(({ ctx }) => getAssistantConversations(ctx.user.id)),
+
+    getConversation: protectedProcedure
+      .input(z.object({ conversationId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        const conversation = await getAssistantConversation(input.conversationId, ctx.user.id);
+        if (!conversation) throw new TRPCError({ code: "NOT_FOUND", message: "Saved chat not found" });
+        return { conversation, messages: await getAssistantMessages(input.conversationId, ctx.user.id) };
+      }),
+
+    deleteConversation: protectedProcedure
+      .input(z.object({ conversationId: z.number() }))
+      .mutation(async ({ input, ctx }) => ({ success: await deleteAssistantConversation(input.conversationId, ctx.user.id) })),
+
+    explainScore: protectedProcedure
+      .input(z.object({ tripId: z.number(), kind: z.enum(["player", "pair"]), userId: z.number().optional(), teamKey: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertAssistantTripAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const trip = await getTrip(input.tripId);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        let question = "Explain this score in clear golfing terms.";
+        let scoreContext = `Trip: ${trip.name}. Tournament type: ${trip.tournamentType ?? "stableford"}.`;
+        if (input.kind === "player") {
+          if (!input.userId) throw new TRPCError({ code: "BAD_REQUEST", message: "Player is required" });
+          const player = (await getTripLeaderboard(input.tripId)).find((entry) => entry.userId === input.userId);
+          if (!player) throw new TRPCError({ code: "NOT_FOUND", message: "Player score was not found" });
+          question = `Explain ${player.userName ?? "this player's"} trip score and standing.`;
+          scoreContext += `\nPlayer: ${player.userName ?? "Unknown"}. Cumulative Stableford: ${player.cumulativeStableford}. Cumulative net: ${player.cumulativeNet}. Countback Stableford: B9 ${player.stablefordCountback.back9 ?? "—"}, L6 ${player.stablefordCountback.last6 ?? "—"}, L3 ${player.stablefordCountback.last3 ?? "—"}, H18 ${player.stablefordCountback.hole18 ?? "—"}. Rounds: ${player.rounds.map((round) => `${round.roundName}: ${round.totalStableford} pts, ${round.totalNet} net (${round.holesPlayed} holes)`).join("; ") || "No scores yet"}.`;
+        } else {
+          if (!input.teamKey) throw new TRPCError({ code: "BAD_REQUEST", message: "4BBB pair is required" });
+          const team = (await getTripFourBBBLeaderboard(input.tripId)).find((entry) => entry.teamKey === input.teamKey);
+          if (!team) throw new TRPCError({ code: "NOT_FOUND", message: "4BBB pair score was not found" });
+          question = `Explain the 4BBB score for ${team.player1Name} and ${team.player2Name}.`;
+          scoreContext += `\n4BBB pair: ${team.player1Name} and ${team.player2Name}. Total best Stableford points: ${team.cumulativeBestBall}. Countback: B9 ${team.countback.back9 ?? "—"}, L6 ${team.countback.last6 ?? "—"}, L3 ${team.countback.last3 ?? "—"}, H18 ${team.countback.hole18 ?? "—"}. Rounds: ${team.rounds.map((round) => `${round.roundName}: ${round.totalBestBall} best points (${round.holesPlayed} holes)`).join("; ") || "No scores yet"}.`;
+        }
+        try {
+          const answer = await answerGolfAssistant([{ role: "user", content: question }], input.tripId, scoreContext);
+          const conversationId = await createAssistantConversation({ userId: ctx.user.id, tripId: input.tripId, title: createAssistantConversationTitle(question) });
+          await appendAssistantMessages({ conversationId, userId: ctx.user.id, messages: [{ role: "user", content: question }, { role: "assistant", content: answer }] });
+          return { answer, conversationId };
+        } catch (error) {
+          console.error("Golf Trip score explanation error:", error);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The score explanation is temporarily unavailable. Please try again." });
+        }
+      }),
+  }),
+
+  tripFaqs: router({
+    list: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        await assertAssistantTripAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripFaqs(input.tripId);
+      }),
+    create: adminProcedure
+      .input(z.object({ tripId: z.number(), question: z.string().trim().min(3).max(300), answer: z.string().trim().min(3).max(4000) }))
+      .mutation(async ({ input, ctx }) => ({ id: await createTripFaq({ ...input, createdByUserId: ctx.user.id }) })),
+    update: adminProcedure
+      .input(z.object({ id: z.number(), question: z.string().trim().min(3).max(300).optional(), answer: z.string().trim().min(3).max(4000).optional() }))
+      .mutation(async ({ input }) => { await updateTripFaq(input.id, input); return { success: true }; }),
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteTripFaq(input.id); return { success: true }; }),
   }),
 
   // ─── Courses ──────────────────────────────────────────────────────────────

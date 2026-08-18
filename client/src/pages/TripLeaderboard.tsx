@@ -6,7 +6,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download, Star, Users, Share2 } from "lucide-react";
+import { ArrowLeft, Trophy, RefreshCw, ChevronDown, ChevronUp, Download, Star, Users, Share2, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 
@@ -44,7 +44,7 @@ function CountbackSummary({ countback, mode = "stableford" }: { countback?: { ba
   );
 }
 
-function PlayerRow({ player, mode, onScorecardClick }: { player: any; mode: "stroke" | "stableford"; onScorecardClick?: (p: any) => void }) {
+function PlayerRow({ player, mode, onScorecardClick, onExplainScore }: { player: any; mode: "stroke" | "stableford"; onScorecardClick?: (p: any) => void; onExplainScore?: (p: any) => void }) {
   const [expanded, setExpanded] = useState(false);
   const score = mode === "stroke" ? player.cumulativeNet : player.cumulativeStableford;
   const scoreLabel = mode === "stroke" ? "Net" : "Pts";
@@ -94,6 +94,15 @@ function PlayerRow({ player, mode, onScorecardClick }: { player: any; mode: "str
             </div>
           ))}
           <CountbackSummary countback={mode === "stableford" ? player.stablefordCountback : player.netCountback} mode={mode} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2 h-8 gap-1.5 px-2 text-xs text-primary hover:text-primary"
+            onClick={() => onExplainScore?.(player)}
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Explain this score
+          </Button>
         </div>
       )}
     </div>
@@ -464,6 +473,12 @@ export default function TripLeaderboard() {
       rounds: team.rounds,
     });
   };
+  const explainPlayerScore = (player: any) => {
+    window.location.assign(`/assistant?tripId=${id}&explainPlayerId=${player.userId}`);
+  };
+  const explainPairScore = (team: any) => {
+    window.location.assign(`/assistant?tripId=${id}&explainTeamKey=${encodeURIComponent(team.teamKey)}`);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -547,7 +562,7 @@ export default function TripLeaderboard() {
                   </div>
                 ) : (
                   data.strokePlay.map((p) => (
-                    <PlayerRow key={p.userId} player={p} mode="stroke" onScorecardClick={setDrawerPlayer} />
+                    <PlayerRow key={p.userId} player={p} mode="stroke" onScorecardClick={setDrawerPlayer} onExplainScore={explainPlayerScore} />
                   ))
                 )}
               </div>
@@ -561,7 +576,7 @@ export default function TripLeaderboard() {
                   </div>
                 ) : (
                   data.stableford.map((p) => (
-                    <PlayerRow key={p.userId} player={p} mode="stableford" onScorecardClick={setDrawerPlayer} />
+                    <PlayerRow key={p.userId} player={p} mode="stableford" onScorecardClick={setDrawerPlayer} onExplainScore={explainPlayerScore} />
                   ))
                 )}
               </div>
@@ -603,7 +618,8 @@ export default function TripLeaderboard() {
                     <div className="text-center py-10 text-muted-foreground bg-card border border-border rounded-xl">No 4BBB data yet.</div>
                   ) : (
                     data.fourBBB.map((t) => (
-                      <button key={t.teamKey} type="button" onClick={() => openPairScorecard(t)} className="w-full text-left bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-4 cursor-pointer hover:bg-muted/30 transition-colors active:scale-[0.98]">
+                      <div key={t.teamKey} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors">
+                        <button type="button" onClick={() => openPairScorecard(t)} className="min-w-0 flex-1 text-left flex items-center gap-4 cursor-pointer active:scale-[0.98]">
                         <div className="w-8 flex-shrink-0 flex justify-center">{positionBadge(t.position)}</div>
                         <div className="flex -space-x-2 flex-shrink-0">
                           <PlayerAvatar name={t.player1Name} photoUrl={t.player1PhotoUrl} />
@@ -618,7 +634,11 @@ export default function TripLeaderboard() {
                           <p className="text-lg font-bold text-foreground">{t.cumulativeBestBall}</p>
                           <p className="text-xs text-muted-foreground">Best Stableford Pts</p>
                         </div>
-                      </button>
+                        </button>
+                        <Button type="button" variant="ghost" size="icon" className="shrink-0 text-primary hover:text-primary" onClick={() => explainPairScore(t)} aria-label={`Explain ${t.player1Name} and ${t.player2Name}'s score`}>
+                          <Sparkles className="h-4 w-4" />
+                        </Button>
+                      </div>
                     ))
                   )}
                 </div>

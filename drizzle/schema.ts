@@ -334,6 +334,45 @@ export const tripMessages = mysqlTable("trip_messages", {
 
 export type TripMessage = typeof tripMessages.$inferSelect;
 
+// ─── Golf Trip AI Assistant ───────────────────────────────────────────────────
+// Saved assistant conversations are private to their owner. A conversation can
+// optionally be tied to a trip so the assistant can include that trip's FAQs.
+
+export const assistantConversations = mysqlTable("assistant_conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  tripId: int("tripId"),
+  title: varchar("title", { length: 180 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AssistantConversation = typeof assistantConversations.$inferSelect;
+
+export const assistantMessages = mysqlTable("assistant_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversationId").notNull(),
+  role: mysqlEnum("role", ["user", "assistant"]).notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AssistantMessage = typeof assistantMessages.$inferSelect;
+
+// Administrator-maintained answers that are supplied to the assistant whenever
+// a user asks it a question in the relevant trip context.
+export const tripFaqs = mysqlTable("trip_faqs", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  question: varchar("question", { length: 300 }).notNull(),
+  answer: text("answer").notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TripFaq = typeof tripFaqs.$inferSelect;
+
 // ─── Trip Invites ─────────────────────────────────────────────────────────────
 // Pre-registered player roster with invite tokens for joining the trip
 

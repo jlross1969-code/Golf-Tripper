@@ -39,6 +39,7 @@ import AmbroseScoreEntry from "./pages/AmbroseScoreEntry";
 import AdminPennant from "./pages/admin/AdminPennant";
 import PennantFixtureScoring from "./pages/PennantFixtureScoring";
 import GolfAssistant from "./pages/GolfAssistant";
+import AdminTripFaqs from "./pages/admin/AdminTripFaqs";
 
 function Router() {
   return (
@@ -72,6 +73,7 @@ function Router() {
       <Route path="/admin/trips/:tripId/rounds/:roundId/long-drive" component={AdminLongDrive} />
       <Route path="/admin/trips/:tripId/rounds/:roundId/pennant" component={AdminPennant} />
       <Route path="/admin/trips/:tripId/awards" component={AdminAwards} />
+      <Route path="/admin/trips/:tripId/faqs" component={AdminTripFaqs} />
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />
