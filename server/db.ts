@@ -1155,7 +1155,7 @@ export async function updateMatchPlayResult(
 
 // ─── Trip Chat ────────────────────────────────────────────────────────────────
 
-export type TripChatAttachmentInput = { imageUrl: string; imageKey: string; imageAlt?: string };
+export type TripChatAttachmentInput = { imageUrl: string; imageKey: string; imageAlt?: string; caption?: string };
 
 export async function sendTripMessage(data: { tripId: number; userId: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string; attachments?: TripChatAttachmentInput[] }): Promise<number> {
   const db = await getDb();
@@ -1169,6 +1169,7 @@ export async function sendTripMessage(data: { tripId: number; userId: number; me
       imageUrl: attachment.imageUrl,
       imageKey: attachment.imageKey,
       imageAlt: attachment.imageAlt ?? "Trip chat image",
+      caption: attachment.caption,
       sortOrder,
     })));
   }

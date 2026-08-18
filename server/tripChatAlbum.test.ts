@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_TRIP_CHAT_IMAGES, isTripChatReactionEmoji, remainingTripChatImageSlots } from "../shared/tripChatAlbum";
+import { MAX_TRIP_CHAT_IMAGES, isTripChatReactionEmoji, normaliseTripChatPhotoCaption, remainingTripChatImageSlots } from "../shared/tripChatAlbum";
 
 describe("Trip Chat albums and reactions", () => {
   it("limits a chat album to four images", () => {
@@ -15,5 +15,10 @@ describe("Trip Chat albums and reactions", () => {
     expect(isTripChatReactionEmoji("⛳")).toBe(true);
     expect(isTripChatReactionEmoji("🔥")).toBe(false);
     expect(isTripChatReactionEmoji("like")).toBe(false);
+  });
+
+  it("trims individual photo captions and treats blank captions as absent", () => {
+    expect(normaliseTripChatPhotoCaption("  First tee selfie  ")).toBe("First tee selfie");
+    expect(normaliseTripChatPhotoCaption("   ")).toBeUndefined();
   });
 });

@@ -343,6 +343,7 @@ export const tripMessageAttachments = mysqlTable("trip_message_attachments", {
   imageUrl: varchar("imageUrl", { length: 1024 }).notNull(),
   imageKey: varchar("imageKey", { length: 1024 }).notNull(),
   imageAlt: varchar("imageAlt", { length: 180 }),
+  caption: varchar("caption", { length: 240 }),
   sortOrder: int("sortOrder").default(0).notNull(),
   isRemoved: boolean("isRemoved").default(false).notNull(),
   removedAt: timestamp("removedAt"),

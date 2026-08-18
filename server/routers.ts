@@ -1998,7 +1998,7 @@ export const appRouter = router({
       .input(z.object({
         tripId: z.number(),
         message: z.string().max(1000),
-        attachments: z.array(z.object({ imageUrl: z.string().max(1024), imageKey: z.string().max(1024), imageAlt: z.string().max(180).optional() }).refine((attachment) => isTripChatImageReference(attachment.imageUrl, attachment.imageKey), { message: "Invalid image attachment" })).max(4).optional(),
+        attachments: z.array(z.object({ imageUrl: z.string().max(1024), imageKey: z.string().max(1024), imageAlt: z.string().max(180).optional(), caption: z.string().trim().max(240).optional() }).refine((attachment) => isTripChatImageReference(attachment.imageUrl, attachment.imageKey), { message: "Invalid image attachment" })).max(4).optional(),
         imageUrl: z.string().max(1024).optional(),
         imageKey: z.string().max(1024).optional(),
         imageAlt: z.string().max(180).optional(),

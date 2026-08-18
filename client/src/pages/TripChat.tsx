@@ -10,9 +10,9 @@ import { AlertCircle, Flag, ImagePlus, Loader2, MessageCircle, Send, ShieldAlert
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { TRIP_CHAT_IMAGE_MAX_BYTES, isTripChatImageType } from "../../../shared/tripChatAttachment";
-import { MAX_TRIP_CHAT_IMAGES, TRIP_CHAT_REACTION_OPTIONS } from "../../../shared/tripChatAlbum";
+import { MAX_TRIP_CHAT_IMAGES, TRIP_CHAT_REACTION_OPTIONS, normaliseTripChatPhotoCaption } from "../../../shared/tripChatAlbum";
 
-type PendingImage = { file: File; previewUrl: string };
+type PendingImage = { file: File; previewUrl: string; caption: string };
 const REACTION_OPTIONS = TRIP_CHAT_REACTION_OPTIONS;
 const MAX_CHAT_IMAGES = MAX_TRIP_CHAT_IMAGES;
 
@@ -54,6 +54,9 @@ export default function TripChat() {
       return current.filter((_, currentIndex) => currentIndex !== index);
     });
   }
+  function updatePendingCaption(index: number, caption: string) {
+    setPendingImages((current) => current.map((image, currentIndex) => currentIndex === index ? { ...image, caption } : image));
+  }
 
   const sendMutation = trpc.chat.sendMessage.useMutation({
     onSuccess: () => {
@@ -75,7 +78,7 @@ export default function TripChat() {
     const selected = Array.from(files).slice(0, available);
     const invalid = selected.find((file) => !isTripChatImageType(file.type) || file.size <= 0 || file.size > TRIP_CHAT_IMAGE_MAX_BYTES);
     if (invalid) { setUploadError("Choose JPEG, PNG, WebP, or GIF photos smaller than 5 MB."); return; }
-    setPendingImages((current) => [...current, ...selected.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+    setPendingImages((current) => [...current, ...selected.map((file) => ({ file, previewUrl: URL.createObjectURL(file), caption: "" }))]);
     if (files.length > available) setUploadError("Only the first available photos were added; a message can contain up to four.");
   };
 
@@ -86,7 +89,8 @@ export default function TripChat() {
     const response = await fetch("/api/upload/trip-chat-image", { method: "POST", body: formData });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.url || !payload.key) throw new Error(payload.error || "Image upload failed");
-    return { imageUrl: payload.url as string, imageKey: payload.key as string, imageAlt: payload.alt as string || "Trip chat image" };
+    const caption = normaliseTripChatPhotoCaption(image.caption);
+    return { imageUrl: payload.url as string, imageKey: payload.key as string, imageAlt: caption || payload.alt as string || "Trip chat image", caption: caption || undefined };
   };
 
   const handleSend = async () => {
@@ -122,11 +126,11 @@ export default function TripChat() {
           : messages.length === 0 ? <div className="flex h-32 flex-col items-center justify-center gap-2 text-muted-foreground"><MessageCircle className="h-8 w-8 opacity-30" /><p className="text-sm">No messages yet. Share an update or photo!</p></div>
             : <div className="flex flex-col gap-4">{messages.map((msg) => {
               const isOwn = user?.id === msg.userId;
-              const attachments = msg.attachments.length ? msg.attachments : msg.imageUrl ? [{ id: 0, imageUrl: msg.imageUrl, imageAlt: msg.imageAlt ?? "Trip chat attachment" }] : [];
+              const attachments = msg.attachments.length ? msg.attachments : msg.imageUrl ? [{ id: 0, imageUrl: msg.imageUrl, imageAlt: msg.imageAlt ?? "Trip chat attachment", caption: undefined }] : [];
               return <div key={msg.id} className={`group flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
                 {!isOwn && <span className="px-1 text-xs font-medium text-muted-foreground">{msg.userName ?? "Unknown"}</span>}
                 <div className={`max-w-[88%] overflow-hidden rounded-2xl text-sm leading-relaxed ${attachments.length ? "p-1" : "px-4 py-2"} ${isOwn ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted text-foreground"}`}>
-                  {attachments.length > 0 && <div className={`grid gap-1 ${attachments.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>{attachments.map((attachment) => <div key={attachment.id} className="relative"><a href={attachment.imageUrl} target="_blank" rel="noopener noreferrer" className="block"><img src={attachment.imageUrl} alt={attachment.imageAlt || "Trip chat attachment"} loading="lazy" className={`w-full rounded-xl object-cover ${attachments.length === 1 ? "max-h-80" : "aspect-square"}`} /></a>{attachment.id > 0 && <Button type="button" variant="secondary" size="icon" onClick={() => setReportingAttachmentId(attachment.id)} className="absolute right-1 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Report photo"><Flag className="h-3.5 w-3.5 text-destructive" /></Button>}</div>)}</div>}
+                  {attachments.length > 0 && <div className={`grid gap-1 ${attachments.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>{attachments.map((attachment) => <figure key={attachment.id} className="relative"><div className="relative"><a href={attachment.imageUrl} target="_blank" rel="noopener noreferrer" className="block"><img src={attachment.imageUrl} alt={attachment.imageAlt || "Trip chat attachment"} loading="lazy" className={`w-full rounded-xl object-cover ${attachments.length === 1 ? "max-h-80" : "aspect-square"}`} /></a>{attachment.id > 0 && <Button type="button" variant="secondary" size="icon" onClick={() => setReportingAttachmentId(attachment.id)} className="absolute right-1 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Report photo"><Flag className="h-3.5 w-3.5 text-destructive" /></Button>}</div>{attachment.caption && <figcaption className="px-1 pb-1 pt-1 text-xs font-medium leading-snug">{attachment.caption}</figcaption>}</figure>)}</div>}
                   {msg.message && <p className={attachments.length ? "px-2 pb-2 pt-1" : ""}>{msg.message}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-1 px-1 pt-0.5">
@@ -139,8 +143,8 @@ export default function TripChat() {
       </ScrollArea>
 
       <div className="border-t border-border bg-card px-4 py-3">
-        {pendingImages.length > 0 && <div className="mb-2 grid grid-cols-4 gap-2">{pendingImages.map((image, index) => <div key={image.previewUrl} className="relative"><img src={image.previewUrl} alt={`Selected photo ${index + 1}`} className="aspect-square w-full rounded-lg object-cover" /><Button type="button" variant="secondary" size="icon" onClick={() => removePendingImage(index)} disabled={sending} className="absolute right-1 top-1 h-6 w-6 rounded-full"><X className="h-3.5 w-3.5" /></Button></div>)}</div>}
-        {pendingImages.length > 0 && <p className="mb-2 text-xs text-muted-foreground">{pendingImages.length} of {MAX_CHAT_IMAGES} photos selected — add an optional comment below.</p>}
+        {pendingImages.length > 0 && <div className="mb-2 grid grid-cols-2 gap-2">{pendingImages.map((image, index) => <div key={image.previewUrl} className="rounded-xl border border-border bg-muted/25 p-1.5"><div className="relative"><img src={image.previewUrl} alt={`Selected photo ${index + 1}`} className="aspect-square w-full rounded-lg object-cover" /><Button type="button" variant="secondary" size="icon" onClick={() => removePendingImage(index)} disabled={sending} className="absolute right-1 top-1 h-6 w-6 rounded-full"><X className="h-3.5 w-3.5" /></Button></div><Input value={image.caption} onChange={(event) => updatePendingCaption(index, event.target.value)} placeholder={`Caption for photo ${index + 1}`} maxLength={240} disabled={sending} className="mt-1.5 h-8 text-xs" /></div>)}</div>}
+        {pendingImages.length > 0 && <p className="mb-2 text-xs text-muted-foreground">{pendingImages.length} of {MAX_CHAT_IMAGES} photos selected — each photo can have its own caption, plus an optional album comment below.</p>}
         {uploadError && <div role="alert" className="mb-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5" />{uploadError}</div>}
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" capture="environment" className="hidden" onChange={(event) => { chooseImages(event.target.files); event.currentTarget.value = ""; }} />

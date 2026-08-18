@@ -1,0 +1,1 @@
+ALTER TABLE `trip_message_attachments` ADD `caption` varchar(240);

@@ -795,3 +795,10 @@
 - [x] Add attachment report submission, admin/co-admin moderation list, and remove action
 - [x] Build mobile album grid, photo selection/removal, reactions, report, and moderator controls
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Individual Trip Chat Photo Captions
+
+- [x] Inspect the current album attachment payload and image grid rendering
+- [x] Add optional caption fields for each selected image, preserving message-level comments
+- [x] Persist, display, and expose individual image captions in Trip Chat albums
+- [x] Add tests, validate mobile UI, checkpoint, and publish

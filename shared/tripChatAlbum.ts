@@ -9,3 +9,8 @@ export function remainingTripChatImageSlots(selectedCount: number): number {
 export function isTripChatReactionEmoji(value: string): value is TripChatReactionEmoji {
   return (TRIP_CHAT_REACTION_OPTIONS as readonly string[]).includes(value);
 }
+
+export function normaliseTripChatPhotoCaption(value: string): string | undefined {
+  const caption = value.trim();
+  return caption || undefined;
+}
