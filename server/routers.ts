@@ -17,7 +17,9 @@ import {
   createTripPayment,
   createTripScheduledAnnouncement,
   createTripFinancialLineItem,
+  createTripActualExpense,
   createTripItineraryItem,
+  createTripPaymentReminderStage,
   createRound,
   createSideMatch,
   createTrip,
@@ -43,6 +45,7 @@ import {
   getSideMatchesByRound,
   getTrip,
   getTripByPaymentReminderTaskUid,
+  getTripPaymentReminderStages,
   getTripFinancialPlan,
   getTripItinerary,
   getTripPaymentSummary,
@@ -73,10 +76,12 @@ import {
   updateSideMatchStatus,
   deleteTrip,
   deleteTripFinancialLineItem,
+  deleteTripActualExpense,
   deleteTripItineraryItem,
   updateTrip,
   updateTripItineraryAssignments,
   setTripFinancialSettings,
+  setTripPaymentReminderStageTask,
   setTripPlayerPrice,
   reviewTripPayment,
   setTripScheduledAnnouncementTask,
@@ -800,6 +805,34 @@ export const appRouter = router({
         taskUid = job.taskUid;
       }
       await updateTrip(input.tripId, { paymentDueAt: dueAt, paymentReminderAt: reminderAt, paymentReminderCronTaskUid: taskUid ?? null } as any);
+      return { success: true };
+    }),
+    reminderStages: protectedProcedure.input(z.object({ tripId: z.number() })).query(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      return getTripPaymentReminderStages(input.tripId);
+    }),
+    scheduleReminderStage: protectedProcedure.input(z.object({ tripId: z.number(), label: z.string().trim().min(1).max(100), reminderAt: z.string() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const reminderAt = new Date(input.reminderAt);
+      if (Number.isNaN(reminderAt.getTime()) || !isFutureSchedule(reminderAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a reminder time at least one minute in the future." });
+      const id = await createTripPaymentReminderStage({ tripId: input.tripId, label: input.label, reminderAt });
+      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+      const job = await createHeartbeatJob({ name: `payment-reminder-stage-${input.tripId}-${id}`, cron: toOneTimeUtcCron(reminderAt), path: "/api/scheduled/payment-reminder-stage", payload: {}, description: `${input.label} payment reminder for trip ${input.tripId}` }, sessionToken);
+      await setTripPaymentReminderStageTask(id, job.taskUid);
+      return { id, nextExecutionAt: job.nextExecutionAt };
+    }),
+    addActualExpense: protectedProcedure.input(z.object({ tripId: z.number(), plannedLineItemId: z.number().optional(), label: z.string().trim().min(1).max(180), amountCents: z.number().int().min(0).max(100_000_000), paidAt: z.string().optional(), notes: z.string().trim().max(500).optional() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const plan = await getTripFinancialPlan(input.tripId);
+      if (input.plannedLineItemId && !plan.lines.some((line) => line.id === input.plannedLineItemId)) throw new TRPCError({ code: "BAD_REQUEST", message: "The planned line item does not belong to this trip." });
+      const id = await createTripActualExpense({ tripId: input.tripId, plannedLineItemId: input.plannedLineItemId, label: input.label, amountCents: input.amountCents, paidAt: input.paidAt ? new Date(input.paidAt) : undefined, notes: input.notes || undefined });
+      return { id };
+    }),
+    removeActualExpense: protectedProcedure.input(z.object({ tripId: z.number(), expenseId: z.number() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const plan = await getTripFinancialPlan(input.tripId);
+      if (!plan.actualExpenses.some((expense) => expense.id === input.expenseId)) throw new TRPCError({ code: "NOT_FOUND", message: "Actual expense not found" });
+      await deleteTripActualExpense(input.expenseId);
       return { success: true };
     }),
     savePlanSettings: protectedProcedure.input(z.object({ tripId: z.number(), contingencyPercent: z.number().min(0).max(100), rolloverCents: z.number().int().min(0).max(100_000_000) })).mutation(async ({ ctx, input }) => {

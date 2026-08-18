@@ -47,11 +47,13 @@ import {
   tripMessageReactions,
   tripAppearanceSchedules,
   tripAppearanceTemplates,
+  tripActualExpenses,
   tripFinancialLineItems,
   tripFinancialSettings,
   tripItineraryAssignments,
   tripItineraryItems,
   tripPayments,
+  tripPaymentReminderStages,
   tripScheduledAnnouncements,
   tripPlayers,
   trips,
@@ -501,6 +503,38 @@ export async function getTripByPaymentReminderTaskUid(taskUid: string) {
   return trip;
 }
 
+export async function createTripPaymentReminderStage(data: { tripId: number; label: string; reminderAt: Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripPaymentReminderStages).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function setTripPaymentReminderStageTask(id: number, taskUid: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripPaymentReminderStages).set({ scheduleCronTaskUid: taskUid }).where(eq(tripPaymentReminderStages.id, id));
+}
+
+export async function getTripPaymentReminderStages(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripPaymentReminderStages).where(eq(tripPaymentReminderStages.tripId, tripId)).orderBy(tripPaymentReminderStages.reminderAt);
+}
+
+export async function getTripPaymentReminderStageByTaskUid(taskUid: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [stage] = await db.select().from(tripPaymentReminderStages).where(eq(tripPaymentReminderStages.scheduleCronTaskUid, taskUid)).limit(1);
+  return stage;
+}
+
+export async function markTripPaymentReminderStageSent(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripPaymentReminderStages).set({ status: "sent", sentAt: new Date() }).where(and(eq(tripPaymentReminderStages.id, id), eq(tripPaymentReminderStages.status, "pending")));
+}
+
 export async function getTripItinerary(tripId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -570,8 +604,29 @@ export async function deleteTripFinancialLineItem(id: number) {
 }
 
 export async function getTripFinancialPlan(tripId: number) {
-  const [settings, lines, players] = await Promise.all([getTripFinancialSettings(tripId), getTripFinancialLineItems(tripId), getTripPlayers(tripId)]);
-  return { settings, lines, ...calculateTripFinancialPlan(lines, players.length, settings.contingencyPercent, settings.rolloverCents) };
+  const [settings, lines, players, actualExpenses] = await Promise.all([getTripFinancialSettings(tripId), getTripFinancialLineItems(tripId), getTripPlayers(tripId), getTripActualExpenses(tripId)]);
+  const plan = calculateTripFinancialPlan(lines, players.length, settings.contingencyPercent, settings.rolloverCents);
+  const actualExpensesCents = actualExpenses.reduce((sum, expense) => sum + expense.amountCents, 0);
+  return { settings, lines, actualExpenses, actualExpensesCents, actualVarianceCents: actualExpensesCents - plan.totalCostsCents, ...plan };
+}
+
+export async function getTripActualExpenses(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripActualExpenses).where(eq(tripActualExpenses.tripId, tripId)).orderBy(desc(tripActualExpenses.paidAt));
+}
+
+export async function createTripActualExpense(data: { tripId: number; plannedLineItemId?: number; label: string; amountCents: number; paidAt?: Date; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripActualExpenses).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function deleteTripActualExpense(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripActualExpenses).where(eq(tripActualExpenses.id, id));
 }
 
 export async function removePlayerFromTrip(tripId: number, userId: number): Promise<void> {

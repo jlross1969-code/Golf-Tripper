@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
-import { createNotification, getTrip, getTripByCourseRevealTaskUid, getTripByPaymentReminderTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, markTripScheduledAnnouncementSent, sendTripMessage, updateTrip } from "./db";
+import { createNotification, getTrip, getTripByCourseRevealTaskUid, getTripByPaymentReminderTaskUid, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, sendTripMessage, updateTrip } from "./db";
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
 
 function cronOnly(user: Awaited<ReturnType<typeof sdk.authenticateRequest>>, res: Response) {
@@ -66,6 +66,30 @@ export function registerScheduledTripEventRoutes(app: Express) {
       res.json({ ok: true, reminded: recipients.length });
     } catch (error) {
       console.error("[ScheduledTripEvents] payment reminder error", error);
+      res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/scheduled/payment-reminder-stage", async (req: Request, res: Response) => {
+    try {
+      const taskUid = cronOnly(await sdk.authenticateRequest(req), res);
+      if (!taskUid) return;
+      const stage = await getTripPaymentReminderStageByTaskUid(taskUid);
+      if (!stage) return res.json({ ok: true, skipped: "orphan" });
+      if (stage.status !== "pending") return res.json({ ok: true, skipped: stage.status });
+      const trip = await getTrip(stage.tripId);
+      if (!trip) return res.json({ ok: true, skipped: "trip-missing" });
+      const balances = await getTripPaymentSummary(trip.id);
+      const recipients = balances.filter((balance) => balance.outstandingCents > 0).map((balance) => balance.userId);
+      if (!recipients.length) { await markTripPaymentReminderStageSent(stage.id); return res.json({ ok: true, skipped: "all-paid" }); }
+      const dueLabel = trip.paymentDueAt ? new Date(trip.paymentDueAt).toLocaleDateString("en-AU") : "soon";
+      const message = `${stage.label}: payment is still outstanding for ${trip.name}. Due date: ${dueLabel}.`;
+      await createNotification({ tripId: trip.id, message, type: "general" });
+      void sendPushToUsers(recipients, { title: `Payment reminder · ${trip.name}`, body: message, tag: `payment-reminder-stage-${stage.id}`, url: `/trip/${trip.id}/payments` });
+      await markTripPaymentReminderStageSent(stage.id);
+      res.json({ ok: true, reminded: recipients.length, stageId: stage.id });
+    } catch (error) {
+      console.error("[ScheduledTripEvents] staged payment reminder error", error);
       res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
     }
   });

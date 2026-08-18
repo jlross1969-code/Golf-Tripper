@@ -1,5 +1,5 @@
 import { Express, Request, Response } from "express";
-import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
+import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, generateItineraryPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
 import { calculate4BBBStablefordPoints, calculateSkins } from "../shared/scoring";
 import { sdk } from "./_core/sdk";
 import {
@@ -13,12 +13,30 @@ import {
   getRoundScorecard,
   getScoresByRoundAndUser,
   getTrip,
+  getTripItinerary,
   getTripPaymentSummary,
   getTripPlayers,
   getDailySideMatchResults,
 } from "./db";
 
 export function registerPdfRoutes(app: Express) {
+  app.get("/api/pdf/itinerary/:tripId", async (req: Request, res: Response) => {
+    try {
+      const tripId = Number(req.params.tripId);
+      if (!Number.isInteger(tripId)) return res.status(400).json({ error: "Invalid tripId" });
+      const trip = await getTrip(tripId);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      const items = await getTripItinerary(tripId);
+      const pdf = await generateItineraryPDF({ tripName: trip.name, startDate: new Date(trip.startDate).toLocaleDateString("en-AU"), endDate: new Date(trip.endDate).toLocaleDateString("en-AU"), items: items.map((item) => ({ type: item.type, title: item.title, location: item.location, startsAt: item.startsAt ? new Date(item.startsAt).toLocaleString("en-AU") : null, endsAt: item.endsAt ? new Date(item.endsAt).toLocaleString("en-AU") : null, notes: item.notes, players: item.assignments.map((assignment) => assignment.user?.name ?? `Player ${assignment.userId}`) })) });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${trip.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-itinerary.pdf"`);
+      res.send(pdf);
+    } catch (error) {
+      console.error("[PDF] Itinerary error", error);
+      res.status(500).json({ error: "Failed to generate itinerary PDF" });
+    }
+  });
+
   app.get("/api/export/payment-ledger/:tripId", async (req: Request, res: Response) => {
     try {
       const tripId = Number(req.params.tripId);

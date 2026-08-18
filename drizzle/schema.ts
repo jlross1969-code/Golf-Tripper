@@ -199,6 +199,19 @@ export const tripScheduledAnnouncements = mysqlTable("trip_scheduled_announcemen
 
 export type TripScheduledAnnouncement = typeof tripScheduledAnnouncements.$inferSelect;
 
+export const tripPaymentReminderStages = mysqlTable("trip_payment_reminder_stages", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  label: varchar("label", { length: 100 }).notNull(),
+  reminderAt: timestamp("reminderAt").notNull(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  status: mysqlEnum("status", ["pending", "sent", "cancelled"]).default("pending").notNull(),
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripPaymentReminderStage = typeof tripPaymentReminderStages.$inferSelect;
+
 // ─── Trip Itinerary ───────────────────────────────────────────────────────────
 
 export const tripItineraryItems = mysqlTable("trip_itinerary_items", {
@@ -246,6 +259,19 @@ export const tripFinancialLineItems = mysqlTable("trip_financial_line_items", {
 });
 
 export type TripFinancialLineItem = typeof tripFinancialLineItems.$inferSelect;
+
+export const tripActualExpenses = mysqlTable("trip_actual_expenses", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  plannedLineItemId: int("plannedLineItemId"),
+  label: varchar("label", { length: 180 }).notNull(),
+  amountCents: int("amountCents").notNull(),
+  paidAt: timestamp("paidAt").defaultNow().notNull(),
+  notes: varchar("notes", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripActualExpense = typeof tripActualExpenses.$inferSelect;
 
 // ─── Rounds ───────────────────────────────────────────────────────────────────
 

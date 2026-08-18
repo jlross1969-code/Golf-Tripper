@@ -913,3 +913,12 @@
 - [x] Build accommodation and transport itinerary management with player assignments
 - [x] Build trip cost and income calculator with fixed/per-person costs, prizes, sponsorship, rollover funds, contingency, and per-player price output
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Itinerary Export, Staged Reminders, and Actual Expenses
+
+- [x] Review itinerary export, scheduled reminder, and financial calculator flows
+- [x] Add storage and protected procedures for staged payment reminders and actual expense records
+- [x] Add a trip itinerary PDF and share action
+- [x] Add staged payment reminder scheduling and delivery for outstanding players
+- [x] Add planned-versus-actual expense entry, variance calculation, and financial reporting UI
+- [x] Add tests, validate mobile UI, checkpoint, and publish
