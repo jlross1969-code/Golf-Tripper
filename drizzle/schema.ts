@@ -329,6 +329,9 @@ export const tripMessages = mysqlTable("trip_messages", {
   tripId: int("tripId").notNull(),
   userId: int("userId").notNull(),
   message: text("message").notNull(),
+  imageUrl: varchar("imageUrl", { length: 1024 }),
+  imageKey: varchar("imageKey", { length: 1024 }),
+  imageAlt: varchar("imageAlt", { length: 180 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

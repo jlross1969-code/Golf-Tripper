@@ -1150,7 +1150,7 @@ export async function updateMatchPlayResult(
 
 // ─── Trip Chat ────────────────────────────────────────────────────────────────
 
-export async function sendTripMessage(data: { tripId: number; userId: number; message: string }): Promise<number> {
+export async function sendTripMessage(data: { tripId: number; userId: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripMessages).values(data);
@@ -1166,6 +1166,9 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
       tripId: tripMessages.tripId,
       userId: tripMessages.userId,
       message: tripMessages.message,
+      imageUrl: tripMessages.imageUrl,
+      imageKey: tripMessages.imageKey,
+      imageAlt: tripMessages.imageAlt,
       createdAt: tripMessages.createdAt,
       userName: users.name,
       userNickname: tripPlayers.nickname,

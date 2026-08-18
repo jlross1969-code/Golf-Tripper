@@ -159,6 +159,7 @@ import { invokeLLM } from "./_core/llm";
 import { recentGolfAssistantMessages } from "../shared/golfAssistant";
 import { createAssistantConversationTitle, formatTripFaqContext } from "../shared/assistantEnhancements";
 import { TRIP_FAQ_CATEGORIES } from "../shared/tripFaq";
+import { isTripChatImageReference } from "../shared/tripChatAttachment";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -1970,13 +1971,23 @@ export const appRouter = router({
       }),
 
     sendMessage: protectedProcedure
-      .input(z.object({ tripId: z.number(), message: z.string().min(1).max(1000) }))
+      .input(z.object({
+        tripId: z.number(),
+        message: z.string().max(1000),
+        imageUrl: z.string().max(1024).optional(),
+        imageKey: z.string().max(1024).optional(),
+        imageAlt: z.string().max(180).optional(),
+      }).refine((value) => value.message.trim().length > 0 || Boolean(value.imageUrl), { message: "Add a comment or image" })
+        .refine((value) => !value.imageUrl || isTripChatImageReference(value.imageUrl, value.imageKey), { message: "Invalid image attachment" }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
         const id = await sendTripMessage({
           tripId: input.tripId,
           userId: ctx.user.id,
           message: input.message.trim(),
+          imageUrl: input.imageUrl,
+          imageKey: input.imageKey,
+          imageAlt: input.imageAlt,
         });
         return { id };
       }),

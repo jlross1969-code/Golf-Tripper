@@ -5,6 +5,7 @@ import { getDb } from "./db";
 import { tripPlayers, pushSubscriptions, trips, rounds } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { createContext } from "./_core/context";
+import { isTripChatImageType } from "../shared/tripChatAttachment";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -144,6 +145,29 @@ export function registerUploadRoutes(app: express.Application) {
     } catch (err) {
       console.error("Course scorecard upload error:", err);
       res.status(500).json({ error: "Scorecard upload failed" });
+    }
+  });
+
+  // POST /api/upload/trip-chat-image — a trip member may upload one chat photo.
+  router.post("/api/upload/trip-chat-image", upload.single("image"), async (req: Request, res: Response) => {
+    try {
+      const ctx = await createContext({ req, res } as any);
+      if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!req.file) { res.status(400).json({ error: "No image provided" }); return; }
+      if (!isTripChatImageType(req.file.mimetype)) { res.status(400).json({ error: "Use a JPEG, PNG, WebP, or GIF image" }); return; }
+      const tripId = parseInt(req.body.tripId as string, 10);
+      if (!tripId || Number.isNaN(tripId)) { res.status(400).json({ error: "tripId required" }); return; }
+      const db = await getDb();
+      if (!db) { res.status(500).json({ error: "Database unavailable" }); return; }
+      const membership = await db.select({ id: tripPlayers.id }).from(tripPlayers).where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, ctx.user.id))).limit(1);
+      if (!membership.length) { res.status(403).json({ error: "Not a member of this trip" }); return; }
+      const extensionByType: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
+      const key = `trip-chat/${tripId}/${ctx.user.id}/${Date.now()}.${extensionByType[req.file.mimetype]}`;
+      const stored = await storagePut(key, req.file.buffer, req.file.mimetype);
+      res.json({ key: stored.key, url: stored.url, alt: "Trip chat image" });
+    } catch (err) {
+      console.error("Trip chat image upload error:", err);
+      res.status(500).json({ error: "Image upload failed" });
     }
   });
 

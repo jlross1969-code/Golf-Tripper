@@ -776,3 +776,12 @@
 - [x] Build categorised FAQ filters, category selector, and pin control for admins
 - [x] Display pinned FAQs in trip-aware assistant chats
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Trip Chat Image Attachments
+
+- [x] Inspect Trip Chat message storage, upload patterns, and current mobile chat interface
+- [x] Add secure image attachment metadata to Trip Chat messages with a non-destructive migration
+- [x] Add protected chat-image upload handling with type and size validation
+- [x] Support sending a chat image with an optional comment and preserving text-only messages
+- [x] Render responsive image attachments in Trip Chat with upload progress and error states
+- [x] Add tests, validate mobile UI, checkpoint, and publish

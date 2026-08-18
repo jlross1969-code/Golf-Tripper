@@ -21,3 +21,8 @@
 - `/assistant?tripId=1` renders the trip-aware label, save-chat preference, and mobile conversation interface cleanly at 390px width.
 - `/admin/trips/1/faqs` renders category selection, the pin toggle, and compact category filters without horizontal overflow at 390px width.
 - `/round/90001/leaderboard` renders the Daily Leaderboard and its 4BBB state cleanly at 390px width; score-explanation actions are shown where result rows are available.
+
+## Trip Chat Image Attachments
+
+- `/trip/1/chat` renders message bubbles, the photo-picker button, optional-comment input, and send control without horizontal overflow at 390px width.
+- The chat composer remains visible above the mobile install prompt after adding responsive bottom spacing.
