@@ -1372,6 +1372,22 @@ export async function deleteTripAppearanceSchedule(id: number): Promise<void> {
   await db.delete(tripAppearanceSchedules).where(eq(tripAppearanceSchedules.id, id));
 }
 
+/** Replaces target schedules with source schedules, preserving each theme's relative trip day. */
+export async function copyTripAppearanceSchedules(sourceTripId: number, targetTripId: number, mapDate: (sourceDate: Date, sourceStart: Date, targetStart: Date) => Date): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [sourceTrip, targetTrip, sourceSchedules] = await Promise.all([getTrip(sourceTripId), getTrip(targetTripId), getTripAppearanceSchedules(sourceTripId)]);
+  if (!sourceTrip || !targetTrip) throw new Error("Trip not found");
+  await db.delete(tripAppearanceSchedules).where(eq(tripAppearanceSchedules.tripId, targetTripId));
+  if (sourceSchedules.length === 0) return 0;
+  await db.insert(tripAppearanceSchedules).values(sourceSchedules.map((schedule) => ({
+    tripId: targetTripId,
+    appearanceDate: mapDate(schedule.appearanceDate, sourceTrip.startDate, targetTrip.startDate),
+    colorScheme: schedule.colorScheme,
+  })));
+  return sourceSchedules.length;
+}
+
 // ─── Golf Trip AI Assistant ───────────────────────────────────────────────────
 
 export async function getAssistantConversations(userId: number): Promise<AssistantConversation[]> {

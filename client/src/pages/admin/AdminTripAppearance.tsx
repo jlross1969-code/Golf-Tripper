@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { COLOR_SCHEME_OPTIONS } from "@/contexts/ThemeContext";
 import { trpc } from "@/lib/trpc";
+import { SEASONAL_APPEARANCE_TEMPLATES } from "../../../../shared/seasonalAppearanceTemplates";
 import { ArrowLeft, CalendarDays, Palette, Trash2 } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useMemo, useState } from "react";
@@ -18,8 +19,10 @@ export default function AdminTripAppearance() {
   const utils = trpc.useUtils();
   const { data: trip, isLoading } = trpc.trips.get.useQuery({ id });
   const { data: schedules = [] } = trpc.tripAppearance.list.useQuery({ tripId: id }, { enabled: !!id });
+  const { data: trips = [] } = trpc.trips.list.useQuery();
   const [appearanceDate, setAppearanceDate] = useState("");
   const [colorScheme, setColorScheme] = useState("fairway");
+  const [targetTripId, setTargetTripId] = useState("");
 
   const suggestedDate = useMemo(() => appearanceDate || (trip ? toDateInput(trip.startDate) : ""), [appearanceDate, trip]);
   const selectedScheme = COLOR_SCHEME_OPTIONS.find((option) => option.id === colorScheme) ?? COLOR_SCHEME_OPTIONS[1];
@@ -31,6 +34,10 @@ export default function AdminTripAppearance() {
   const removeSchedule = trpc.tripAppearance.remove.useMutation({
     onSuccess: () => void utils.tripAppearance.list.invalidate({ tripId: id }),
   });
+  const copySchedules = trpc.tripAppearance.copyToTrip.useMutation({
+    onSuccess: () => setTargetTripId(""),
+  });
+  const targetTrips = trips.filter((candidate) => candidate.id !== id);
 
   if (isLoading) return <div className="p-6"><Skeleton className="h-8 w-56" /><Skeleton className="mt-5 h-56 max-w-xl" /></div>;
   if (!trip) return <div className="p-8 text-muted-foreground">Trip not found.</div>;
@@ -52,6 +59,7 @@ export default function AdminTripAppearance() {
 
       <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
         <div className="flex items-start gap-3"><CalendarDays className="mt-0.5 h-5 w-5 text-primary" /><div><h2 className="font-semibold">Event-day theme</h2><p className="mt-1 text-sm text-muted-foreground">Set a special scheme for a date during the trip. It automatically overrides the trip default for players without a personal preference.</p></div></div>
+        <div className="mt-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Seasonal templates</p><div className="grid grid-cols-2 gap-2">{SEASONAL_APPEARANCE_TEMPLATES.map((template) => { const option = COLOR_SCHEME_OPTIONS.find((entry) => entry.id === template.colorScheme); return <button key={template.id} type="button" className={`rounded-xl border p-3 text-left transition-colors ${colorScheme === template.colorScheme ? "border-primary ring-1 ring-primary" : "border-border hover:border-primary/50"}`} onClick={() => setColorScheme(template.colorScheme)}><div className="mb-2 h-6 rounded-md" style={{ background: option?.preview }} /><p className="text-sm font-medium">{template.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{template.description}</p></button>; })}</div></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <Input type="date" min={toDateInput(trip.startDate)} max={toDateInput(trip.endDate)} value={suggestedDate} onChange={(event) => setAppearanceDate(event.target.value)} />
           <Select value={colorScheme} onValueChange={setColorScheme}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{COLOR_SCHEME_OPTIONS.filter((option) => option.id !== "system").map((option) => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent></Select>
@@ -66,6 +74,17 @@ export default function AdminTripAppearance() {
           const scheme = COLOR_SCHEME_OPTIONS.find((option) => option.id === schedule.colorScheme);
           return <div key={schedule.id} className="flex items-center gap-3 rounded-xl border border-border p-3"><div className="h-9 w-9 rounded-lg border border-border" style={{ background: scheme?.preview }} /><div className="min-w-0 flex-1"><p className="font-medium">{new Date(schedule.appearanceDate).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</p><p className="text-xs text-muted-foreground">{scheme?.name ?? schedule.colorScheme}</p></div><Button variant="ghost" size="icon" aria-label="Remove scheduled theme" disabled={removeSchedule.isPending} onClick={() => removeSchedule.mutate({ tripId: id, id: schedule.id })}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>;
         })}</div>}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <h2 className="font-semibold">Copy this schedule</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Copy all event-day themes to another trip you administer. Each theme keeps the same relative trip day.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+          <Select value={targetTripId} onValueChange={setTargetTripId}><SelectTrigger><SelectValue placeholder="Choose target trip" /></SelectTrigger><SelectContent>{targetTrips.map((targetTrip) => <SelectItem key={targetTrip.id} value={String(targetTrip.id)}>{targetTrip.name}</SelectItem>)}</SelectContent></Select>
+          <Button disabled={!targetTripId || schedules.length === 0 || copySchedules.isPending} onClick={() => copySchedules.mutate({ sourceTripId: id, targetTripId: Number(targetTripId) })}>{copySchedules.isPending ? "Copying…" : "Copy schedule"}</Button>
+        </div>
+        {schedules.length === 0 && <p className="mt-2 text-xs text-muted-foreground">Schedule an event-day theme before copying it.</p>}
+        {copySchedules.data && <p className="mt-3 text-sm text-primary">Copied {copySchedules.data.copied} scheduled {copySchedules.data.copied === 1 ? "theme" : "themes"}.</p>}
       </section>
     </main>
   </div>;

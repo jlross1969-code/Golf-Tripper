@@ -840,3 +840,11 @@
 - [x] Add trip-default appearance previews to the admin editor
 - [x] Add privacy-safe monthly aggregate download/share analytics queries and moderator view
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Seasonal Appearance Templates and Schedule Copy
+
+- [x] Inspect scheduled appearance records and available admin trip selectors
+- [x] Define reusable seasonal appearance template options
+- [x] Add secure backend procedure to copy a source trip appearance schedule to another administered trip
+- [x] Build template selection and schedule-copy controls in Trip Appearance
+- [x] Add tests, validate mobile UI, checkpoint, and publish

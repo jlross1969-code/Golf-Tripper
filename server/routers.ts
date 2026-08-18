@@ -144,6 +144,7 @@ import {
   getTripAppearanceSchedules,
   setTripAppearanceSchedule,
   deleteTripAppearanceSchedule,
+  copyTripAppearanceSchedules,
   updateMatchPlayResult,
   createInvite,
   getInvitesByTrip,
@@ -177,6 +178,7 @@ import { TRIP_FAQ_CATEGORIES } from "../shared/tripFaq";
 import { isTripChatImageReference } from "../shared/tripChatAttachment";
 import { canManageTripChatAttachment } from "../shared/tripChatAlbum";
 import { APP_COLOR_SCHEME_IDS } from "../shared/appearance";
+import { copyAppearanceDateToTrip } from "../shared/seasonalAppearanceTemplates";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -2152,6 +2154,16 @@ export const appRouter = router({
         if (!schedules.some((schedule) => schedule.id === input.id)) throw new TRPCError({ code: "NOT_FOUND", message: "Appearance schedule not found" });
         await deleteTripAppearanceSchedule(input.id);
         return { success: true };
+      }),
+
+    copyToTrip: protectedProcedure
+      .input(z.object({ sourceTripId: z.number(), targetTripId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.sourceTripId === input.targetTripId) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a different target trip" });
+        await assertTripChatModerator(ctx.user.id, input.sourceTripId, ctx.user.role === "admin");
+        await assertTripChatModerator(ctx.user.id, input.targetTripId, ctx.user.role === "admin");
+        const copied = await copyTripAppearanceSchedules(input.sourceTripId, input.targetTripId, copyAppearanceDateToTrip);
+        return { copied };
       }),
   }),
   // ─── Invites ─────────────────────────────────────────────────────────────────
