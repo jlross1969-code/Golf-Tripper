@@ -40,6 +40,7 @@ import {
   tripMessageAttachmentActionEvents,
   tripMessageAttachmentReports,
   tripMessageReactions,
+  tripAppearanceSchedules,
   tripPlayers,
   trips,
   users,
@@ -1325,6 +1326,50 @@ export async function getTripChatPhotoActionSummary(tripId: number) {
   const downloads = Number(rows.find((row) => row.action === "download")?.count ?? 0);
   const shares = Number(rows.find((row) => row.action === "share")?.count ?? 0);
   return { downloads, shares, total: downloads + shares };
+}
+
+/** Returns up to twelve calendar months of trip-wide totals. No player identity is stored or returned. */
+export async function getTripChatPhotoActionMonthlyTrend(tripId: number) {
+  const db = await getDb();
+  if (!db) return [] as { month: string; downloads: number; shares: number; total: number }[];
+  const monthSql = sql<string>`DATE_FORMAT(${tripMessageAttachmentActionEvents.createdAt}, '%Y-%m')`;
+  const rows = await db
+    .select({ month: monthSql, action: tripMessageAttachmentActionEvents.action, count: sql<number>`count(*)` })
+    .from(tripMessageAttachmentActionEvents)
+    .where(eq(tripMessageAttachmentActionEvents.tripId, tripId))
+    .groupBy(monthSql, tripMessageAttachmentActionEvents.action)
+    .orderBy(monthSql);
+  const grouped = new Map<string, { month: string; downloads: number; shares: number; total: number }>();
+  for (const row of rows) {
+    const entry = grouped.get(row.month) ?? { month: row.month, downloads: 0, shares: 0, total: 0 };
+    if (row.action === "download") entry.downloads += Number(row.count);
+    if (row.action === "share") entry.shares += Number(row.count);
+    entry.total = entry.downloads + entry.shares;
+    grouped.set(row.month, entry);
+  }
+  return [...grouped.values()].slice(-12);
+}
+
+// ─── Trip Appearance Schedules ────────────────────────────────────────────────
+
+export async function getTripAppearanceSchedules(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripAppearanceSchedules).where(eq(tripAppearanceSchedules.tripId, tripId)).orderBy(tripAppearanceSchedules.appearanceDate);
+}
+
+export async function setTripAppearanceSchedule(data: { tripId: number; appearanceDate: Date; colorScheme: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripAppearanceSchedules).where(and(eq(tripAppearanceSchedules.tripId, data.tripId), eq(tripAppearanceSchedules.appearanceDate, data.appearanceDate)));
+  const [result] = await db.insert(tripAppearanceSchedules).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function deleteTripAppearanceSchedule(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripAppearanceSchedules).where(eq(tripAppearanceSchedules.id, id));
 }
 
 // ─── Golf Trip AI Assistant ───────────────────────────────────────────────────

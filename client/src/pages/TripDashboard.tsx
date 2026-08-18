@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useEffect } from "react";
+import { resolveTripAppearanceForDate } from "../../../shared/tripAppearanceSchedule";
 
 export default function TripDashboard() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -20,10 +21,13 @@ export default function TripDashboard() {
   const { data: players } = trpc.players.tripPlayers.useQuery({ tripId: id });
   const { data: notifications } = trpc.notifications.list.useQuery({ tripId: id, limit: 5 });
   const { data: achievements } = trpc.achievements.listByTrip.useQuery({ tripId: id });
+  const { data: appearanceSchedules = [] } = trpc.tripAppearance.list.useQuery({ tripId: id }, { enabled: !!id });
+
+  const scheduledAppearance = resolveTripAppearanceForDate(appearanceSchedules, (trip as any)?.defaultColorScheme);
 
   useEffect(() => {
-    useTripDefaultColorScheme((trip as any)?.defaultColorScheme);
-  }, [trip, useTripDefaultColorScheme]);
+    useTripDefaultColorScheme(scheduledAppearance);
+  }, [trip, scheduledAppearance, useTripDefaultColorScheme]);
 
   if (tripLoading) {
     return (

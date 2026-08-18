@@ -140,6 +140,10 @@ import {
   dismissTripChatAttachmentReport,
   recordTripChatPhotoAction,
   getTripChatPhotoActionSummary,
+  getTripChatPhotoActionMonthlyTrend,
+  getTripAppearanceSchedules,
+  setTripAppearanceSchedule,
+  deleteTripAppearanceSchedule,
   updateMatchPlayResult,
   createInvite,
   getInvitesByTrip,
@@ -2115,6 +2119,39 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
         return getTripChatPhotoActionSummary(input.tripId);
+      }),
+
+    photoActionMonthlyTrend: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripChatPhotoActionMonthlyTrend(input.tripId);
+      }),
+  }),
+
+  tripAppearance: router({
+    list: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripAppearanceSchedules(input.tripId);
+      }),
+
+    set: protectedProcedure
+      .input(z.object({ tripId: z.number(), appearanceDate: z.string().datetime(), colorScheme: z.enum(APP_COLOR_SCHEME_IDS) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return { id: await setTripAppearanceSchedule({ tripId: input.tripId, appearanceDate: new Date(input.appearanceDate), colorScheme: input.colorScheme }) };
+      }),
+
+    remove: protectedProcedure
+      .input(z.object({ tripId: z.number(), id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const schedules = await getTripAppearanceSchedules(input.tripId);
+        if (!schedules.some((schedule) => schedule.id === input.id)) throw new TRPCError({ code: "NOT_FOUND", message: "Appearance schedule not found" });
+        await deleteTripAppearanceSchedule(input.id);
+        return { success: true };
       }),
   }),
   // ─── Invites ─────────────────────────────────────────────────────────────────

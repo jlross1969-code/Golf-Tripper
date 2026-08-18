@@ -831,3 +831,12 @@
 - [x] Add privacy-safe aggregate download/share action event tracking for chat photos
 - [x] Add an admin-only photo action summary without exposing individual player activity
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Trip Appearance Preview, Event-Day Themes, and Monthly Analytics
+
+- [x] Inspect trip appearance configuration, round dates, and photo-action analytics aggregation
+- [x] Add optional event-day appearance schedules with non-destructive data migration
+- [x] Apply a scheduled event-day theme to players without a personal appearance preference
+- [x] Add trip-default appearance previews to the admin editor
+- [x] Add privacy-safe monthly aggregate download/share analytics queries and moderator view
+- [x] Add tests, validate mobile UI, checkpoint, and publish

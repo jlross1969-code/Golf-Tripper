@@ -41,6 +41,7 @@ import PennantFixtureScoring from "./pages/PennantFixtureScoring";
 import GolfAssistant from "./pages/GolfAssistant";
 import AdminTripFaqs from "./pages/admin/AdminTripFaqs";
 import AppSettings from "./pages/AppSettings";
+import AdminTripAppearance from "./pages/admin/AdminTripAppearance";
 
 function Router() {
   return (
@@ -76,6 +77,7 @@ function Router() {
       <Route path="/admin/trips/:tripId/rounds/:roundId/pennant" component={AdminPennant} />
       <Route path="/admin/trips/:tripId/awards" component={AdminAwards} />
       <Route path="/admin/trips/:tripId/faqs" component={AdminTripFaqs} />
+      <Route path="/admin/trips/:tripId/appearance" component={AdminTripAppearance} />
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />

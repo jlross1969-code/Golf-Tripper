@@ -37,3 +37,8 @@
 
 - `/settings` shows the new Follow System option alongside all concrete palette choices without horizontal overflow at 390px width.
 - `/trip/1/chat` keeps both moderator controls—Activity and Reports—reachable in the compact mobile header, while the chat composer remains visible.
+
+## Trip Appearance Preview, Event-Day Themes, and Monthly Analytics
+
+- The mobile Trip Appearance page presents the current player-dashboard preview, event-day date and palette controls, and an empty scheduled-theme state without horizontal overflow.
+- The mobile Trip Chat header retains its Activity and Reports controls while keeping the conversation and composer readable; the monthly trend is available from Activity.

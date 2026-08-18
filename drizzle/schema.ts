@@ -110,6 +110,20 @@ export const trips = mysqlTable("trips", {
 
 export type Trip = typeof trips.$inferSelect;
 
+// ─── Trip Appearance Schedules ─────────────────────────────────────────────────
+
+/** A per-day appearance override, applied only when players have no personal preference. */
+export const tripAppearanceSchedules = mysqlTable("trip_appearance_schedules", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  appearanceDate: timestamp("appearanceDate").notNull(),
+  colorScheme: varchar("colorScheme", { length: 16 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TripAppearanceSchedule = typeof tripAppearanceSchedules.$inferSelect;
+
 // ─── Trip Players ─────────────────────────────────────────────────────────────
 
 export const tripPlayers = mysqlTable("trip_players", {
