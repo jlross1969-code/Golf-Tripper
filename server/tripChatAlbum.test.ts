@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_TRIP_CHAT_IMAGES, isTripChatReactionEmoji, normaliseTripChatPhotoCaption, remainingTripChatImageSlots } from "../shared/tripChatAlbum";
+import { MAX_TRIP_CHAT_IMAGES, isTripChatReactionEmoji, normaliseTripChatPhotoCaption, remainingTripChatImageSlots, reorderTripChatPhotos } from "../shared/tripChatAlbum";
 
 describe("Trip Chat albums and reactions", () => {
   it("limits a chat album to four images", () => {
@@ -20,5 +20,12 @@ describe("Trip Chat albums and reactions", () => {
   it("trims individual photo captions and treats blank captions as absent", () => {
     expect(normaliseTripChatPhotoCaption("  First tee selfie  ")).toBe("First tee selfie");
     expect(normaliseTripChatPhotoCaption("   ")).toBeUndefined();
+  });
+
+  it("moves an album photo without mutating the original order", () => {
+    const original = ["first", "second", "third"];
+    expect(reorderTripChatPhotos(original, 0, 2)).toEqual(["second", "third", "first"]);
+    expect(reorderTripChatPhotos(original, 2, 0)).toEqual(["third", "first", "second"]);
+    expect(original).toEqual(["first", "second", "third"]);
   });
 });

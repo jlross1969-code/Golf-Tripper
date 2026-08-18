@@ -1255,11 +1255,17 @@ export async function toggleTripMessageReaction(messageId: number, userId: numbe
 export async function getTripChatAttachment(attachmentId: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const [attachment] = await db.select({ attachment: tripMessageAttachments, tripId: tripMessages.tripId, messageId: tripMessages.id })
+  const [attachment] = await db.select({ attachment: tripMessageAttachments, tripId: tripMessages.tripId, messageId: tripMessages.id, messageUserId: tripMessages.userId })
     .from(tripMessageAttachments)
     .innerJoin(tripMessages, eq(tripMessageAttachments.messageId, tripMessages.id))
     .where(eq(tripMessageAttachments.id, attachmentId)).limit(1);
   return attachment;
+}
+
+export async function updateTripChatAttachmentCaption(attachmentId: number, caption?: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripMessageAttachments).set({ caption: caption || null }).where(eq(tripMessageAttachments.id, attachmentId));
 }
 
 export async function createTripChatAttachmentReport(data: { tripId: number; attachmentId: number; reporterUserId: number; reason?: string }): Promise<number> {

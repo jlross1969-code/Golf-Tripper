@@ -133,6 +133,7 @@ import {
   getTripChatMessage,
   toggleTripMessageReaction,
   getTripChatAttachment,
+  updateTripChatAttachmentCaption,
   createTripChatAttachmentReport,
   getTripChatAttachmentReports,
   removeTripChatAttachment,
@@ -2023,6 +2024,17 @@ export const appRouter = router({
         const message = await getTripChatMessage(input.messageId);
         if (!message || message.tripId !== input.tripId) throw new TRPCError({ code: "NOT_FOUND", message: "Chat message not found" });
         return { active: await toggleTripMessageReaction(input.messageId, ctx.user.id, input.emoji) };
+      }),
+
+    updateAttachmentCaption: protectedProcedure
+      .input(z.object({ tripId: z.number(), attachmentId: z.number(), caption: z.string().trim().max(240).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const result = await getTripChatAttachment(input.attachmentId);
+        if (!result || result.tripId !== input.tripId || result.attachment.isRemoved) throw new TRPCError({ code: "NOT_FOUND", message: "Attachment not found" });
+        if (result.messageUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Only the photo author can edit its caption" });
+        await updateTripChatAttachmentCaption(input.attachmentId, input.caption?.trim() || undefined);
+        return { success: true };
       }),
 
     reportAttachment: protectedProcedure

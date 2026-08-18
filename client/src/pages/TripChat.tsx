@@ -6,13 +6,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { formatDistanceToNow } from "date-fns";
-import { AlertCircle, Flag, ImagePlus, Loader2, MessageCircle, Send, ShieldAlert, SmilePlus, Trash2, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Flag, ImagePlus, Loader2, MessageCircle, Pencil, Send, ShieldAlert, SmilePlus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { TRIP_CHAT_IMAGE_MAX_BYTES, isTripChatImageType } from "../../../shared/tripChatAttachment";
-import { MAX_TRIP_CHAT_IMAGES, TRIP_CHAT_REACTION_OPTIONS, normaliseTripChatPhotoCaption } from "../../../shared/tripChatAlbum";
+import { MAX_TRIP_CHAT_IMAGES, TRIP_CHAT_REACTION_OPTIONS, normaliseTripChatPhotoCaption, reorderTripChatPhotos } from "../../../shared/tripChatAlbum";
 
 type PendingImage = { file: File; previewUrl: string; caption: string };
+type ViewerImage = { id: number; imageUrl: string; imageAlt?: string | null; caption?: string | null };
 const REACTION_OPTIONS = TRIP_CHAT_REACTION_OPTIONS;
 const MAX_CHAT_IMAGES = MAX_TRIP_CHAT_IMAGES;
 
@@ -28,9 +29,12 @@ export default function TripChat() {
   const [reportingAttachmentId, setReportingAttachmentId] = useState<number | null>(null);
   const [reportReason, setReportReason] = useState("");
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [captionEditingAttachment, setCaptionEditingAttachment] = useState<{ id: number; caption: string } | null>(null);
+  const [viewer, setViewer] = useState<{ images: ViewerImage[]; index: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
+  const viewerTouchStart = useRef<number | null>(null);
   const utils = trpc.useUtils();
 
   const { data: messages = [], isLoading } = trpc.chat.getMessages.useQuery(
@@ -57,6 +61,20 @@ export default function TripChat() {
   function updatePendingCaption(index: number, caption: string) {
     setPendingImages((current) => current.map((image, currentIndex) => currentIndex === index ? { ...image, caption } : image));
   }
+  function movePendingImage(index: number, direction: -1 | 1) {
+    setPendingImages((current) => {
+      const destination = index + direction;
+      if (destination < 0 || destination >= current.length) return current;
+      return reorderTripChatPhotos(current, index, destination);
+    });
+  }
+  function changeViewerImage(direction: -1 | 1) {
+    setViewer((current) => {
+      if (!current) return null;
+      const index = Math.min(Math.max(current.index + direction, 0), current.images.length - 1);
+      return { ...current, index };
+    });
+  }
 
   const sendMutation = trpc.chat.sendMessage.useMutation({
     onSuccess: () => {
@@ -69,6 +87,7 @@ export default function TripChat() {
   const reportMutation = trpc.chat.reportAttachment.useMutation({ onSuccess: () => { setReportingAttachmentId(null); setReportReason(""); setUploadError(null); void utils.chat.listAttachmentReports.invalidate({ tripId: parsedTripId }); } });
   const removeAttachmentMutation = trpc.chat.removeAttachment.useMutation({ onSuccess: () => { void utils.chat.getMessages.invalidate({ tripId: parsedTripId }); void utils.chat.listAttachmentReports.invalidate({ tripId: parsedTripId }); } });
   const dismissReportMutation = trpc.chat.dismissAttachmentReport.useMutation({ onSuccess: () => { void utils.chat.listAttachmentReports.invalidate({ tripId: parsedTripId }); } });
+  const updateCaptionMutation = trpc.chat.updateAttachmentCaption.useMutation({ onSuccess: () => { setCaptionEditingAttachment(null); void utils.chat.getMessages.invalidate({ tripId: parsedTripId }); } });
 
   const chooseImages = (files: FileList | null) => {
     setUploadError(null);
@@ -130,7 +149,7 @@ export default function TripChat() {
               return <div key={msg.id} className={`group flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
                 {!isOwn && <span className="px-1 text-xs font-medium text-muted-foreground">{msg.userName ?? "Unknown"}</span>}
                 <div className={`max-w-[88%] overflow-hidden rounded-2xl text-sm leading-relaxed ${attachments.length ? "p-1" : "px-4 py-2"} ${isOwn ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted text-foreground"}`}>
-                  {attachments.length > 0 && <div className={`grid gap-1 ${attachments.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>{attachments.map((attachment) => <figure key={attachment.id} className="relative"><div className="relative"><a href={attachment.imageUrl} target="_blank" rel="noopener noreferrer" className="block"><img src={attachment.imageUrl} alt={attachment.imageAlt || "Trip chat attachment"} loading="lazy" className={`w-full rounded-xl object-cover ${attachments.length === 1 ? "max-h-80" : "aspect-square"}`} /></a>{attachment.id > 0 && <Button type="button" variant="secondary" size="icon" onClick={() => setReportingAttachmentId(attachment.id)} className="absolute right-1 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Report photo"><Flag className="h-3.5 w-3.5 text-destructive" /></Button>}</div>{attachment.caption && <figcaption className="px-1 pb-1 pt-1 text-xs font-medium leading-snug">{attachment.caption}</figcaption>}</figure>)}</div>}
+                  {attachments.length > 0 && <div className={`grid gap-1 ${attachments.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>{attachments.map((attachment, attachmentIndex) => <figure key={attachment.id} className="relative"><div className="relative"><button type="button" onClick={() => setViewer({ images: attachments, index: attachmentIndex })} className="block w-full" aria-label={`Open photo ${attachmentIndex + 1} full screen`}><img src={attachment.imageUrl} alt={attachment.imageAlt || "Trip chat attachment"} loading="lazy" className={`w-full rounded-xl object-cover ${attachments.length === 1 ? "max-h-80" : "aspect-square"}`} /></button>{attachment.id > 0 && <><Button type="button" variant="secondary" size="icon" onClick={() => setReportingAttachmentId(attachment.id)} className="absolute right-1 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Report photo"><Flag className="h-3.5 w-3.5 text-destructive" /></Button>{isOwn && <Button type="button" variant="secondary" size="icon" onClick={() => setCaptionEditingAttachment({ id: attachment.id, caption: attachment.caption || "" })} className="absolute right-9 top-1 h-7 w-7 rounded-full bg-background/85 shadow-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Edit photo caption"><Pencil className="h-3.5 w-3.5" /></Button>}</>}</div>{attachment.caption && <figcaption className="px-1 pb-1 pt-1 text-xs font-medium leading-snug">{attachment.caption}</figcaption>}</figure>)}</div>}
                   {msg.message && <p className={attachments.length ? "px-2 pb-2 pt-1" : ""}>{msg.message}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-1 px-1 pt-0.5">
@@ -143,8 +162,8 @@ export default function TripChat() {
       </ScrollArea>
 
       <div className="border-t border-border bg-card px-4 py-3">
-        {pendingImages.length > 0 && <div className="mb-2 grid grid-cols-2 gap-2">{pendingImages.map((image, index) => <div key={image.previewUrl} className="rounded-xl border border-border bg-muted/25 p-1.5"><div className="relative"><img src={image.previewUrl} alt={`Selected photo ${index + 1}`} className="aspect-square w-full rounded-lg object-cover" /><Button type="button" variant="secondary" size="icon" onClick={() => removePendingImage(index)} disabled={sending} className="absolute right-1 top-1 h-6 w-6 rounded-full"><X className="h-3.5 w-3.5" /></Button></div><Input value={image.caption} onChange={(event) => updatePendingCaption(index, event.target.value)} placeholder={`Caption for photo ${index + 1}`} maxLength={240} disabled={sending} className="mt-1.5 h-8 text-xs" /></div>)}</div>}
-        {pendingImages.length > 0 && <p className="mb-2 text-xs text-muted-foreground">{pendingImages.length} of {MAX_CHAT_IMAGES} photos selected — each photo can have its own caption, plus an optional album comment below.</p>}
+        {pendingImages.length > 0 && <div className="mb-2 grid grid-cols-2 gap-2">{pendingImages.map((image, index) => <div key={image.previewUrl} className="rounded-xl border border-border bg-muted/25 p-1.5"><div className="relative"><img src={image.previewUrl} alt={`Selected photo ${index + 1}`} className="aspect-square w-full rounded-lg object-cover" /><div className="absolute left-1 top-1 flex gap-1"><Button type="button" variant="secondary" size="icon" onClick={() => movePendingImage(index, -1)} disabled={sending || index === 0} className="h-6 w-6 rounded-full" aria-label={`Move photo ${index + 1} left`}><ArrowLeft className="h-3.5 w-3.5" /></Button><Button type="button" variant="secondary" size="icon" onClick={() => movePendingImage(index, 1)} disabled={sending || index === pendingImages.length - 1} className="h-6 w-6 rounded-full" aria-label={`Move photo ${index + 1} right`}><ArrowRight className="h-3.5 w-3.5" /></Button></div><Button type="button" variant="secondary" size="icon" onClick={() => removePendingImage(index)} disabled={sending} className="absolute right-1 top-1 h-6 w-6 rounded-full"><X className="h-3.5 w-3.5" /></Button></div><Input value={image.caption} onChange={(event) => updatePendingCaption(index, event.target.value)} placeholder={`Caption for photo ${index + 1}`} maxLength={240} disabled={sending} className="mt-1.5 h-8 text-xs" /></div>)}</div>}
+        {pendingImages.length > 0 && <p className="mb-2 text-xs text-muted-foreground">{pendingImages.length} of {MAX_CHAT_IMAGES} photos selected — use the arrows to reorder, add individual captions, then optionally add an album comment.</p>}
         {uploadError && <div role="alert" className="mb-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"><AlertCircle className="h-3.5 w-3.5" />{uploadError}</div>}
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" capture="environment" className="hidden" onChange={(event) => { chooseImages(event.target.files); event.currentTarget.value = ""; }} />
@@ -157,6 +176,10 @@ export default function TripChat() {
       <Dialog open={reportingAttachmentId !== null} onOpenChange={(open) => { if (!open) { setReportingAttachmentId(null); setReportReason(""); } }}><DialogContent><DialogHeader><DialogTitle>Report photo</DialogTitle><DialogDescription>Tell the trip admins why this photo should be reviewed. Your report is visible only to moderators.</DialogDescription></DialogHeader><Textarea value={reportReason} onChange={(event) => setReportReason(event.target.value)} placeholder="Optional reason" maxLength={600} /><DialogFooter><Button variant="outline" onClick={() => setReportingAttachmentId(null)}>Cancel</Button><Button variant="destructive" disabled={reportMutation.isPending} onClick={() => reportingAttachmentId && reportMutation.mutate({ tripId: parsedTripId, attachmentId: reportingAttachmentId, reason: reportReason.trim() || undefined })}>{reportMutation.isPending ? "Sending…" : "Send report"}</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={reportsOpen} onOpenChange={setReportsOpen}><DialogContent className="max-h-[80vh] overflow-y-auto"><DialogHeader><DialogTitle>Attachment reports</DialogTitle><DialogDescription>Review reported Trip Chat photos. Removing hides the image for all players.</DialogDescription></DialogHeader>{reports.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No attachment reports.</p> : <div className="space-y-3">{reports.map((entry) => <div key={entry.report.id} className="rounded-xl border border-border p-3"><div className="flex gap-3"><img src={entry.attachment.imageUrl} alt={entry.attachment.imageAlt || "Reported attachment"} className="h-16 w-16 rounded-lg object-cover" /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{entry.reporterName || "Trip player"} reported this photo</p><p className="line-clamp-2 text-xs text-muted-foreground">{entry.report.reason || "No reason provided"}</p><p className="mt-1 text-xs capitalize text-muted-foreground">Status: {entry.report.status}</p></div></div>{entry.report.status === "open" && <div className="mt-3 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={dismissReportMutation.isPending} onClick={() => dismissReportMutation.mutate({ tripId: parsedTripId, reportId: entry.report.id })}>Dismiss</Button><Button size="sm" variant="destructive" disabled={removeAttachmentMutation.isPending} onClick={() => removeAttachmentMutation.mutate({ tripId: parsedTripId, attachmentId: entry.attachment.id })}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Remove photo</Button></div>}</div>)}</div>}</DialogContent></Dialog>
+
+      <Dialog open={captionEditingAttachment !== null} onOpenChange={(open) => { if (!open) setCaptionEditingAttachment(null); }}><DialogContent><DialogHeader><DialogTitle>Edit photo caption</DialogTitle><DialogDescription>Only you can edit captions on photos you posted.</DialogDescription></DialogHeader><Textarea value={captionEditingAttachment?.caption || ""} onChange={(event) => setCaptionEditingAttachment((current) => current ? { ...current, caption: event.target.value } : null)} placeholder="Add a caption (optional)" maxLength={240} /><DialogFooter><Button variant="outline" onClick={() => setCaptionEditingAttachment(null)}>Cancel</Button><Button disabled={updateCaptionMutation.isPending} onClick={() => captionEditingAttachment && updateCaptionMutation.mutate({ tripId: parsedTripId, attachmentId: captionEditingAttachment.id, caption: captionEditingAttachment.caption.trim() || undefined })}>{updateCaptionMutation.isPending ? "Saving…" : "Save caption"}</Button></DialogFooter></DialogContent></Dialog>
+
+      <Dialog open={viewer !== null} onOpenChange={(open) => { if (!open) setViewer(null); }}><DialogContent className="h-[100dvh] max-w-none rounded-none border-0 bg-black p-3 text-white sm:h-[92vh] sm:max-w-4xl sm:rounded-xl"><DialogTitle className="sr-only">Trip Chat photo viewer</DialogTitle>{viewer && <div className="relative flex h-full min-h-0 flex-col" onTouchStart={(event) => { viewerTouchStart.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => { const start = viewerTouchStart.current; const end = event.changedTouches[0]?.clientX; viewerTouchStart.current = null; if (start === null || end === undefined) return; const delta = end - start; if (Math.abs(delta) >= 44) changeViewerImage(delta < 0 ? 1 : -1); }}><div className="flex items-center justify-between gap-3 pb-2"><span className="text-sm font-medium">Photo {viewer.index + 1} of {viewer.images.length}</span><Button type="button" variant="secondary" size="icon" onClick={() => setViewer(null)} className="rounded-full" aria-label="Close photo viewer"><X className="h-4 w-4" /></Button></div><div className="relative flex min-h-0 flex-1 items-center justify-center"><img src={viewer.images[viewer.index].imageUrl} alt={viewer.images[viewer.index].imageAlt || "Trip chat photo"} className="max-h-full max-w-full object-contain" />{viewer.images.length > 1 && <><Button type="button" variant="secondary" size="icon" disabled={viewer.index === 0} onClick={() => changeViewerImage(-1)} className="absolute left-1 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full bg-background/85" aria-label="Previous photo"><ChevronLeft className="h-5 w-5" /></Button><Button type="button" variant="secondary" size="icon" disabled={viewer.index === viewer.images.length - 1} onClick={() => changeViewerImage(1)} className="absolute right-1 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full bg-background/85" aria-label="Next photo"><ChevronRight className="h-5 w-5" /></Button></>}</div>{viewer.images[viewer.index].caption && <p className="px-2 pt-3 text-center text-sm leading-relaxed text-white/90">{viewer.images[viewer.index].caption}</p>}<p className="pb-1 pt-2 text-center text-xs text-white/60">Swipe left or right to browse</p></div>}</DialogContent></Dialog>
     </div>
   );
 }

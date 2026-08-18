@@ -802,3 +802,12 @@
 - [x] Add optional caption fields for each selected image, preserving message-level comments
 - [x] Persist, display, and expose individual image captions in Trip Chat albums
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Trip Chat Album Editing and Full-Screen Viewer
+
+- [x] Inspect current attachment ordering, author identity, and image rendering implementation
+- [x] Add secure author-only procedures to edit a photo caption and update attachment order
+- [x] Add reorder controls before sending an album
+- [x] Add author caption edit controls for posted photos
+- [x] Build an accessible full-screen album viewer with previous/next and touch swipe navigation
+- [x] Add tests, validate mobile UI, checkpoint, and publish
