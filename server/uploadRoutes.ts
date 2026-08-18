@@ -19,6 +19,15 @@ const upload = multer({
   },
 });
 
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Use a PDF, JPEG, PNG, or WebP receipt"));
+  },
+});
+
 export function registerUploadRoutes(app: express.Application) {
   const router = Router();
 
@@ -169,6 +178,28 @@ export function registerUploadRoutes(app: express.Application) {
     } catch (err) {
       console.error("Trip chat image upload error:", err);
       res.status(500).json({ error: "Image upload failed" });
+    }
+  });
+
+  // POST /api/upload/trip-expense-receipt — trip financial manager only.
+  router.post("/api/upload/trip-expense-receipt", receiptUpload.single("receipt"), async (req: Request, res: Response) => {
+    try {
+      const ctx = await createContext({ req, res } as any);
+      if (!ctx.user) return res.status(401).json({ error: "Unauthorized" });
+      if (!req.file) return res.status(400).json({ error: "No receipt provided" });
+      const tripId = parseInt(req.body.tripId as string, 10);
+      if (!tripId || Number.isNaN(tripId)) return res.status(400).json({ error: "tripId required" });
+      const db = await getDb();
+      if (!db) return res.status(500).json({ error: "Database unavailable" });
+      const [trip] = await db.select().from(trips).where(eq(trips.id, tripId)).limit(1);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      if (ctx.user.role !== "admin" && trip.createdBy !== ctx.user.id && trip.financialManagerUserId !== ctx.user.id) return res.status(403).json({ error: "Financial manager access required" });
+      const extension = req.file.mimetype === "application/pdf" ? "pdf" : req.file.mimetype.split("/")[1] || "file";
+      const stored = await storagePut(`trip-receipts/${tripId}/${ctx.user.id}-${Date.now()}.${extension}`, req.file.buffer, req.file.mimetype);
+      res.json({ key: stored.key, url: stored.url, fileName: req.file.originalname });
+    } catch (err) {
+      console.error("Trip expense receipt upload error:", err);
+      res.status(500).json({ error: "Receipt upload failed" });
     }
   });
 

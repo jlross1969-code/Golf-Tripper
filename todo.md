@@ -922,3 +922,12 @@
 - [x] Add staged payment reminder scheduling and delivery for outstanding players
 - [x] Add planned-versus-actual expense entry, variance calculation, and financial reporting UI
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Supplier Contacts, Receipts, Approvals, and Travel Checklist
+
+- [x] Review financial permission, actual expense, receipt storage, and itinerary checklist flows
+- [x] Add secure supplier contact, receipt, expense approval, and travel checklist storage
+- [x] Add financial-manager-only supplier and supplier-linked expense workflows
+- [x] Add financial-manager-only receipt upload and large-expense approval controls
+- [x] Add a player travel checklist with financial-manager-only authoring and management
+- [x] Add tests, validate mobile UI, checkpoint, and publish

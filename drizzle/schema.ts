@@ -244,10 +244,24 @@ export const tripFinancialSettings = mysqlTable("trip_financial_settings", {
   tripId: int("tripId").notNull().unique(),
   contingencyPercent: float("contingencyPercent").default(0).notNull(),
   rolloverCents: int("rolloverCents").default(0).notNull(),
+  expenseApprovalThresholdCents: int("expenseApprovalThresholdCents").default(0).notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 export type TripFinancialSettings = typeof tripFinancialSettings.$inferSelect;
+
+export const tripSuppliers = mysqlTable("trip_suppliers", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  name: varchar("name", { length: 180 }).notNull(),
+  contactName: varchar("contactName", { length: 120 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 60 }),
+  notes: varchar("notes", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripSupplier = typeof tripSuppliers.$inferSelect;
 
 export const tripFinancialLineItems = mysqlTable("trip_financial_line_items", {
   id: int("id").autoincrement().primaryKey(),
@@ -264,14 +278,38 @@ export const tripActualExpenses = mysqlTable("trip_actual_expenses", {
   id: int("id").autoincrement().primaryKey(),
   tripId: int("tripId").notNull(),
   plannedLineItemId: int("plannedLineItemId"),
+  supplierId: int("supplierId"),
   label: varchar("label", { length: 180 }).notNull(),
   amountCents: int("amountCents").notNull(),
   paidAt: timestamp("paidAt").defaultNow().notNull(),
   notes: varchar("notes", { length: 500 }),
+  receiptUrl: varchar("receiptUrl", { length: 512 }),
+  receiptFileName: varchar("receiptFileName", { length: 255 }),
+  approvalStatus: mysqlEnum("approvalStatus", ["pending", "approved"]).default("approved").notNull(),
+  approvedByUserId: int("approvedByUserId"),
+  approvedAt: timestamp("approvedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type TripActualExpense = typeof tripActualExpenses.$inferSelect;
+
+// ─── Player Travel Checklist ───────────────────────────────────────────────────
+
+export const tripTravelChecklistItems = mysqlTable("trip_travel_checklist_items", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  label: varchar("label", { length: 240 }).notNull(),
+  dueAt: timestamp("dueAt"),
+  createdByUserId: int("createdByUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const tripTravelChecklistCompletions = mysqlTable("trip_travel_checklist_completions", {
+  id: int("id").autoincrement().primaryKey(),
+  checklistItemId: int("checklistItemId").notNull(),
+  userId: int("userId").notNull(),
+  completedAt: timestamp("completedAt").defaultNow().notNull(),
+});
 
 // ─── Rounds ───────────────────────────────────────────────────────────────────
 

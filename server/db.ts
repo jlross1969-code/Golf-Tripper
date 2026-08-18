@@ -48,6 +48,9 @@ import {
   tripAppearanceSchedules,
   tripAppearanceTemplates,
   tripActualExpenses,
+  tripSuppliers,
+  tripTravelChecklistItems,
+  tripTravelChecklistCompletions,
   tripFinancialLineItems,
   tripFinancialSettings,
   tripItineraryAssignments,
@@ -573,15 +576,34 @@ export async function deleteTripItineraryItem(itemId: number) {
 
 export async function getTripFinancialSettings(tripId: number) {
   const db = await getDb();
-  if (!db) return { contingencyPercent: 0, rolloverCents: 0 };
+  if (!db) return { contingencyPercent: 0, rolloverCents: 0, expenseApprovalThresholdCents: 0 };
   const [settings] = await db.select().from(tripFinancialSettings).where(eq(tripFinancialSettings.tripId, tripId)).limit(1);
-  return settings ?? { contingencyPercent: 0, rolloverCents: 0 };
+  return settings ?? { contingencyPercent: 0, rolloverCents: 0, expenseApprovalThresholdCents: 0 };
 }
 
-export async function setTripFinancialSettings(tripId: number, contingencyPercent: number, rolloverCents: number) {
+export async function setTripFinancialSettings(tripId: number, contingencyPercent: number, rolloverCents: number, expenseApprovalThresholdCents = 0) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  await db.insert(tripFinancialSettings).values({ tripId, contingencyPercent, rolloverCents }).onDuplicateKeyUpdate({ set: { contingencyPercent, rolloverCents } });
+  await db.insert(tripFinancialSettings).values({ tripId, contingencyPercent, rolloverCents, expenseApprovalThresholdCents }).onDuplicateKeyUpdate({ set: { contingencyPercent, rolloverCents, expenseApprovalThresholdCents } });
+}
+
+export async function getTripSuppliers(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripSuppliers).where(eq(tripSuppliers.tripId, tripId)).orderBy(tripSuppliers.name);
+}
+
+export async function createTripSupplier(data: { tripId: number; name: string; contactName?: string; email?: string; phone?: string; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripSuppliers).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function deleteTripSupplier(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripSuppliers).where(eq(tripSuppliers.id, id));
 }
 
 export async function getTripFinancialLineItems(tripId: number) {
@@ -606,8 +628,8 @@ export async function deleteTripFinancialLineItem(id: number) {
 export async function getTripFinancialPlan(tripId: number) {
   const [settings, lines, players, actualExpenses] = await Promise.all([getTripFinancialSettings(tripId), getTripFinancialLineItems(tripId), getTripPlayers(tripId), getTripActualExpenses(tripId)]);
   const plan = calculateTripFinancialPlan(lines, players.length, settings.contingencyPercent, settings.rolloverCents);
-  const actualExpensesCents = actualExpenses.reduce((sum, expense) => sum + expense.amountCents, 0);
-  return { settings, lines, actualExpenses, actualExpensesCents, actualVarianceCents: actualExpensesCents - plan.totalCostsCents, ...plan };
+  const actualExpensesCents = actualExpenses.filter((expense) => expense.approvalStatus === "approved").reduce((sum, expense) => sum + expense.amountCents, 0);
+  return { settings, lines, actualExpenses, actualExpensesCents, pendingActualExpenses: actualExpenses.filter((expense) => expense.approvalStatus === "pending"), actualVarianceCents: actualExpensesCents - plan.totalCostsCents, ...plan };
 }
 
 export async function getTripActualExpenses(tripId: number) {
@@ -616,17 +638,54 @@ export async function getTripActualExpenses(tripId: number) {
   return db.select().from(tripActualExpenses).where(eq(tripActualExpenses.tripId, tripId)).orderBy(desc(tripActualExpenses.paidAt));
 }
 
-export async function createTripActualExpense(data: { tripId: number; plannedLineItemId?: number; label: string; amountCents: number; paidAt?: Date; notes?: string }) {
+export async function createTripActualExpense(data: { tripId: number; plannedLineItemId?: number; supplierId?: number; label: string; amountCents: number; paidAt?: Date; notes?: string; receiptUrl?: string; receiptFileName?: string; approvalStatus?: "pending" | "approved" }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripActualExpenses).values(data);
   return (result as any).insertId as number;
 }
 
+export async function approveTripActualExpense(id: number, approvedByUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripActualExpenses).set({ approvalStatus: "approved", approvedByUserId, approvedAt: new Date() }).where(and(eq(tripActualExpenses.id, id), eq(tripActualExpenses.approvalStatus, "pending")));
+}
+
 export async function deleteTripActualExpense(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.delete(tripActualExpenses).where(eq(tripActualExpenses.id, id));
+}
+
+export async function getTripTravelChecklist(tripId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const items = await db.select().from(tripTravelChecklistItems).where(eq(tripTravelChecklistItems.tripId, tripId)).orderBy(tripTravelChecklistItems.dueAt, tripTravelChecklistItems.createdAt);
+  if (!items.length) return [];
+  const completions = await db.select().from(tripTravelChecklistCompletions).where(and(inArray(tripTravelChecklistCompletions.checklistItemId, items.map((item) => item.id)), eq(tripTravelChecklistCompletions.userId, userId)));
+  const completeIds = new Set(completions.map((completion) => completion.checklistItemId));
+  return items.map((item) => ({ ...item, completed: completeIds.has(item.id) }));
+}
+
+export async function createTripTravelChecklistItem(data: { tripId: number; label: string; dueAt?: Date; createdByUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripTravelChecklistItems).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function deleteTripTravelChecklistItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripTravelChecklistCompletions).where(eq(tripTravelChecklistCompletions.checklistItemId, id));
+  await db.delete(tripTravelChecklistItems).where(eq(tripTravelChecklistItems.id, id));
+}
+
+export async function toggleTripTravelChecklistCompletion(itemId: number, userId: number, completed: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  if (completed) await db.insert(tripTravelChecklistCompletions).values({ checklistItemId: itemId, userId });
+  else await db.delete(tripTravelChecklistCompletions).where(and(eq(tripTravelChecklistCompletions.checklistItemId, itemId), eq(tripTravelChecklistCompletions.userId, userId)));
 }
 
 export async function removePlayerFromTrip(tripId: number, userId: number): Promise<void> {
