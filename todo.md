@@ -955,3 +955,12 @@
 - [x] Build financial-manager document organization and supplier invoice attachment workflows
 - [x] Implement daily financial-summary digest scheduling and organiser delivery
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Document Search, Invoice Approval, and Financial Dashboard
+
+- [x] Review document vault search, supplier invoice approval, and finance reporting flows
+- [x] Add secure invoice approval state and searchable document query support
+- [x] Add document search across titles, folders, and tags
+- [x] Add financial-manager supplier invoice approval controls
+- [x] Add an interactive in-app financial dashboard chart with summary insights
+- [x] Add tests, validate mobile UI, checkpoint, and publish

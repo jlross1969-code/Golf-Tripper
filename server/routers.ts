@@ -95,6 +95,7 @@ import {
   setTripTravelChecklistReminderTask,
   setTripSupplierInvoiceReminder,
   setTripSupplierInvoiceAttachment,
+  reviewTripSupplierInvoice,
   updateTripSupplierPayment,
   getTripSupplierByInvoiceReminderTaskUid,
   markTripSupplierInvoiceReminderSent,
@@ -850,6 +851,14 @@ export const appRouter = router({
       await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
       if (!(await getTripSuppliers(input.tripId)).some((supplier) => supplier.id === input.supplierId)) throw new TRPCError({ code: "NOT_FOUND", message: "Supplier not found" });
       await setTripSupplierInvoiceAttachment(input.supplierId, input.fileKey, input.fileUrl, input.fileName);
+      return { success: true };
+    }),
+    reviewSupplierInvoice: protectedProcedure.input(z.object({ tripId: z.number(), supplierId: z.number(), status: z.enum(["approved", "rejected"]), note: z.string().trim().max(500).optional() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const supplier = (await getTripSuppliers(input.tripId)).find((entry) => entry.id === input.supplierId);
+      if (!supplier) throw new TRPCError({ code: "NOT_FOUND", message: "Supplier not found" });
+      if (!supplier.invoiceAttachmentUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "Attach an invoice before reviewing it" });
+      await reviewTripSupplierInvoice(supplier.id, input.status, ctx.user.id, input.note);
       return { success: true };
     }),
     setDailyFinancialDigest: protectedProcedure.input(z.object({ tripId: z.number(), enabled: z.boolean(), hourUtc: z.number().int().min(0).max(23) })).mutation(async ({ ctx, input }) => {

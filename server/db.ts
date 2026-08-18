@@ -623,7 +623,13 @@ export async function setTripSupplierInvoiceReminder(id: number, invoiceDueAt: D
 export async function setTripSupplierInvoiceAttachment(id: number, invoiceAttachmentKey: string, invoiceAttachmentUrl: string, invoiceAttachmentFileName: string) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  await db.update(tripSuppliers).set({ invoiceAttachmentKey, invoiceAttachmentUrl, invoiceAttachmentFileName }).where(eq(tripSuppliers.id, id));
+  await db.update(tripSuppliers).set({ invoiceAttachmentKey, invoiceAttachmentUrl, invoiceAttachmentFileName, invoiceApprovalStatus: "pending", invoiceApprovedByUserId: null, invoiceApprovedAt: null, invoiceApprovalNote: null }).where(eq(tripSuppliers.id, id));
+}
+
+export async function reviewTripSupplierInvoice(id: number, invoiceApprovalStatus: "approved" | "rejected", invoiceApprovedByUserId: number, invoiceApprovalNote?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripSuppliers).set({ invoiceApprovalStatus, invoiceApprovedByUserId, invoiceApprovedAt: new Date(), invoiceApprovalNote: invoiceApprovalNote ?? null }).where(eq(tripSuppliers.id, id));
 }
 
 export async function getTripSupplierByInvoiceReminderTaskUid(invoiceReminderCronTaskUid: string) {

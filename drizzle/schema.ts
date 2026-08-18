@@ -272,6 +272,10 @@ export const tripSuppliers = mysqlTable("trip_suppliers", {
   invoiceAttachmentKey: varchar("invoiceAttachmentKey", { length: 512 }),
   invoiceAttachmentUrl: varchar("invoiceAttachmentUrl", { length: 512 }),
   invoiceAttachmentFileName: varchar("invoiceAttachmentFileName", { length: 255 }),
+  invoiceApprovalStatus: mysqlEnum("invoiceApprovalStatus", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  invoiceApprovedByUserId: int("invoiceApprovedByUserId"),
+  invoiceApprovedAt: timestamp("invoiceApprovedAt"),
+  invoiceApprovalNote: varchar("invoiceApprovalNote", { length: 500 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
