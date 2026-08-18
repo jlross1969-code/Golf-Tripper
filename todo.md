@@ -939,3 +939,11 @@
 - [x] Add financial-manager expense-category reporting and supplier payment-status management
 - [x] Add scheduled checklist deadline reminder delivery to incomplete trip players
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Financial Exports, Supplier Reminders, and Trip Documents
+
+- [x] Review financial export, supplier invoice scheduling, document storage, and player access flows
+- [x] Add secure storage and procedures for supplier invoice reminders and trip documents
+- [x] Add category-report CSV/PDF export and supplier invoice due-date reminder scheduling
+- [x] Build the financial-manager upload and player-facing trip document vault
+- [x] Add tests, validate mobile UI, checkpoint, and publish

@@ -261,10 +261,27 @@ export const tripSuppliers = mysqlTable("trip_suppliers", {
   paymentStatus: mysqlEnum("paymentStatus", ["unpaid", "partially_paid", "paid"]).default("unpaid").notNull(),
   paymentDueCents: int("paymentDueCents").default(0).notNull(),
   paidCents: int("paidCents").default(0).notNull(),
+  invoiceDueAt: timestamp("invoiceDueAt"),
+  invoiceReminderAt: timestamp("invoiceReminderAt"),
+  invoiceReminderCronTaskUid: varchar("invoiceReminderCronTaskUid", { length: 65 }),
+  invoiceReminderSentAt: timestamp("invoiceReminderSentAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type TripSupplier = typeof tripSuppliers.$inferSelect;
+
+export const tripDocuments = mysqlTable("trip_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  uploadedByUserId: int("uploadedByUserId").notNull(),
+  title: varchar("title", { length: 180 }).notNull(),
+  fileKey: varchar("fileKey", { length: 512 }).notNull(),
+  fileUrl: varchar("fileUrl", { length: 512 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 120 }).notNull(),
+  sizeBytes: int("sizeBytes").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
 
 export const tripFinancialLineItems = mysqlTable("trip_financial_line_items", {
   id: int("id").autoincrement().primaryKey(),

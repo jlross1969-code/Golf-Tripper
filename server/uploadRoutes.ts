@@ -28,6 +28,15 @@ const receiptUpload = multer({
   },
 });
 
+const tripDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "image/jpeg", "image/png"].includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Use a PDF, DOCX, XLSX, JPEG, or PNG document"));
+  },
+});
+
 export function registerUploadRoutes(app: express.Application) {
   const router = Router();
 
@@ -200,6 +209,28 @@ export function registerUploadRoutes(app: express.Application) {
     } catch (err) {
       console.error("Trip expense receipt upload error:", err);
       res.status(500).json({ error: "Receipt upload failed" });
+    }
+  });
+
+  // POST /api/upload/trip-document — financial manager only.
+  router.post("/api/upload/trip-document", tripDocumentUpload.single("document"), async (req: Request, res: Response) => {
+    try {
+      const ctx = await createContext({ req, res } as any);
+      if (!ctx.user) return res.status(401).json({ error: "Unauthorized" });
+      if (!req.file) return res.status(400).json({ error: "No document provided" });
+      const tripId = parseInt(req.body.tripId as string, 10);
+      if (!tripId || Number.isNaN(tripId)) return res.status(400).json({ error: "tripId required" });
+      const db = await getDb();
+      if (!db) return res.status(500).json({ error: "Database unavailable" });
+      const [trip] = await db.select().from(trips).where(eq(trips.id, tripId)).limit(1);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      if (ctx.user.role !== "admin" && trip.createdBy !== ctx.user.id && trip.financialManagerUserId !== ctx.user.id) return res.status(403).json({ error: "Financial manager access required" });
+      const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 160) || "document";
+      const stored = await storagePut(`trip-documents/${tripId}/${ctx.user.id}-${Date.now()}-${safeName}`, req.file.buffer, req.file.mimetype);
+      res.json({ key: stored.key, url: stored.url, fileName: req.file.originalname, mimeType: req.file.mimetype, sizeBytes: req.file.size });
+    } catch (err) {
+      console.error("Trip document upload error:", err);
+      res.status(500).json({ error: "Document upload failed" });
     }
   });
 

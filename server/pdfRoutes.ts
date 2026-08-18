@@ -1,5 +1,5 @@
 import { Express, Request, Response } from "express";
-import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, generateItineraryPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
+import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, generateItineraryPDF, generateExpenseCategoryReportPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
 import { calculate4BBBStablefordPoints, calculateSkins } from "../shared/scoring";
 import { sdk } from "./_core/sdk";
 import {
@@ -15,6 +15,7 @@ import {
   getTrip,
   getTripItinerary,
   getTripPaymentSummary,
+  getTripFinancialPlan,
   getTripPlayers,
   getDailySideMatchResults,
 } from "./db";
@@ -57,6 +58,45 @@ export function registerPdfRoutes(app: Express) {
     } catch (error) {
       console.error("[Export] payment ledger error", error);
       res.status(500).json({ error: "Failed to export payment ledger" });
+    }
+  });
+
+  app.get("/api/export/expense-categories/:tripId", async (req: Request, res: Response) => {
+    try {
+      const tripId = Number(req.params.tripId);
+      if (!Number.isInteger(tripId)) return res.status(400).json({ error: "Invalid tripId" });
+      const user = await sdk.authenticateRequest(req);
+      const trip = await getTrip(tripId);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      if (user.role !== "admin" && trip.createdBy !== user.id && trip.financialManagerUserId !== user.id) return res.status(403).json({ error: "Financial manager access required" });
+      const plan = await getTripFinancialPlan(tripId);
+      const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+      const rows = [["Expense category", "Approved spend"], ...plan.categoryTotals.map((entry) => [entry.category, (entry.amountCents / 100).toFixed(2)]), ["TOTAL", (plan.actualExpensesCents / 100).toFixed(2)]];
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${trip.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-expense-categories.csv"`);
+      res.send(rows.map((row) => row.map(escape).join(",")).join("\n"));
+    } catch (error) {
+      console.error("[Export] expense categories error", error);
+      res.status(500).json({ error: "Failed to export expense categories" });
+    }
+  });
+
+  app.get("/api/pdf/expense-categories/:tripId", async (req: Request, res: Response) => {
+    try {
+      const tripId = Number(req.params.tripId);
+      if (!Number.isInteger(tripId)) return res.status(400).json({ error: "Invalid tripId" });
+      const user = await sdk.authenticateRequest(req);
+      const trip = await getTrip(tripId);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      if (user.role !== "admin" && trip.createdBy !== user.id && trip.financialManagerUserId !== user.id) return res.status(403).json({ error: "Financial manager access required" });
+      const plan = await getTripFinancialPlan(tripId);
+      const pdf = await generateExpenseCategoryReportPDF({ tripName: trip.name, categories: plan.categoryTotals, totalCents: plan.actualExpensesCents, generatedAt: new Date().toLocaleDateString("en-AU") });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${trip.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-expense-categories.pdf"`);
+      res.send(pdf);
+    } catch (error) {
+      console.error("[PDF] expense categories error", error);
+      res.status(500).json({ error: "Failed to generate expense category PDF" });
     }
   });
 

@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
-import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripByCourseRevealTaskUid, getTripByPaymentReminderTaskUid, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, getTripTravelChecklistByReminderTaskUid, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, markTripTravelChecklistReminderSent, sendTripMessage, updateTrip } from "./db";
+import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripByCourseRevealTaskUid, getTripByPaymentReminderTaskUid, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, getTripSupplierByInvoiceReminderTaskUid, getTripTravelChecklistByReminderTaskUid, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, markTripSupplierInvoiceReminderSent, markTripTravelChecklistReminderSent, sendTripMessage, updateTrip } from "./db";
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
 
 function cronOnly(user: Awaited<ReturnType<typeof sdk.authenticateRequest>>, res: Response) {
@@ -114,6 +114,28 @@ export function registerScheduledTripEventRoutes(app: Express) {
       res.json({ ok: true, reminded: recipients.length, itemId: item.id });
     } catch (error) {
       console.error("[ScheduledTripEvents] checklist reminder error", error);
+      res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/scheduled/supplier-invoice-reminder", async (req: Request, res: Response) => {
+    try {
+      const taskUid = cronOnly(await sdk.authenticateRequest(req), res);
+      if (!taskUid) return;
+      const supplier = await getTripSupplierByInvoiceReminderTaskUid(taskUid);
+      if (!supplier) return res.json({ ok: true, skipped: "orphan" });
+      if (supplier.invoiceReminderSentAt) return res.json({ ok: true, skipped: "already-sent" });
+      const trip = await getTrip(supplier.tripId);
+      if (!trip) return res.json({ ok: true, skipped: "trip-missing" });
+      const dueLabel = supplier.invoiceDueAt ? new Date(supplier.invoiceDueAt).toLocaleDateString("en-AU") : "soon";
+      const outstanding = Math.max(0, supplier.paymentDueCents - supplier.paidCents);
+      const message = `Supplier invoice reminder: ${supplier.name} has ${outstanding > 0 ? `$${(outstanding / 100).toFixed(2)} outstanding` : "an invoice due"} for ${trip.name}, due ${dueLabel}.`;
+      await createNotification({ tripId: trip.id, message, type: "general" });
+      void sendPushToUsers([trip.createdBy, ...(trip.financialManagerUserId ? [trip.financialManagerUserId] : [])], { title: `Supplier invoice · ${trip.name}`, body: message, tag: `supplier-invoice-${supplier.id}`, url: `/admin/trips/${trip.id}/finances` });
+      await markTripSupplierInvoiceReminderSent(supplier.id);
+      res.json({ ok: true, supplierId: supplier.id });
+    } catch (error) {
+      console.error("[ScheduledTripEvents] supplier invoice reminder error", error);
       res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
     }
   });
