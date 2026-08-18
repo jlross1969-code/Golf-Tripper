@@ -589,6 +589,18 @@ export async function setTripFinancialSettings(tripId: number, contingencyPercen
   await db.insert(tripFinancialSettings).values({ tripId, contingencyPercent, rolloverCents, expenseApprovalThresholdCents }).onDuplicateKeyUpdate({ set: { contingencyPercent, rolloverCents, expenseApprovalThresholdCents } });
 }
 
+export async function setTripBudgetWarningThreshold(tripId: number, budgetWarningThresholdPercent: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(tripFinancialSettings).values({ tripId, budgetWarningThresholdPercent }).onDuplicateKeyUpdate({ set: { budgetWarningThresholdPercent, budgetWarningSentAt: null } });
+}
+
+export async function markTripBudgetWarningSent(tripId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripFinancialSettings).set({ budgetWarningSentAt: new Date() }).where(eq(tripFinancialSettings.tripId, tripId));
+}
+
 export async function getTripSuppliers(tripId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -682,6 +694,25 @@ export async function setTripDocumentExpiry(id: number, expiresAt: Date | null) 
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(tripDocuments).set({ expiresAt }).where(eq(tripDocuments.id, id));
+}
+
+export async function setTripDocumentExpiryReminder(id: number, expiryReminderAt: Date | null, expiryReminderCronTaskUid: string | null) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripDocuments).set({ expiryReminderAt, expiryReminderCronTaskUid, expiryReminderSentAt: null }).where(eq(tripDocuments.id, id));
+}
+
+export async function getTripDocumentByExpiryReminderTaskUid(expiryReminderCronTaskUid: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [document] = await db.select().from(tripDocuments).where(eq(tripDocuments.expiryReminderCronTaskUid, expiryReminderCronTaskUid)).limit(1);
+  return document;
+}
+
+export async function markTripDocumentExpiryReminderSent(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripDocuments).set({ expiryReminderSentAt: new Date() }).where(eq(tripDocuments.id, id));
 }
 
 export async function getTripByFinancialDigestTaskUid(financialDigestCronTaskUid: string) {

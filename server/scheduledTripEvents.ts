@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
-import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripByCourseRevealTaskUid, getTripByFinancialDigestTaskUid, getTripByPaymentReminderTaskUid, getTripFinancialPlan, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, getTripSupplierByInvoiceReminderTaskUid, getTripSuppliers, getTripTravelChecklistByReminderTaskUid, markTripFinancialDigestSent, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, markTripSupplierInvoiceReminderSent, markTripTravelChecklistReminderSent, sendTripMessage, updateTrip } from "./db";
+import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripByCourseRevealTaskUid, getTripByFinancialDigestTaskUid, getTripByPaymentReminderTaskUid, getTripDocumentByExpiryReminderTaskUid, getTripFinancialPlan, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, getTripSupplierByInvoiceReminderTaskUid, getTripSuppliers, getTripTravelChecklistByReminderTaskUid, markTripDocumentExpiryReminderSent, markTripFinancialDigestSent, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, markTripSupplierInvoiceReminderSent, markTripTravelChecklistReminderSent, sendTripMessage, updateTrip } from "./db";
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
 import { buildFinancialDigestMessage } from "../shared/financialDigest";
 
@@ -137,6 +137,28 @@ export function registerScheduledTripEventRoutes(app: Express) {
       res.json({ ok: true, supplierId: supplier.id });
     } catch (error) {
       console.error("[ScheduledTripEvents] supplier invoice reminder error", error);
+      res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/scheduled/document-expiry-reminder", async (req: Request, res: Response) => {
+    try {
+      const taskUid = cronOnly(await sdk.authenticateRequest(req), res);
+      if (!taskUid) return;
+      const document = await getTripDocumentByExpiryReminderTaskUid(taskUid);
+      if (!document) return res.json({ ok: true, skipped: "orphan" });
+      if (document.expiryReminderSentAt) return res.json({ ok: true, skipped: "already-sent" });
+      const trip = await getTrip(document.tripId);
+      if (!trip) return res.json({ ok: true, skipped: "trip-missing" });
+      const expires = document.expiresAt ? new Date(document.expiresAt).toLocaleString("en-AU") : "soon";
+      const message = `Document expiry reminder: ${document.title} will no longer be available to players after ${expires}.`;
+      const recipients = [...new Set([trip.createdBy, ...(trip.financialManagerUserId ? [trip.financialManagerUserId] : [])])];
+      await createNotification({ tripId: trip.id, message, type: "general" });
+      void sendPushToUsers(recipients, { title: `Document expiry · ${trip.name}`, body: message, tag: `document-expiry-${document.id}`, url: `/trip/${trip.id}/documents` });
+      await markTripDocumentExpiryReminderSent(document.id);
+      res.json({ ok: true, documentId: document.id });
+    } catch (error) {
+      console.error("[ScheduledTripEvents] document expiry reminder error", error);
       res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
     }
   });

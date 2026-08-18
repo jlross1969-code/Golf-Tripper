@@ -973,3 +973,12 @@
 - [x] Add configurable date ranges to the financial dashboard reporting
 - [x] Add expiry-aware document access and financial-manager expiry controls
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Expiry Alerts, Supplier Audits, and Budget Warnings
+
+- [x] Review document expiry, supplier audit, budget tracking, and notification flows
+- [x] Add secure storage and procedures for expiry reminders, audit exports, and budget thresholds
+- [x] Add document-expiry reminder scheduling and delivery
+- [x] Add exportable supplier invoice audit reports
+- [x] Add budget-threshold configuration and automatic organiser warning delivery
+- [x] Add tests, validate mobile UI, checkpoint, and publish

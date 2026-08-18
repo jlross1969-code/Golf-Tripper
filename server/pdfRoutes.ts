@@ -16,6 +16,8 @@ import {
   getTripItinerary,
   getTripPaymentSummary,
   getTripFinancialPlan,
+  getTripSuppliers,
+  getTripSupplierInvoiceReviews,
   getTripPlayers,
   getDailySideMatchResults,
 } from "./db";
@@ -78,6 +80,31 @@ export function registerPdfRoutes(app: Express) {
     } catch (error) {
       console.error("[Export] expense categories error", error);
       res.status(500).json({ error: "Failed to export expense categories" });
+    }
+  });
+
+  app.get("/api/export/supplier-invoice-audit/:tripId", async (req: Request, res: Response) => {
+    try {
+      const tripId = Number(req.params.tripId);
+      if (!Number.isInteger(tripId)) return res.status(400).json({ error: "Invalid tripId" });
+      const user = await sdk.authenticateRequest(req);
+      const trip = await getTrip(tripId);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      if (user.role !== "admin" && trip.createdBy !== user.id && trip.financialManagerUserId !== user.id) return res.status(403).json({ error: "Financial manager access required" });
+      const suppliers = await getTripSuppliers(tripId);
+      const escape = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+      const rows: (string | number)[][] = [["Supplier", "Contact", "Email", "Invoice status", "Invoice file", "Review status", "Review comment", "Reviewer ID", "Reviewed at"]];
+      for (const supplier of suppliers) {
+        const reviews = await getTripSupplierInvoiceReviews(tripId, supplier.id);
+        if (!reviews.length) rows.push([supplier.name, supplier.contactName ?? "", supplier.email ?? "", supplier.invoiceApprovalStatus, supplier.invoiceAttachmentFileName ?? "", "", "", "", ""]);
+        else reviews.forEach((review) => rows.push([supplier.name, supplier.contactName ?? "", supplier.email ?? "", supplier.invoiceApprovalStatus, supplier.invoiceAttachmentFileName ?? "", review.status, review.note ?? "", review.reviewerUserId, new Date(review.createdAt).toISOString()]));
+      }
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${trip.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-supplier-invoice-audit.csv"`);
+      res.send(rows.map((row) => row.map(escape).join(",")).join("\n"));
+    } catch (error) {
+      console.error("[Export] supplier invoice audit", error);
+      res.status(500).json({ error: "Failed to export supplier invoice audit" });
     }
   });
 

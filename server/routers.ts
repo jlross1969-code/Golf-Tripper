@@ -98,6 +98,9 @@ import {
   setTripSupplierInvoiceReminder,
   setTripSupplierInvoiceAttachment,
   setTripDocumentExpiry,
+  setTripDocumentExpiryReminder,
+  setTripBudgetWarningThreshold,
+  markTripBudgetWarningSent,
   reviewTripSupplierInvoice,
   updateTripSupplierPayment,
   getTripSupplierByInvoiceReminderTaskUid,
@@ -278,6 +281,21 @@ async function assertTripFinancialManager(userId: number, tripId: number, isPlat
     throw new TRPCError({ code: "FORBIDDEN", message: "Trip financial-manager access is required" });
   }
   return trip;
+}
+
+async function notifyBudgetThresholdIfNeeded(tripId: number) {
+  const plan = await getTripFinancialPlan(tripId);
+  const settings = plan.settings as typeof plan.settings & { budgetWarningThresholdPercent?: number; budgetWarningSentAt?: Date | null };
+  const threshold = settings.budgetWarningThresholdPercent ?? 0;
+  if (!threshold || settings.budgetWarningSentAt || plan.totalCostsCents <= 0) return;
+  const ratio = (plan.actualExpensesCents / plan.totalCostsCents) * 100;
+  if (ratio < threshold) return;
+  const trip = await getTrip(tripId);
+  if (!trip) return;
+  const message = `Budget warning: approved actual spending for ${trip.name} has reached ${ratio.toFixed(0)}% of the planned budget (threshold ${threshold}%).`;
+  await createNotification({ tripId, message, type: "general" });
+  void sendPushToUsers([...new Set([trip.createdBy, ...(trip.financialManagerUserId ? [trip.financialManagerUserId] : [])])], { title: `Budget warning · ${trip.name}`, body: message, tag: `budget-warning-${tripId}`, url: `/admin/trips/${tripId}/finances` });
+  await markTripBudgetWarningSent(tripId);
 }
 
 async function assertAssistantTripAccess(userId: number, tripId: number, isPlatformAdmin: boolean): Promise<void> {
@@ -921,6 +939,7 @@ export const appRouter = router({
       if (input.supplierId && !(await getTripSuppliers(input.tripId)).some((supplier) => supplier.id === input.supplierId)) throw new TRPCError({ code: "BAD_REQUEST", message: "Supplier does not belong to this trip." });
       const needsApproval = plan.settings.expenseApprovalThresholdCents > 0 && input.amountCents >= plan.settings.expenseApprovalThresholdCents;
       const id = await createTripActualExpense({ tripId: input.tripId, plannedLineItemId: input.plannedLineItemId, supplierId: input.supplierId, category: input.category, label: input.label, amountCents: input.amountCents, paidAt: input.paidAt ? new Date(input.paidAt) : undefined, notes: input.notes || undefined, receiptUrl: input.receiptUrl, receiptFileName: input.receiptFileName, approvalStatus: needsApproval ? "pending" : "approved" });
+      if (!needsApproval) void notifyBudgetThresholdIfNeeded(input.tripId);
       return { id };
     }),
     approveActualExpense: protectedProcedure.input(z.object({ tripId: z.number(), expenseId: z.number() })).mutation(async ({ ctx, input }) => {
@@ -928,6 +947,7 @@ export const appRouter = router({
       const plan = await getTripFinancialPlan(input.tripId);
       if (!plan.actualExpenses.some((expense) => expense.id === input.expenseId)) throw new TRPCError({ code: "NOT_FOUND", message: "Actual expense not found" });
       await approveTripActualExpense(input.expenseId, ctx.user.id);
+      void notifyBudgetThresholdIfNeeded(input.tripId);
       return { success: true };
     }),
     removeActualExpense: protectedProcedure.input(z.object({ tripId: z.number(), expenseId: z.number() })).mutation(async ({ ctx, input }) => {
@@ -940,6 +960,12 @@ export const appRouter = router({
     savePlanSettings: protectedProcedure.input(z.object({ tripId: z.number(), contingencyPercent: z.number().min(0).max(100), rolloverCents: z.number().int().min(0).max(100_000_000), expenseApprovalThresholdCents: z.number().int().min(0).max(100_000_000).default(0) })).mutation(async ({ ctx, input }) => {
       await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
       await setTripFinancialSettings(input.tripId, input.contingencyPercent, input.rolloverCents, input.expenseApprovalThresholdCents);
+      return { success: true };
+    }),
+    setBudgetWarningThreshold: protectedProcedure.input(z.object({ tripId: z.number(), thresholdPercent: z.number().min(0).max(500) })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      await setTripBudgetWarningThreshold(input.tripId, input.thresholdPercent);
+      void notifyBudgetThresholdIfNeeded(input.tripId);
       return { success: true };
     }),
     addPlanLine: protectedProcedure.input(z.object({ tripId: z.number(), type: z.enum(["fixed_cost", "per_person_cost", "prize", "income"]), label: z.string().trim().min(1).max(180), amountCents: z.number().int().min(0).max(100_000_000) })).mutation(async ({ ctx, input }) => {
@@ -1024,6 +1050,32 @@ export const appRouter = router({
       const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
       if (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now())) throw new TRPCError({ code: "BAD_REQUEST", message: "Document expiry must be in the future" });
       await setTripDocumentExpiry(input.documentId, expiresAt);
+      if (expiresAt) {
+        const automaticReminderAt = new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
+        if (isFutureSchedule(automaticReminderAt)) {
+          const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+          const job = await createHeartbeatJob({ name: `document-expiry-${input.tripId}-${input.documentId}`, cron: toOneTimeUtcCron(automaticReminderAt), path: "/api/scheduled/document-expiry-reminder", payload: {}, description: `Automatic document expiry reminder for trip ${input.tripId}` }, sessionToken);
+          await setTripDocumentExpiryReminder(input.documentId, automaticReminderAt, job.taskUid);
+        }
+      } else {
+        await setTripDocumentExpiryReminder(input.documentId, null, null);
+      }
+      return { success: true };
+    }),
+    setExpiryReminder: protectedProcedure.input(z.object({ tripId: z.number(), documentId: z.number(), reminderAt: z.string().datetime().nullable() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const document = (await getTripDocuments(input.tripId)).find((entry) => entry.id === input.documentId);
+      if (!document) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      const reminderAt = input.reminderAt ? new Date(input.reminderAt) : null;
+      if (reminderAt && (Number.isNaN(reminderAt.getTime()) || !isFutureSchedule(reminderAt))) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a reminder time at least one minute in the future." });
+      if (reminderAt && document.expiresAt && reminderAt >= document.expiresAt) throw new TRPCError({ code: "BAD_REQUEST", message: "The reminder must occur before the document expires." });
+      let taskUid: string | null = null;
+      if (reminderAt) {
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        const job = await createHeartbeatJob({ name: `document-expiry-${input.tripId}-${document.id}`, cron: toOneTimeUtcCron(reminderAt), path: "/api/scheduled/document-expiry-reminder", payload: {}, description: `Document expiry reminder for ${document.title}` }, sessionToken);
+        taskUid = job.taskUid;
+      }
+      await setTripDocumentExpiryReminder(document.id, reminderAt, taskUid);
       return { success: true };
     }),
     remove: protectedProcedure.input(z.object({ tripId: z.number(), documentId: z.number() })).mutation(async ({ ctx, input }) => {

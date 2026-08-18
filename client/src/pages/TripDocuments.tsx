@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { DocumentExpiryReminderControl } from "@/components/DocumentExpiryReminderControl";
 
 export default function TripDocuments() {
   const { tripId } = useParams<{ tripId: string }>();

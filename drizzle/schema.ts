@@ -249,6 +249,8 @@ export const tripFinancialSettings = mysqlTable("trip_financial_settings", {
   contingencyPercent: float("contingencyPercent").default(0).notNull(),
   rolloverCents: int("rolloverCents").default(0).notNull(),
   expenseApprovalThresholdCents: int("expenseApprovalThresholdCents").default(0).notNull(),
+  budgetWarningThresholdPercent: float("budgetWarningThresholdPercent").default(0).notNull(),
+  budgetWarningSentAt: timestamp("budgetWarningSentAt"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
@@ -299,6 +301,9 @@ export const tripDocuments = mysqlTable("trip_documents", {
   folder: varchar("folder", { length: 120 }).default("General").notNull(),
   tags: varchar("tags", { length: 500 }),
   expiresAt: timestamp("expiresAt"),
+  expiryReminderAt: timestamp("expiryReminderAt"),
+  expiryReminderCronTaskUid: varchar("expiryReminderCronTaskUid", { length: 65 }),
+  expiryReminderSentAt: timestamp("expiryReminderSentAt"),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
   fileUrl: varchar("fileUrl", { length: 512 }).notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
