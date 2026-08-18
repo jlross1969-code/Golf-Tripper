@@ -15,3 +15,9 @@
 - `/assistant` renders saved-chat controls, the rules disclaimer, welcome response, prompt input, and compact mobile header without overflow at 390px width.
 - `/admin/trips/1/faqs` renders the trip FAQ authoring form and empty state correctly at 390px width.
 - `/trip/1/leaderboard` renders individual standings and the expandable score rows correctly at 390px width; the score-explanation action is available after expanding a row.
+
+## Daily Score Explanations and Pinned FAQ Categories
+
+- `/assistant?tripId=1` renders the trip-aware label, save-chat preference, and mobile conversation interface cleanly at 390px width.
+- `/admin/trips/1/faqs` renders category selection, the pin toggle, and compact category filters without horizontal overflow at 390px width.
+- `/round/90001/leaderboard` renders the Daily Leaderboard and its 4BBB state cleanly at 390px width; score-explanation actions are shown where result rows are available.

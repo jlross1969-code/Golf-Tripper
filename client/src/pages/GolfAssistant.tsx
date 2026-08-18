@@ -26,8 +26,11 @@ function formatConversationDate(value: Date | string) {
 export default function GolfAssistant() {
   const initialParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const initialTripId = Number(initialParams.get("tripId")) || null;
+  const explainRoundId = Number(initialParams.get("explainRoundId")) || null;
   const explainPlayerId = Number(initialParams.get("explainPlayerId")) || null;
   const explainTeamKey = initialParams.get("explainTeamKey");
+  const dailyPlayerId = Number(initialParams.get("dailyPlayerId")) || null;
+  const dailyTeamKey = initialParams.get("dailyTeamKey");
   const explanationStarted = useRef(false);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -38,6 +41,10 @@ export default function GolfAssistant() {
 
   const utils = trpc.useUtils();
   const { data: conversations = [] } = trpc.assistant.listConversations.useQuery();
+  const { data: tripFaqs = [] } = trpc.tripFaqs.list.useQuery(
+    { tripId: activeTripId ?? 0 },
+    { enabled: activeTripId !== null }
+  );
   const selectedConversation = trpc.assistant.getConversation.useQuery(
     { conversationId: conversationId ?? 0 },
     { enabled: conversationId !== null }
@@ -72,15 +79,26 @@ export default function GolfAssistant() {
     onError: (mutationError) => setError(mutationError.message || "The score explanation could not be generated just now."),
   });
 
+  const explainDailyScore = trpc.assistant.explainDailyScore.useMutation({
+    onSuccess: ({ answer, conversationId: savedConversationId }) => {
+      const question = dailyPlayerId ? "Explain this player's daily leaderboard score." : "Explain this 4BBB daily leaderboard score.";
+      setMessages([{ role: "user", content: question }, { role: "assistant", content: answer }]);
+      setConversationId(savedConversationId);
+      void utils.assistant.listConversations.invalidate();
+    },
+    onError: (mutationError) => setError(mutationError.message || "The daily score explanation could not be generated just now."),
+  });
+
   useEffect(() => {
-    if (explanationStarted.current || !initialTripId || (!explainPlayerId && !explainTeamKey)) return;
+    if (explanationStarted.current || !initialTripId) return;
+    if (!explainRoundId && !explainPlayerId && !explainTeamKey) return;
     explanationStarted.current = true;
-    explainScore.mutate({
-      tripId: initialTripId,
-      kind: explainPlayerId ? "player" : "pair",
-      ...(explainPlayerId ? { userId: explainPlayerId } : { teamKey: explainTeamKey ?? undefined }),
-    });
-  }, [explainPlayerId, explainScore, explainTeamKey, initialTripId]);
+    if (explainRoundId && (dailyPlayerId || dailyTeamKey)) {
+      explainDailyScore.mutate({ roundId: explainRoundId, kind: dailyPlayerId ? "player" : "pair", ...(dailyPlayerId ? { userId: dailyPlayerId } : { teamKey: dailyTeamKey ?? undefined }) });
+    } else {
+      explainScore.mutate({ tripId: initialTripId, kind: explainPlayerId ? "player" : "pair", ...(explainPlayerId ? { userId: explainPlayerId } : { teamKey: explainTeamKey ?? undefined }) });
+    }
+  }, [dailyPlayerId, dailyTeamKey, explainDailyScore, explainPlayerId, explainRoundId, explainScore, explainTeamKey, initialTripId]);
 
   const deleteConversation = trpc.assistant.deleteConversation.useMutation({
     onSuccess: ({ success }, variables) => {
@@ -93,7 +111,7 @@ export default function GolfAssistant() {
   });
 
   const handleSend = (content: string) => {
-    if (askAssistant.isPending || explainScore.isPending) return;
+    if (askAssistant.isPending || explainScore.isPending || explainDailyScore.isPending) return;
     setError(null);
     const nextMessages = [...messages, { role: "user" as const, content }];
     setMessages(nextMessages);
@@ -108,7 +126,7 @@ export default function GolfAssistant() {
   };
 
   const resetConversation = () => {
-    if (askAssistant.isPending || explainScore.isPending) return;
+    if (askAssistant.isPending || explainScore.isPending || explainDailyScore.isPending) return;
     setMessages([WELCOME_MESSAGE]);
     setConversationId(null);
     setError(null);
@@ -121,7 +139,8 @@ export default function GolfAssistant() {
     setHistoryOpen(false);
   };
 
-  const loading = askAssistant.isPending || explainScore.isPending;
+  const loading = askAssistant.isPending || explainScore.isPending || explainDailyScore.isPending;
+  const pinnedTripFaqs = tripFaqs.filter((faq) => faq.isPinned);
 
   return (
     <div className="min-h-screen bg-background">
@@ -173,6 +192,12 @@ export default function GolfAssistant() {
           <div className="flex items-start gap-2"><BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /><p><strong>Rules guidance:</strong> answers are general information, not an official ruling. Confirm local rules and disputed competition decisions with your committee.</p></div>
         </div>
         {activeTripId && <p className="mb-3 text-xs text-primary">This chat uses the selected trip’s administrator FAQs where relevant.</p>}
+        {pinnedTripFaqs.length > 0 && (
+          <section className="mb-3 rounded-xl border border-primary/25 bg-primary/5 p-3" aria-label="Important trip information">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">Important trip information</p>
+            <div className="space-y-2">{pinnedTripFaqs.map((faq) => <div key={faq.id}><p className="text-sm font-medium text-foreground">{faq.question}</p><p className="text-xs text-muted-foreground">{faq.answer}</p></div>)}</div>
+          </section>
+        )}
         <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
           <input type="checkbox" checked={saveConversation} onChange={(event) => setSaveConversation(event.target.checked)} className="accent-primary" />
           Save this chat to my private history

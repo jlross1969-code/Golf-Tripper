@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useParams } from "wouter";
 import {
   ArrowLeft, BarChart2, RefreshCw, Trophy, Users, Layers, Download,
-  Target, Star, Share2, ChevronRight,
+  Target, Star, Share2, ChevronRight, Sparkles,
 } from "lucide-react";
 import AchievementAlert from "@/components/AchievementAlert";
 
@@ -96,9 +96,10 @@ interface ScorecardDrawerProps {
   playerName: string | null;
   handicap: number;
   isStableford?: boolean;
+  onExplain?: () => void;
 }
 
-function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap, isStableford }: ScorecardDrawerProps) {
+function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap, isStableford, onExplain }: ScorecardDrawerProps) {
   const { data, isLoading } = trpc.scores.getPlayerScorecard.useQuery(
     { roundId, userId },
     { enabled: open && userId > 0 }
@@ -202,14 +203,17 @@ function ScorecardDrawer({ open, onClose, roundId, userId, playerName, handicap,
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto rounded-t-2xl px-0">
         <SheetHeader className="px-5 pb-3 border-b border-border">
-          <SheetTitle className="flex items-center gap-2 flex-wrap">
-            <span>{playerName ?? "Player"}</span>
-            <Badge variant="secondary" className="text-xs font-normal">HCP {handicap}</Badge>
-            {isStableford
-              ? <Badge className="text-xs bg-primary/20 text-primary border-primary/30">Stableford</Badge>
-              : <Badge variant="outline" className="text-xs">Nett Stroke Play</Badge>
-            }
-          </SheetTitle>
+          <div className="flex items-start justify-between gap-3">
+            <SheetTitle className="flex items-center gap-2 flex-wrap">
+              <span>{playerName ?? "Player"}</span>
+              <Badge variant="secondary" className="text-xs font-normal">HCP {handicap}</Badge>
+              {isStableford
+                ? <Badge className="text-xs bg-primary/20 text-primary border-primary/30">Stableford</Badge>
+                : <Badge variant="outline" className="text-xs">Nett Stroke Play</Badge>
+              }
+            </SheetTitle>
+            {onExplain && <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={onExplain}><Sparkles className="h-3.5 w-3.5 text-primary" />Explain</Button>}
+          </div>
         </SheetHeader>
 
         {isLoading ? (
@@ -338,11 +342,19 @@ export default function DailyLeaderboard() {
   function openScorecard(userId: number, userName: string | null, handicap: number) {
     setDrawerPlayer({ userId, userName, handicap });
   }
+  function explainDailyPlayer(userId: number) {
+    if (!tripId) return;
+    window.location.assign(`/assistant?tripId=${tripId}&explainRoundId=${id}&dailyPlayerId=${userId}`);
+  }
+  function explainDailyPair(teamKey: string) {
+    if (!tripId) return;
+    window.location.assign(`/assistant?tripId=${tripId}&explainRoundId=${id}&dailyTeamKey=${encodeURIComponent(teamKey)}`);
+  }
 
   return (
     <div className="min-h-screen bg-background">
       {data && <AchievementAlert tripId={data.round.tripId} />}
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
+      <header className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()}>
             <ArrowLeft className="w-4 h-4" />
@@ -353,7 +365,7 @@ export default function DailyLeaderboard() {
             {data?.round && <p className="text-xs text-muted-foreground">{data.round.name}</p>}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 sm:justify-end">
           <Link href={`/round/${id}/ntp`}>
             <Button variant="outline" size="sm" className="gap-2">
               <Target className="w-3 h-3" />
@@ -503,6 +515,7 @@ export default function DailyLeaderboard() {
                           <p className="text-lg font-bold text-foreground">{t.totalBestBall}</p>
                           <p className="text-xs text-muted-foreground">Best Stableford Pts</p>
                         </div>
+                        {(t as any).teamKey && <Button type="button" variant="ghost" size="icon" className="shrink-0 text-primary hover:text-primary" onClick={() => explainDailyPair((t as any).teamKey)} aria-label={`Explain ${t.teamName}'s score`}><Sparkles className="h-4 w-4" /></Button>}
                       </div>
                     ))
                   )}
@@ -700,8 +713,9 @@ export default function DailyLeaderboard() {
           userId={drawerPlayer.userId}
           playerName={drawerPlayer.userName}
           handicap={drawerPlayer.handicap}
-          isStableford={(data as any)?.roundScoringMode !== "net_stroke"}
-        />
+        isStableford={(data as any)?.roundScoringMode !== "net_stroke"}
+        onExplain={() => drawerPlayer && explainDailyPlayer(drawerPlayer.userId)}
+      />
       )}
     </div>
   );

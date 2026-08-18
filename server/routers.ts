@@ -158,6 +158,7 @@ import { sendPushToTrip } from "./webPush";
 import { invokeLLM } from "./_core/llm";
 import { recentGolfAssistantMessages } from "../shared/golfAssistant";
 import { createAssistantConversationTitle, formatTripFaqContext } from "../shared/assistantEnhancements";
+import { TRIP_FAQ_CATEGORIES } from "../shared/tripFaq";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -297,6 +298,61 @@ export const appRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The score explanation is temporarily unavailable. Please try again." });
         }
       }),
+
+    explainDailyScore: protectedProcedure
+      .input(z.object({ roundId: z.number(), kind: z.enum(["player", "pair"]), userId: z.number().optional(), teamKey: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const round = await getRound(input.roundId);
+        if (!round) throw new TRPCError({ code: "NOT_FOUND", message: "Round not found" });
+        await assertAssistantTripAccess(ctx.user.id, round.tripId, ctx.user.role === "admin");
+        const trip = await getTrip(round.tripId);
+        const scorecard = await getRoundScorecard(round.id);
+        const courseHoles = await getHolesByCourse(round.courseId);
+        const scoringMode = (round as any).individualScoringMode ?? trip?.handicapMode ?? "stableford";
+        let question = "Explain this daily leaderboard score.";
+        let scoreContext = `Trip: ${trip?.name ?? "Unknown"}. Round: ${round.name}. Format: ${scoringMode === "net_stroke" ? "Net Stroke" : "Stableford"}.`;
+
+        if (input.kind === "player") {
+          if (!input.userId) throw new TRPCError({ code: "BAD_REQUEST", message: "Player is required" });
+          const player = scorecard.find((entry) => entry.userId === input.userId);
+          if (!player) throw new TRPCError({ code: "NOT_FOUND", message: "Player score was not found" });
+          const scoreMap = new Map(player.scores.map((score) => [score.holeId, score]));
+          const countback = calculateCountback(courseHoles.map((hole) => ({
+            holeNumber: hole.holeNumber,
+            value: scoringMode === "net_stroke" ? scoreMap.get(hole.id)?.netScore ?? null : scoreMap.get(hole.id)?.stablefordPoints ?? null,
+          })));
+          question = `Explain ${player.userName ?? "this player's"} daily score in ${round.name}.`;
+          scoreContext += `\nPlayer: ${player.userName ?? "Unknown"}. Handicap: ${player.handicap}. Gross: ${player.totalGross}. Net: ${player.totalNet}. Stableford points: ${player.totalStableford}. Holes played: ${player.holesPlayed}. Countback: B9 ${countback.back9 ?? "—"}, L6 ${countback.last6 ?? "—"}, L3 ${countback.last3 ?? "—"}, H18 ${countback.hole18 ?? "—"}.`;
+        } else {
+          if (!input.teamKey) throw new TRPCError({ code: "BAD_REQUEST", message: "4BBB pair is required" });
+          const ids = input.teamKey.split("-").map(Number).filter(Boolean);
+          if (ids.length !== 2) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid 4BBB pair" });
+          const player1 = scorecard.find((entry) => entry.userId === ids[0]);
+          const player2 = scorecard.find((entry) => entry.userId === ids[1]);
+          if (!player1 || !player2) throw new TRPCError({ code: "NOT_FOUND", message: "4BBB pair score was not found" });
+          let totalBestPoints = 0;
+          let holesPlayed = 0;
+          const countback = calculateCountback(courseHoles.map((hole) => {
+            const p1 = player1.scores.find((score) => score.holeId === hole.id);
+            const p2 = player2.scores.find((score) => score.holeId === hole.id);
+            const bestPoints = calculate4BBBStablefordPoints(p1?.stablefordPoints ?? null, p2?.stablefordPoints ?? null);
+            if (bestPoints !== null) { totalBestPoints += bestPoints; holesPlayed++; }
+            return { holeNumber: hole.holeNumber, value: bestPoints };
+          }));
+          question = `Explain the 4BBB daily score for ${player1.userName ?? "Player"} and ${player2.userName ?? "Player"} in ${round.name}.`;
+          scoreContext += `\n4BBB pair: ${player1.userName ?? "Player"} and ${player2.userName ?? "Player"}. Best Stableford points: ${totalBestPoints}. Holes played: ${holesPlayed}. Countback: B9 ${countback.back9 ?? "—"}, L6 ${countback.last6 ?? "—"}, L3 ${countback.last3 ?? "—"}, H18 ${countback.hole18 ?? "—"}. The higher player Stableford points count on each 4BBB hole.`;
+        }
+
+        try {
+          const answer = await answerGolfAssistant([{ role: "user", content: question }], round.tripId, scoreContext);
+          const conversationId = await createAssistantConversation({ userId: ctx.user.id, tripId: round.tripId, title: createAssistantConversationTitle(question) });
+          await appendAssistantMessages({ conversationId, userId: ctx.user.id, messages: [{ role: "user", content: question }, { role: "assistant", content: answer }] });
+          return { answer, conversationId };
+        } catch (error) {
+          console.error("Golf Trip daily score explanation error:", error);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The daily score explanation is temporarily unavailable. Please try again." });
+        }
+      }),
   }),
 
   tripFaqs: router({
@@ -307,10 +363,10 @@ export const appRouter = router({
         return getTripFaqs(input.tripId);
       }),
     create: adminProcedure
-      .input(z.object({ tripId: z.number(), question: z.string().trim().min(3).max(300), answer: z.string().trim().min(3).max(4000) }))
+      .input(z.object({ tripId: z.number(), category: z.enum(TRIP_FAQ_CATEGORIES.map((entry) => entry.value) as [string, ...string[]]).default("general"), isPinned: z.boolean().default(false), question: z.string().trim().min(3).max(300), answer: z.string().trim().min(3).max(4000) }))
       .mutation(async ({ input, ctx }) => ({ id: await createTripFaq({ ...input, createdByUserId: ctx.user.id }) })),
     update: adminProcedure
-      .input(z.object({ id: z.number(), question: z.string().trim().min(3).max(300).optional(), answer: z.string().trim().min(3).max(4000).optional() }))
+      .input(z.object({ id: z.number(), category: z.enum(TRIP_FAQ_CATEGORIES.map((entry) => entry.value) as [string, ...string[]]).optional(), isPinned: z.boolean().optional(), question: z.string().trim().min(3).max(300).optional(), answer: z.string().trim().min(3).max(4000).optional() }))
       .mutation(async ({ input }) => { await updateTripFaq(input.id, input); return { success: true }; }),
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
@@ -1574,6 +1630,7 @@ export const appRouter = router({
         // 4BBB leaderboard — group by partnerships
         const groupList = await getGroupsByRound(input.roundId);
         const fourBBBResults: {
+          teamKey: string;
           teamName: string;
           player1: string;
           player2: string;
@@ -1612,6 +1669,7 @@ export const appRouter = router({
               }
 
               fourBBBResults.push({
+                teamKey: [gp.userId, gp.partnerId].sort((a, b) => a - b).join("-"),
                 teamName: `${p1.userName ?? "Player"} & ${p2.userName ?? "Player"}`,
                 player1: p1.userName ?? "Player",
                 player2: p2.userName ?? "Player",

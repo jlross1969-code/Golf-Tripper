@@ -1263,17 +1263,17 @@ export async function deleteAssistantConversation(conversationId: number, userId
 export async function getTripFaqs(tripId: number): Promise<TripFaq[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(tripFaqs).where(eq(tripFaqs.tripId, tripId)).orderBy(desc(tripFaqs.updatedAt));
+  return db.select().from(tripFaqs).where(eq(tripFaqs.tripId, tripId)).orderBy(desc(tripFaqs.isPinned), desc(tripFaqs.updatedAt));
 }
 
-export async function createTripFaq(data: { tripId: number; question: string; answer: string; createdByUserId: number }): Promise<number> {
+export async function createTripFaq(data: { tripId: number; category?: string; isPinned?: boolean; question: string; answer: string; createdByUserId: number }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripFaqs).values(data);
   return (result as any).insertId as number;
 }
 
-export async function updateTripFaq(id: number, data: { question?: string; answer?: string }): Promise<void> {
+export async function updateTripFaq(id: number, data: { category?: string; isPinned?: boolean; question?: string; answer?: string }): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(tripFaqs).set({ ...data, updatedAt: new Date() }).where(eq(tripFaqs.id, id));

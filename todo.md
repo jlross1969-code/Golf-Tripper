@@ -765,3 +765,14 @@
 - [x] Add Explain This Score actions to individual and 4BBB leaderboard rows
 - [x] Build conversation picker/history and contextual FAQ management interfaces
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Daily Score Explanations and Pinned FAQ Categories
+
+- [x] Inspect daily leaderboard scores, round data, and current trip FAQ implementation
+- [x] Add FAQ category and pinned fields with a non-destructive database migration
+- [x] Update FAQ procedures and assistant context to prioritise pinned FAQs and preserve categories
+- [x] Add round-specific player and 4BBB score explanation procedure for the Daily Leaderboard
+- [x] Add Daily Leaderboard Explain This Score actions for individual and 4BBB rows
+- [x] Build categorised FAQ filters, category selector, and pin control for admins
+- [x] Display pinned FAQs in trip-aware assistant chats
+- [x] Add tests, validate mobile UI, checkpoint, and publish

@@ -364,6 +364,8 @@ export type AssistantMessage = typeof assistantMessages.$inferSelect;
 export const tripFaqs = mysqlTable("trip_faqs", {
   id: int("id").autoincrement().primaryKey(),
   tripId: int("tripId").notNull(),
+  category: varchar("category", { length: 40 }).default("general").notNull(),
+  isPinned: boolean("isPinned").default(false).notNull(),
   question: varchar("question", { length: 300 }).notNull(),
   answer: text("answer").notNull(),
   createdByUserId: int("createdByUserId").notNull(),

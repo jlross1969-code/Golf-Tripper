@@ -8,7 +8,7 @@ describe("Golf Trip AI assistant enhancements", () => {
   });
 
   it("formats administrator FAQs as explicit trip-specific assistant context", () => {
-    expect(formatTripFaqContext([{ question: "What tees?", answer: "Blue tees." }])).toContain("Q: What tees?\nA: Blue tees.");
+    expect(formatTripFaqContext([{ question: "What tees?", answer: "Blue tees.", category: "local_rules", isPinned: true }])).toContain("[Pinned · local_rules] Q: What tees?\nA: Blue tees.");
     expect(formatTripFaqContext([])).toBe("");
   });
 });
