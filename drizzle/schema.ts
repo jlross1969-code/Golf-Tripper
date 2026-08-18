@@ -124,6 +124,18 @@ export const tripAppearanceSchedules = mysqlTable("trip_appearance_schedules", {
 
 export type TripAppearanceSchedule = typeof tripAppearanceSchedules.$inferSelect;
 
+/** Admin-saved appearance presets that can be reused for event-day themes within a trip. */
+export const tripAppearanceTemplates = mysqlTable("trip_appearance_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  name: varchar("name", { length: 64 }).notNull(),
+  colorScheme: varchar("colorScheme", { length: 16 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripAppearanceTemplate = typeof tripAppearanceTemplates.$inferSelect;
+
 // ─── Trip Players ─────────────────────────────────────────────────────────────
 
 export const tripPlayers = mysqlTable("trip_players", {

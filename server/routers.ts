@@ -145,6 +145,9 @@ import {
   setTripAppearanceSchedule,
   deleteTripAppearanceSchedule,
   copyTripAppearanceSchedules,
+  getTripAppearanceTemplates,
+  createTripAppearanceTemplate,
+  deleteTripAppearanceTemplate,
   updateMatchPlayResult,
   createInvite,
   getInvitesByTrip,
@@ -2140,10 +2143,37 @@ export const appRouter = router({
       }),
 
     set: protectedProcedure
-      .input(z.object({ tripId: z.number(), appearanceDate: z.string().datetime(), colorScheme: z.enum(APP_COLOR_SCHEME_IDS) }))
+      .input(z.object({ tripId: z.number(), appearanceDate: z.string().datetime(), colorScheme: z.enum(APP_COLOR_SCHEME_IDS), replaceExisting: z.boolean().default(false) }))
       .mutation(async ({ ctx, input }) => {
         await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
-        return { id: await setTripAppearanceSchedule({ tripId: input.tripId, appearanceDate: new Date(input.appearanceDate), colorScheme: input.colorScheme }) };
+        const date = new Date(input.appearanceDate);
+        const existing = (await getTripAppearanceSchedules(input.tripId)).find((schedule) => schedule.appearanceDate.getTime() === date.getTime());
+        if (existing && !input.replaceExisting) throw new TRPCError({ code: "CONFLICT", message: "A theme is already scheduled for this date. Confirm replacement to continue." });
+        return { id: await setTripAppearanceSchedule({ tripId: input.tripId, appearanceDate: date, colorScheme: input.colorScheme }) };
+      }),
+
+    listTemplates: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripAppearanceTemplates(input.tripId);
+      }),
+
+    createTemplate: protectedProcedure
+      .input(z.object({ tripId: z.number(), name: z.string().trim().min(2).max(64), colorScheme: z.enum(APP_COLOR_SCHEME_IDS) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return { id: await createTripAppearanceTemplate({ ...input, createdByUserId: ctx.user.id }) };
+      }),
+
+    removeTemplate: protectedProcedure
+      .input(z.object({ tripId: z.number(), id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const templates = await getTripAppearanceTemplates(input.tripId);
+        if (!templates.some((template) => template.id === input.id)) throw new TRPCError({ code: "NOT_FOUND", message: "Appearance template not found" });
+        await deleteTripAppearanceTemplate(input.id);
+        return { success: true };
       }),
 
     remove: protectedProcedure

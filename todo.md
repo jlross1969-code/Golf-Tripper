@@ -848,3 +848,12 @@
 - [x] Add secure backend procedure to copy a source trip appearance schedule to another administered trip
 - [x] Build template selection and schedule-copy controls in Trip Appearance
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Custom Appearance Templates, Conflict Warnings, and Calendar
+
+- [x] Inspect current appearance schedules, template controls, and admin calendar components
+- [x] Add admin-owned custom appearance template storage and secure CRUD procedures
+- [x] Detect scheduled-theme conflicts and surface a clear replace confirmation
+- [x] Build custom template management and use controls in Trip Appearance
+- [x] Build an accessible calendar view of planned event-day themes
+- [x] Add tests, validate mobile UI, checkpoint, and publish

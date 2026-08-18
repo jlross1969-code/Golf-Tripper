@@ -41,6 +41,7 @@ import {
   tripMessageAttachmentReports,
   tripMessageReactions,
   tripAppearanceSchedules,
+  tripAppearanceTemplates,
   tripPlayers,
   trips,
   users,
@@ -1370,6 +1371,25 @@ export async function deleteTripAppearanceSchedule(id: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.delete(tripAppearanceSchedules).where(eq(tripAppearanceSchedules.id, id));
+}
+
+export async function getTripAppearanceTemplates(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripAppearanceTemplates).where(eq(tripAppearanceTemplates.tripId, tripId)).orderBy(desc(tripAppearanceTemplates.createdAt));
+}
+
+export async function createTripAppearanceTemplate(data: { tripId: number; createdByUserId: number; name: string; colorScheme: string }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripAppearanceTemplates).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function deleteTripAppearanceTemplate(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(tripAppearanceTemplates).where(eq(tripAppearanceTemplates.id, id));
 }
 
 /** Replaces target schedules with source schedules, preserving each theme's relative trip day. */
