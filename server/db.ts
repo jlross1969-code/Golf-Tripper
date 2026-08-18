@@ -49,6 +49,7 @@ import {
   tripAppearanceTemplates,
   tripActualExpenses,
   tripSuppliers,
+  tripSupplierInvoiceReviews,
   tripDocuments,
   tripTravelChecklistItems,
   tripTravelChecklistCompletions,
@@ -632,6 +633,19 @@ export async function reviewTripSupplierInvoice(id: number, invoiceApprovalStatu
   await db.update(tripSuppliers).set({ invoiceApprovalStatus, invoiceApprovedByUserId, invoiceApprovedAt: new Date(), invoiceApprovalNote: invoiceApprovalNote ?? null }).where(eq(tripSuppliers.id, id));
 }
 
+export async function createTripSupplierInvoiceReview(data: { tripId: number; supplierId: number; reviewerUserId: number; status: "approved" | "rejected"; note?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripSupplierInvoiceReviews).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function getTripSupplierInvoiceReviews(tripId: number, supplierId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripSupplierInvoiceReviews).where(and(eq(tripSupplierInvoiceReviews.tripId, tripId), eq(tripSupplierInvoiceReviews.supplierId, supplierId))).orderBy(desc(tripSupplierInvoiceReviews.createdAt));
+}
+
 export async function getTripSupplierByInvoiceReminderTaskUid(invoiceReminderCronTaskUid: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -651,7 +665,7 @@ export async function getTripDocuments(tripId: number) {
   return db.select().from(tripDocuments).where(eq(tripDocuments.tripId, tripId)).orderBy(desc(tripDocuments.createdAt));
 }
 
-export async function createTripDocument(data: { tripId: number; uploadedByUserId: number; title: string; folder?: string; tags?: string; fileKey: string; fileUrl: string; fileName: string; mimeType: string; sizeBytes: number }) {
+export async function createTripDocument(data: { tripId: number; uploadedByUserId: number; title: string; folder?: string; tags?: string; expiresAt?: Date; fileKey: string; fileUrl: string; fileName: string; mimeType: string; sizeBytes: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripDocuments).values(data);
@@ -662,6 +676,12 @@ export async function deleteTripDocument(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.delete(tripDocuments).where(eq(tripDocuments.id, id));
+}
+
+export async function setTripDocumentExpiry(id: number, expiresAt: Date | null) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripDocuments).set({ expiresAt }).where(eq(tripDocuments.id, id));
 }
 
 export async function getTripByFinancialDigestTaskUid(financialDigestCronTaskUid: string) {

@@ -964,3 +964,12 @@
 - [x] Add financial-manager supplier invoice approval controls
 - [x] Add an interactive in-app financial dashboard chart with summary insights
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Invoice History, Financial Date Ranges, and Document Expiry
+
+- [x] Review supplier review history, financial reporting range, and document access flows
+- [x] Add secure invoice review history and document expiry storage/procedures
+- [x] Add invoice review comments and immutable supplier invoice approval history
+- [x] Add configurable date ranges to the financial dashboard reporting
+- [x] Add expiry-aware document access and financial-manager expiry controls
+- [x] Add tests, validate mobile UI, checkpoint, and publish

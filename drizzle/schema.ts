@@ -281,6 +281,16 @@ export const tripSuppliers = mysqlTable("trip_suppliers", {
 
 export type TripSupplier = typeof tripSuppliers.$inferSelect;
 
+export const tripSupplierInvoiceReviews = mysqlTable("trip_supplier_invoice_reviews", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  supplierId: int("supplierId").notNull(),
+  reviewerUserId: int("reviewerUserId").notNull(),
+  status: mysqlEnum("status", ["approved", "rejected"]).notNull(),
+  note: varchar("note", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export const tripDocuments = mysqlTable("trip_documents", {
   id: int("id").autoincrement().primaryKey(),
   tripId: int("tripId").notNull(),
@@ -288,6 +298,7 @@ export const tripDocuments = mysqlTable("trip_documents", {
   title: varchar("title", { length: 180 }).notNull(),
   folder: varchar("folder", { length: 120 }).default("General").notNull(),
   tags: varchar("tags", { length: 500 }),
+  expiresAt: timestamp("expiresAt"),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
   fileUrl: varchar("fileUrl", { length: 512 }).notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),

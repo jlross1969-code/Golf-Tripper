@@ -19,6 +19,7 @@ import {
   createTripFinancialLineItem,
   createTripActualExpense,
   createTripSupplier,
+  createTripSupplierInvoiceReview,
   createTripDocument,
   createTripTravelChecklistItem,
   createTripItineraryItem,
@@ -51,6 +52,7 @@ import {
   getTripPaymentReminderStages,
   getTripFinancialPlan,
   getTripSuppliers,
+  getTripSupplierInvoiceReviews,
   getTripDocuments,
   getTripTravelChecklist,
   getTripItinerary,
@@ -95,6 +97,7 @@ import {
   setTripTravelChecklistReminderTask,
   setTripSupplierInvoiceReminder,
   setTripSupplierInvoiceAttachment,
+  setTripDocumentExpiry,
   reviewTripSupplierInvoice,
   updateTripSupplierPayment,
   getTripSupplierByInvoiceReminderTaskUid,
@@ -859,7 +862,12 @@ export const appRouter = router({
       if (!supplier) throw new TRPCError({ code: "NOT_FOUND", message: "Supplier not found" });
       if (!supplier.invoiceAttachmentUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "Attach an invoice before reviewing it" });
       await reviewTripSupplierInvoice(supplier.id, input.status, ctx.user.id, input.note);
+      await createTripSupplierInvoiceReview({ tripId: input.tripId, supplierId: supplier.id, reviewerUserId: ctx.user.id, status: input.status, note: input.note });
       return { success: true };
+    }),
+    supplierInvoiceReviews: protectedProcedure.input(z.object({ tripId: z.number(), supplierId: z.number() })).query(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      return getTripSupplierInvoiceReviews(input.tripId, input.supplierId);
     }),
     setDailyFinancialDigest: protectedProcedure.input(z.object({ tripId: z.number(), enabled: z.boolean(), hourUtc: z.number().int().min(0).max(23) })).mutation(async ({ ctx, input }) => {
       await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
@@ -1000,11 +1008,23 @@ export const appRouter = router({
   tripDocuments: router({
     list: protectedProcedure.input(z.object({ tripId: z.number() })).query(async ({ ctx, input }) => {
       if (!(await getTripPlayer(input.tripId, ctx.user.id)) && ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "You are not a trip player" });
-      return getTripDocuments(input.tripId);
+      const [documents, trip] = await Promise.all([getTripDocuments(input.tripId), getTrip(input.tripId)]);
+      const canManage = ctx.user.role === "admin" || trip?.createdBy === ctx.user.id || trip?.financialManagerUserId === ctx.user.id;
+      return canManage ? documents : documents.filter((document) => !document.expiresAt || document.expiresAt.getTime() > Date.now());
     }),
-    create: protectedProcedure.input(z.object({ tripId: z.number(), title: z.string().trim().min(1).max(180), folder: z.string().trim().min(1).max(120).default("General"), tags: z.string().trim().max(500).optional(), fileKey: z.string().min(1).max(512), fileUrl: z.string().min(1).max(512), fileName: z.string().min(1).max(255), mimeType: z.string().min(1).max(120), sizeBytes: z.number().int().min(1).max(15 * 1024 * 1024) })).mutation(async ({ ctx, input }) => {
+    create: protectedProcedure.input(z.object({ tripId: z.number(), title: z.string().trim().min(1).max(180), folder: z.string().trim().min(1).max(120).default("General"), tags: z.string().trim().max(500).optional(), expiresAt: z.string().datetime().optional(), fileKey: z.string().min(1).max(512), fileUrl: z.string().min(1).max(512), fileName: z.string().min(1).max(255), mimeType: z.string().min(1).max(120), sizeBytes: z.number().int().min(1).max(15 * 1024 * 1024) })).mutation(async ({ ctx, input }) => {
       await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
-      return { id: await createTripDocument({ ...input, uploadedByUserId: ctx.user.id }) };
+      const expiresAt = input.expiresAt ? new Date(input.expiresAt) : undefined;
+      if (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now())) throw new TRPCError({ code: "BAD_REQUEST", message: "Document expiry must be in the future" });
+      return { id: await createTripDocument({ ...input, expiresAt, uploadedByUserId: ctx.user.id }) };
+    }),
+    setExpiry: protectedProcedure.input(z.object({ tripId: z.number(), documentId: z.number(), expiresAt: z.string().datetime().nullable() })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      if (!(await getTripDocuments(input.tripId)).some((document) => document.id === input.documentId)) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+      if (expiresAt && (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now())) throw new TRPCError({ code: "BAD_REQUEST", message: "Document expiry must be in the future" });
+      await setTripDocumentExpiry(input.documentId, expiresAt);
+      return { success: true };
     }),
     remove: protectedProcedure.input(z.object({ tripId: z.number(), documentId: z.number() })).mutation(async ({ ctx, input }) => {
       await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
