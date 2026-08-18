@@ -6,17 +6,24 @@ import { Link, useParams } from "wouter";
 import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User, Zap, BookOpen, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
+import { useTheme } from "@/contexts/ThemeContext";
+import { useEffect } from "react";
 
 export default function TripDashboard() {
   const { tripId } = useParams<{ tripId: string }>();
   const id = Number(tripId);
   const { user } = useAuth();
+  const { useTripDefaultColorScheme } = useTheme();
 
   const { data: trip, isLoading: tripLoading } = trpc.trips.get.useQuery({ id });
   const { data: rounds, isLoading: roundsLoading } = trpc.rounds.list.useQuery({ tripId: id });
   const { data: players } = trpc.players.tripPlayers.useQuery({ tripId: id });
   const { data: notifications } = trpc.notifications.list.useQuery({ tripId: id, limit: 5 });
   const { data: achievements } = trpc.achievements.listByTrip.useQuery({ tripId: id });
+
+  useEffect(() => {
+    useTripDefaultColorScheme((trip as any)?.defaultColorScheme);
+  }, [trip, useTripDefaultColorScheme]);
 
   if (tripLoading) {
     return (

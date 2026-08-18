@@ -91,6 +91,8 @@ export const trips = mysqlTable("trips", {
   shareToken: varchar("shareToken", { length: 64 }),
   rules: text("rules"),
   logoUrl: varchar("logoUrl", { length: 512 }),
+  // Optional colour scheme applied to players who have not chosen a personal appearance preference.
+  defaultColorScheme: varchar("defaultColorScheme", { length: 16 }),
   createdBy: int("createdBy").notNull(),
   // ─── Billing ──────────────────────────────────────────────────────────────
   // planTier for this trip. 'free' = up to 8 players, core features only.
@@ -376,6 +378,17 @@ export const tripMessageAttachmentReports = mysqlTable("trip_message_attachment_
 });
 
 export type TripMessageAttachmentReport = typeof tripMessageAttachmentReports.$inferSelect;
+
+// Aggregate-only photo action event records. No viewer identity is stored.
+export const tripMessageAttachmentActionEvents = mysqlTable("trip_message_attachment_action_events", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  attachmentId: int("attachmentId").notNull(),
+  action: mysqlEnum("action", ["download", "share"]).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripMessageAttachmentActionEvent = typeof tripMessageAttachmentActionEvents.$inferSelect;
 
 // ─── Golf Trip AI Assistant ───────────────────────────────────────────────────
 // Saved assistant conversations are private to their owner. A conversation can

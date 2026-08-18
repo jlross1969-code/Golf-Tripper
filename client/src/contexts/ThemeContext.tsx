@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-import { resolveAppColorScheme, type AppColorScheme } from "../../../shared/appearance";
+import { resolveAppColorScheme, resolveEffectiveAppColorScheme, type AppColorScheme } from "../../../shared/appearance";
 
 type Theme = "light" | "dark";
 export type ColorScheme = AppColorScheme;
 
 export const COLOR_SCHEME_OPTIONS: { id: ColorScheme; name: string; description: string; preview: string }[] = [
+  { id: "system", name: "Follow System", description: "Use Fairway Green in dark mode and Sand Light in light mode.", preview: "linear-gradient(135deg, #062b20 0 50%, #fff7e6 50% 100%)" },
   { id: "fairway", name: "Fairway Green", description: "The original golf-green appearance.", preview: "linear-gradient(135deg, #062b20, #22c55e)" },
   { id: "ocean", name: "Ocean Blue", description: "A cool blue background with sky accents.", preview: "linear-gradient(135deg, #0b1f3a, #38bdf8)" },
   { id: "plum", name: "Plum Night", description: "A deep purple night scheme with lilac accents.", preview: "linear-gradient(135deg, #25123b, #c084fc)" },
@@ -18,6 +19,9 @@ interface ThemeContextType {
   switchable: boolean;
   colorScheme: ColorScheme;
   setColorScheme: (scheme: ColorScheme) => void;
+  hasPersonalColorScheme: boolean;
+  useTripDefaultColorScheme: (scheme?: string | null) => void;
+  clearPersonalColorScheme: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -43,6 +47,8 @@ export function ThemeProvider({
   const [colorScheme, setColorScheme] = useState<ColorScheme>(() => {
     return resolveAppColorScheme(localStorage.getItem("golf-trip-color-scheme"));
   });
+  const [hasPersonalColorScheme, setHasPersonalColorScheme] = useState(() => localStorage.getItem("golf-trip-has-personal-colour-scheme") === "true");
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -58,9 +64,34 @@ export function ThemeProvider({
   }, [theme, switchable]);
 
   useEffect(() => {
-    document.documentElement.dataset.colorScheme = colorScheme;
-    localStorage.setItem("golf-trip-color-scheme", colorScheme);
+    if (colorScheme !== "system") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setSystemPrefersDark(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
   }, [colorScheme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.colorScheme = resolveEffectiveAppColorScheme(colorScheme, systemPrefersDark);
+    localStorage.setItem("golf-trip-color-scheme", colorScheme);
+  }, [colorScheme, systemPrefersDark]);
+
+  const chooseColorScheme = (scheme: ColorScheme) => {
+    setColorScheme(scheme);
+    setHasPersonalColorScheme(true);
+    localStorage.setItem("golf-trip-has-personal-colour-scheme", "true");
+  };
+
+  const useTripDefaultColorScheme = (scheme?: string | null) => {
+    if (hasPersonalColorScheme || !scheme) return;
+    setColorScheme(resolveAppColorScheme(scheme));
+  };
+
+  const clearPersonalColorScheme = () => {
+    setHasPersonalColorScheme(false);
+    localStorage.removeItem("golf-trip-has-personal-colour-scheme");
+  };
 
   const toggleTheme = switchable
     ? () => {
@@ -69,7 +100,7 @@ export function ThemeProvider({
     : undefined;
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, switchable, colorScheme, setColorScheme }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, switchable, colorScheme, setColorScheme: chooseColorScheme, hasPersonalColorScheme, useTripDefaultColorScheme, clearPersonalColorScheme }}>
       {children}
     </ThemeContext.Provider>
   );

@@ -37,6 +37,7 @@ import {
   TripMessageAttachment,
   TripMessageAttachmentReport,
   tripMessageAttachments,
+  tripMessageAttachmentActionEvents,
   tripMessageAttachmentReports,
   tripMessageReactions,
   tripPlayers,
@@ -193,6 +194,7 @@ export async function createTrip(data: {
   description?: string;
   rules?: string;
   logoUrl?: string;
+  defaultColorScheme?: string;
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -210,6 +212,7 @@ export async function createTrip(data: {
     ...(data.description !== undefined ? { description: data.description } : {}),
     ...(data.rules !== undefined ? { rules: data.rules } : {}),
     ...(data.logoUrl !== undefined ? { logoUrl: data.logoUrl } : {}),
+    ...(data.defaultColorScheme !== undefined ? { defaultColorScheme: data.defaultColorScheme } : {}),
   });
   return (result[0] as any).insertId;
 }
@@ -1301,6 +1304,27 @@ export async function dismissTripChatAttachmentReport(reportId: number, moderato
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(tripMessageAttachmentReports).set({ status: "dismissed", resolvedAt: new Date(), resolvedByUserId: moderatorUserId }).where(eq(tripMessageAttachmentReports.id, reportId));
+}
+
+/** Records a photo download/share without storing the viewer's identity. */
+export async function recordTripChatPhotoAction(data: { tripId: number; attachmentId: number; action: "download" | "share" }): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(tripMessageAttachmentActionEvents).values(data);
+}
+
+/** Returns trip-level aggregate totals only; individual activity is intentionally unavailable. */
+export async function getTripChatPhotoActionSummary(tripId: number) {
+  const db = await getDb();
+  if (!db) return { downloads: 0, shares: 0, total: 0 };
+  const rows = await db
+    .select({ action: tripMessageAttachmentActionEvents.action, count: sql<number>`count(*)` })
+    .from(tripMessageAttachmentActionEvents)
+    .where(eq(tripMessageAttachmentActionEvents.tripId, tripId))
+    .groupBy(tripMessageAttachmentActionEvents.action);
+  const downloads = Number(rows.find((row) => row.action === "download")?.count ?? 0);
+  const shares = Number(rows.find((row) => row.action === "share")?.count ?? 0);
+  return { downloads, shares, total: downloads + shares };
 }
 
 // ─── Golf Trip AI Assistant ───────────────────────────────────────────────────

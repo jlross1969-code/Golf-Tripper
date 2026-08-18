@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Pencil, Upload, ImageIcon, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { COLOR_SCHEME_OPTIONS } from "@/contexts/ThemeContext";
 
 type TournamentType =
   | "stableford"
@@ -82,6 +83,7 @@ interface EditTripDialogProps {
     description?: string | null;
     rules?: string | null;
     logoUrl?: string | null;
+    defaultColorScheme?: string | null;
   } | null | undefined;
   onSuccess?: () => void;
   /** If true, the tournament type selector is shown as a required field (used in create flow) */
@@ -98,6 +100,7 @@ export function EditTripDialog({ tripId, trip, onSuccess, showTournamentType = t
   const [description, setDescription] = useState("");
   const [rules, setRules] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
+  const [defaultColorScheme, setDefaultColorScheme] = useState("no_default");
   const [logoUploading, setLogoUploading] = useState(false);
   const [tripHasStarted, setTripHasStarted] = useState(false);
 
@@ -123,6 +126,7 @@ export function EditTripDialog({ tripId, trip, onSuccess, showTournamentType = t
     setDescription(trip.description ?? "");
     setRules((trip as any).rules ?? "");
     setLogoUrl((trip as any).logoUrl ?? "");
+    setDefaultColorScheme((trip as any).defaultColorScheme ?? "no_default");
     // Detect if trip has started by checking if startDate is in the past
     // The backend will also enforce this — this is just a UI hint
     const now = Date.now();
@@ -243,6 +247,17 @@ export function EditTripDialog({ tripId, trip, onSuccess, showTournamentType = t
               <p className="text-xs text-muted-foreground mt-1">Rules appear on the trip page and in invite emails.</p>
             </div>
             <div>
+              <label className="text-sm font-medium text-foreground mb-1 block">Default Player Appearance</label>
+              <Select value={defaultColorScheme} onValueChange={setDefaultColorScheme}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no_default">No trip default</SelectItem>
+                  {COLOR_SCHEME_OPTIONS.map((option) => <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">Applied automatically to players who have not chosen a personal colour scheme.</p>
+            </div>
+            <div>
               <label className="text-sm font-medium text-foreground mb-1 block">Trip Logo</label>
               {logoUrl ? (
                 <div className="flex items-center gap-3 mb-2">
@@ -284,6 +299,7 @@ export function EditTripDialog({ tripId, trip, onSuccess, showTournamentType = t
                 description: description || undefined,
                 rules: rules || undefined,
                 logoUrl: logoUrl || undefined,
+                defaultColorScheme: defaultColorScheme === "no_default" ? null : defaultColorScheme as any,
               })}
             >
               {updateTrip.isPending ? "Saving..." : "Save Changes"}

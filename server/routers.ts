@@ -138,6 +138,8 @@ import {
   getTripChatAttachmentReports,
   removeTripChatAttachment,
   dismissTripChatAttachmentReport,
+  recordTripChatPhotoAction,
+  getTripChatPhotoActionSummary,
   updateMatchPlayResult,
   createInvite,
   getInvitesByTrip,
@@ -170,6 +172,7 @@ import { createAssistantConversationTitle, formatTripFaqContext } from "../share
 import { TRIP_FAQ_CATEGORIES } from "../shared/tripFaq";
 import { isTripChatImageReference } from "../shared/tripChatAttachment";
 import { canManageTripChatAttachment } from "../shared/tripChatAlbum";
+import { APP_COLOR_SCHEME_IDS } from "../shared/appearance";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -517,6 +520,7 @@ export const appRouter = router({
           description: z.string().optional(),
           rules: z.string().optional(),
           logoUrl: z.string().optional(),
+          defaultColorScheme: z.enum(APP_COLOR_SCHEME_IDS).nullable().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -534,6 +538,7 @@ export const appRouter = router({
           handicapAutoAdjust: input.handicapAutoAdjust,
           location: input.location,
           description: input.description,
+          defaultColorScheme: input.defaultColorScheme ?? undefined,
         });
         return { tripId };
       }),
@@ -554,6 +559,7 @@ export const appRouter = router({
           description: z.string().optional(),
           rules: z.string().optional(),
           logoUrl: z.string().optional(),
+          defaultColorScheme: z.enum(APP_COLOR_SCHEME_IDS).nullable().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -2092,6 +2098,23 @@ export const appRouter = router({
         if (!reports.some((entry) => entry.report.id === input.reportId)) throw new TRPCError({ code: "NOT_FOUND", message: "Report not found" });
         await dismissTripChatAttachmentReport(input.reportId, ctx.user.id);
         return { success: true };
+      }),
+
+    recordPhotoAction: protectedProcedure
+      .input(z.object({ tripId: z.number(), attachmentId: z.number(), action: z.enum(["download", "share"]) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const result = await getTripChatAttachment(input.attachmentId);
+        if (!result || result.tripId !== input.tripId || result.attachment.isRemoved) throw new TRPCError({ code: "NOT_FOUND", message: "Attachment not found" });
+        await recordTripChatPhotoAction(input);
+        return { success: true };
+      }),
+
+    photoActionSummary: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripChatPhotoActionSummary(input.tripId);
       }),
   }),
   // ─── Invites ─────────────────────────────────────────────────────────────────

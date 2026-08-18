@@ -32,3 +32,8 @@
 - `/settings` renders all four colour-scheme cards with a clear selected indicator on the Fairway Green default at 390px width.
 - `/trip/1/chat` retains a reachable photo-picker control and stable mobile composer layout after the new viewer actions were added.
 - The install prompt overlaps the lower edge of long settings content in the capture, but the page remains vertically scrollable to reach each option.
+
+## System Appearance, Trip Defaults, and Photo Analytics
+
+- `/settings` shows the new Follow System option alongside all concrete palette choices without horizontal overflow at 390px width.
+- `/trip/1/chat` keeps both moderator controls—Activity and Reports—reachable in the compact mobile header, while the chat composer remains visible.

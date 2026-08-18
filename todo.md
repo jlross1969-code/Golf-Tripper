@@ -821,3 +821,13 @@
 - [x] Add a user-facing Settings page with persisted app colour-scheme choices
 - [x] Add Settings navigation and apply the selected scheme throughout the app
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - System Appearance, Trip Defaults, and Photo Analytics
+
+- [x] Inspect current colour settings, trip admin fields, and safe event-tracking patterns
+- [x] Add a system-following colour-scheme preference that observes device appearance changes
+- [x] Add an optional admin-managed default colour scheme to trips
+- [x] Let players adopt a trip default without overriding an existing personal preference
+- [x] Add privacy-safe aggregate download/share action event tracking for chat photos
+- [x] Add an admin-only photo action summary without exposing individual player activity
+- [x] Add tests, validate mobile UI, checkpoint, and publish

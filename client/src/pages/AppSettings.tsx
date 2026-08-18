@@ -4,7 +4,7 @@ import { Check, ChevronLeft, Palette } from "lucide-react";
 import { Link } from "wouter";
 
 export default function AppSettings() {
-  const { colorScheme, setColorScheme } = useTheme();
+  const { colorScheme, setColorScheme, hasPersonalColorScheme, clearPersonalColorScheme } = useTheme();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -15,7 +15,7 @@ export default function AppSettings() {
       <main className="mx-auto max-w-xl space-y-4 p-4 pb-32 sm:pt-8">
         <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <h2 className="text-base font-semibold">Colour scheme</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Choose the background and accent colours you prefer. This setting stays on this device.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Choose the background and accent colours you prefer. A personal choice stays on this device and takes priority over a trip default.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {COLOR_SCHEME_OPTIONS.map((option) => {
               const selected = colorScheme === option.id;
@@ -27,6 +27,11 @@ export default function AppSettings() {
               </button>;
             })}
           </div>
+          {hasPersonalColorScheme && (
+            <Button variant="outline" size="sm" className="mt-4" onClick={clearPersonalColorScheme}>
+              Use trip defaults when available
+            </Button>
+          )}
         </section>
       </main>
     </div>
