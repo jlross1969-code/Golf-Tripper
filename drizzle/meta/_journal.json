@@ -225,6 +225,13 @@
       "when": 1787074286419,
       "tag": "0031_overjoyed_thunderbolt_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1787075480192,
+      "tag": "0032_cuddly_xorn",
+      "breakpoints": true
     }
   ]
 }

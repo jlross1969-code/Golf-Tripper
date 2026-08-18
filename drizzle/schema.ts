@@ -365,6 +365,16 @@ export const tripMessages = mysqlTable("trip_messages", {
 
 export type TripMessage = typeof tripMessages.$inferSelect;
 
+export const tripMessageMentions = mysqlTable("trip_message_mentions", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  messageId: int("messageId").notNull(),
+  mentionedUserId: int("mentionedUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripMessageMention = typeof tripMessageMentions.$inferSelect;
+
 export const tripMessageAttachments = mysqlTable("trip_message_attachments", {
   id: int("id").autoincrement().primaryKey(),
   messageId: int("messageId").notNull(),
@@ -404,6 +414,17 @@ export const tripMessageAttachmentReports = mysqlTable("trip_message_attachment_
 });
 
 export type TripMessageAttachmentReport = typeof tripMessageAttachmentReports.$inferSelect;
+
+export const tripMessageModerationAudit = mysqlTable("trip_message_moderation_audit", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  attachmentId: int("attachmentId").notNull(),
+  actorUserId: int("actorUserId").notNull(),
+  action: mysqlEnum("action", ["attachment_removed", "report_dismissed"]).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripMessageModerationAudit = typeof tripMessageModerationAudit.$inferSelect;
 
 // Aggregate-only photo action event records. No viewer identity is stored.
 export const tripMessageAttachmentActionEvents = mysqlTable("trip_message_attachment_action_events", {

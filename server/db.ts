@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, like, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   Achievement,
@@ -34,6 +34,10 @@ import {
   sideMatches,
   tripInvites,
   tripMessages,
+  TripMessageMention,
+  TripMessageModerationAudit,
+  tripMessageMentions,
+  tripMessageModerationAudit,
   TripMessageAttachment,
   TripMessageAttachmentReport,
   tripMessageAttachments,
@@ -1163,10 +1167,10 @@ export async function updateMatchPlayResult(
 
 export type TripChatAttachmentInput = { imageUrl: string; imageKey: string; imageAlt?: string; caption?: string };
 
-export async function sendTripMessage(data: { tripId: number; userId: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string; attachments?: TripChatAttachmentInput[] }): Promise<number> {
+export async function sendTripMessage(data: { tripId: number; userId: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string; attachments?: TripChatAttachmentInput[]; mentionedUserIds?: number[] }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const { attachments, ...messageData } = data;
+  const { attachments, mentionedUserIds, ...messageData } = data;
   const [result] = await db.insert(tripMessages).values(messageData);
   const messageId = (result as any).insertId as number;
   if (attachments?.length) {
@@ -1179,12 +1183,20 @@ export async function sendTripMessage(data: { tripId: number; userId: number; me
       sortOrder,
     })));
   }
+  if (mentionedUserIds?.length) {
+    await db.insert(tripMessageMentions).values(mentionedUserIds.map((mentionedUserId) => ({ tripId: data.tripId, messageId, mentionedUserId })));
+  }
   return messageId;
 }
 
-export async function getTripMessages(tripId: number, limit = 50, beforeId?: number, currentUserId?: number) {
+export async function getTripMessages(tripId: number, limit = 50, beforeId?: number, currentUserId?: number, searchTerm?: string) {
   const db = await getDb();
   if (!db) return [];
+  const normalisedSearch = searchTerm?.trim().slice(0, 100);
+  const searchPattern = normalisedSearch ? `%${normalisedSearch.replace(/[\\%_]/g, "\\$&")}%` : null;
+  const conditions = [eq(tripMessages.tripId, tripId)];
+  if (beforeId) conditions.push(lt(tripMessages.id, beforeId));
+  if (searchPattern) conditions.push(or(like(tripMessages.message, searchPattern), like(users.name, searchPattern), like(tripPlayers.nickname, searchPattern))!);
   const rows = await db
     .select({
       id: tripMessages.id,
@@ -1201,11 +1213,7 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     .from(tripMessages)
     .leftJoin(users, eq(tripMessages.userId, users.id))
     .leftJoin(tripPlayers, and(eq(tripPlayers.userId, tripMessages.userId), eq(tripPlayers.tripId, tripMessages.tripId)))
-    .where(
-      beforeId
-        ? and(eq(tripMessages.tripId, tripId), lt(tripMessages.id, beforeId))
-        : eq(tripMessages.tripId, tripId)
-    )
+    .where(and(...conditions))
     .orderBy(desc(tripMessages.id))
     .limit(limit);
   const messageIds = rows.map((row) => row.id);
@@ -1215,6 +1223,11 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     .orderBy(tripMessageAttachments.sortOrder);
   const reactionRows = await db.select().from(tripMessageReactions)
     .where(inArray(tripMessageReactions.messageId, messageIds));
+  const mentionRows = await db.select({ messageId: tripMessageMentions.messageId, mentionedUserId: tripMessageMentions.mentionedUserId, userName: users.name, nickname: tripPlayers.nickname })
+    .from(tripMessageMentions)
+    .leftJoin(users, eq(tripMessageMentions.mentionedUserId, users.id))
+    .leftJoin(tripPlayers, and(eq(tripPlayers.userId, tripMessageMentions.mentionedUserId), eq(tripPlayers.tripId, tripId)))
+    .where(inArray(tripMessageMentions.messageId, messageIds));
   const attachmentsByMessage = new Map<number, TripMessageAttachment[]>();
   attachmentRows.forEach((attachment) => {
     const entries = attachmentsByMessage.get(attachment.messageId) ?? [];
@@ -1222,6 +1235,12 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     attachmentsByMessage.set(attachment.messageId, entries);
   });
   const reactionsByMessage = new Map<number, Map<string, { count: number; reactedByCurrentUser: boolean }>>();
+  const mentionsByMessage = new Map<number, { userId: number; displayName: string }[]>();
+  mentionRows.forEach((mention) => {
+    const entries = mentionsByMessage.get(mention.messageId) ?? [];
+    entries.push({ userId: mention.mentionedUserId, displayName: mention.nickname ?? mention.userName ?? "Player" });
+    mentionsByMessage.set(mention.messageId, entries);
+  });
   reactionRows.forEach((reaction) => {
     const byEmoji = reactionsByMessage.get(reaction.messageId) ?? new Map();
     const summary = byEmoji.get(reaction.emoji) ?? { count: 0, reactedByCurrentUser: false };
@@ -1234,6 +1253,7 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     ...row,
     userName: row.userNickname ?? row.userName ?? null,
     attachments: attachmentsByMessage.get(row.id) ?? [],
+    mentions: mentionsByMessage.get(row.id) ?? [],
     reactions: Array.from(reactionsByMessage.get(row.id)?.entries() ?? []).map(([emoji, summary]) => ({ emoji, ...summary })),
   }));
 }
@@ -1296,17 +1316,32 @@ export async function getTripChatAttachmentReports(tripId: number) {
     .orderBy(desc(tripMessageAttachmentReports.createdAt));
 }
 
-export async function removeTripChatAttachment(attachmentId: number, moderatorUserId: number): Promise<void> {
+export async function removeTripChatAttachment(attachmentId: number, moderatorUserId: number, tripId: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(tripMessageAttachments).set({ isRemoved: true, removedAt: new Date(), removedByUserId: moderatorUserId }).where(eq(tripMessageAttachments.id, attachmentId));
   await db.update(tripMessageAttachmentReports).set({ status: "removed", resolvedAt: new Date(), resolvedByUserId: moderatorUserId }).where(and(eq(tripMessageAttachmentReports.attachmentId, attachmentId), eq(tripMessageAttachmentReports.status, "open")));
+  await db.insert(tripMessageModerationAudit).values({ tripId, attachmentId, actorUserId: moderatorUserId, action: "attachment_removed" });
 }
 
-export async function dismissTripChatAttachmentReport(reportId: number, moderatorUserId: number): Promise<void> {
+export async function dismissTripChatAttachmentReport(reportId: number, moderatorUserId: number, tripId: number): Promise<void> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
+  const [report] = await db.select().from(tripMessageAttachmentReports).where(eq(tripMessageAttachmentReports.id, reportId)).limit(1);
+  if (!report) return;
   await db.update(tripMessageAttachmentReports).set({ status: "dismissed", resolvedAt: new Date(), resolvedByUserId: moderatorUserId }).where(eq(tripMessageAttachmentReports.id, reportId));
+  await db.insert(tripMessageModerationAudit).values({ tripId, attachmentId: report.attachmentId, actorUserId: moderatorUserId, action: "report_dismissed" });
+}
+
+export async function getTripChatModerationAudit(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ audit: tripMessageModerationAudit, attachment: tripMessageAttachments, actorName: users.name })
+    .from(tripMessageModerationAudit)
+    .innerJoin(tripMessageAttachments, eq(tripMessageModerationAudit.attachmentId, tripMessageAttachments.id))
+    .leftJoin(users, eq(tripMessageModerationAudit.actorUserId, users.id))
+    .where(eq(tripMessageModerationAudit.tripId, tripId))
+    .orderBy(desc(tripMessageModerationAudit.createdAt));
 }
 
 /** Records a photo download/share without storing the viewer's identity. */

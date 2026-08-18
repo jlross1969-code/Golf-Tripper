@@ -866,3 +866,13 @@
 - [x] Filter player-facing and assistant FAQ context based on the relevant round
 - [x] Add scorecard hole-context actions that open the assistant with a pre-filled prompt
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Chat Mentions, Search, Moderation Audit, and FAQ Notifications
+
+- [x] Review Trip Chat composition, moderation, notification, and round activation flows
+- [x] Add secure Trip Chat mention storage, parsing, notification, and query support
+- [x] Add Trip Chat search by player name and message content
+- [x] Add a moderator audit log for photo removal actions
+- [x] Notify trip players when an activated round makes new round-specific FAQs visible
+- [x] Build mobile chat controls and moderator audit history
+- [x] Add tests, validate mobile UI, checkpoint, and publish

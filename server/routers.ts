@@ -132,6 +132,7 @@ import {
   getMatchPlayResultsByRound,
   getTripMessages,
   sendTripMessage,
+  getTripChatModerationAudit,
   getTripChatMessage,
   toggleTripMessageReaction,
   getTripChatAttachment,
@@ -184,6 +185,7 @@ import { isTripChatImageReference } from "../shared/tripChatAttachment";
 import { canManageTripChatAttachment } from "../shared/tripChatAlbum";
 import { APP_COLOR_SCHEME_IDS } from "../shared/appearance";
 import { copyAppearanceDateToTrip } from "../shared/seasonalAppearanceTemplates";
+import { normaliseTripChatMentionedUserIds } from "../shared/tripChatMention";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -877,10 +879,32 @@ export const appRouter = router({
       )
       .mutation(async ({ input }) => {
         const { id, roundDate, ...rest } = input;
+        const previousRound = await getRound(id);
+        if (!previousRound) throw new TRPCError({ code: "NOT_FOUND", message: "Round not found" });
         await updateRound(id, {
           ...rest,
           ...(roundDate ? { roundDate: new Date(roundDate) } : {}),
         } as any);
+
+        // A FAQ becomes player-visible when its designated round starts.
+        if (input.status === "active" && previousRound.status !== "active") {
+          try {
+            const newlyVisibleFaqs = (await getTripFaqs(previousRound.tripId)).filter((faq) => faq.visibleFromRoundId === id);
+            if (newlyVisibleFaqs.length > 0) {
+              const plural = newlyVisibleFaqs.length === 1 ? "a new FAQ" : `${newlyVisibleFaqs.length} new FAQs`;
+              const body = `${plural} is now available for ${previousRound.name}. Open Golf Trip Assistant to view the latest trip guidance.`;
+              await createNotification({ tripId: previousRound.tripId, message: body, type: "round_start" });
+              void sendPushToTrip(previousRound.tripId, {
+                title: `⛳ ${previousRound.name} guidance`,
+                body,
+                tag: `round-faqs-${id}`,
+                url: `/assistant?tripId=${previousRound.tripId}&roundId=${id}`,
+              });
+            }
+          } catch {
+            // Notification delivery must not block an administrator from activating a round.
+          }
+        }
 
         // When a round is marked complete, send a Highlights push notification
         if (input.status === "completed") {
@@ -2036,10 +2060,10 @@ export const appRouter = router({
   // ─── Trip Chat ───────────────────────────────────────────────────────────────
   chat: router({
     getMessages: protectedProcedure
-      .input(z.object({ tripId: z.number(), limit: z.number().default(50), beforeId: z.number().optional() }))
+      .input(z.object({ tripId: z.number(), limit: z.number().default(50), beforeId: z.number().optional(), search: z.string().trim().max(100).optional() }))
       .query(async ({ input, ctx }) => {
         await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
-        const messages = await getTripMessages(input.tripId, input.limit, input.beforeId, ctx.user.id);
+        const messages = await getTripMessages(input.tripId, input.limit, input.beforeId, ctx.user.id, input.search);
         return messages.reverse(); // Return oldest-first for display
       }),
 
@@ -2047,6 +2071,7 @@ export const appRouter = router({
       .input(z.object({
         tripId: z.number(),
         message: z.string().max(1000),
+        mentionedUserIds: z.array(z.number()).max(10).optional(),
         attachments: z.array(z.object({ imageUrl: z.string().max(1024), imageKey: z.string().max(1024), imageAlt: z.string().max(180).optional(), caption: z.string().trim().max(240).optional() }).refine((attachment) => isTripChatImageReference(attachment.imageUrl, attachment.imageKey), { message: "Invalid image attachment" })).max(4).optional(),
         imageUrl: z.string().max(1024).optional(),
         imageKey: z.string().max(1024).optional(),
@@ -2056,13 +2081,24 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
         const attachments = input.attachments?.length ? input.attachments : input.imageUrl && input.imageKey ? [{ imageUrl: input.imageUrl, imageKey: input.imageKey, imageAlt: input.imageAlt }] : undefined;
+        const roster = await getTripPlayers(input.tripId);
+        const rosterUserIds = new Set(roster.map((player) => player.userId));
+        const mentionedUserIds = normaliseTripChatMentionedUserIds(input.mentionedUserIds, ctx.user.id).filter((userId) => rosterUserIds.has(userId));
         const id = await sendTripMessage({
           tripId: input.tripId,
           userId: ctx.user.id,
           message: input.message.trim(),
           attachments,
+          mentionedUserIds,
         });
         return { id };
+      }),
+    mentionablePlayers: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input, ctx }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const players = await getTripPlayers(input.tripId);
+        return players.filter((player) => player.userId !== ctx.user.id).map((player) => ({ userId: player.userId, displayName: player.nickname ?? player.user?.name ?? "Player" }));
       }),
 
     toggleReaction: protectedProcedure
@@ -2092,7 +2128,7 @@ export const appRouter = router({
         const result = await getTripChatAttachment(input.attachmentId);
         if (!result || result.tripId !== input.tripId || result.attachment.isRemoved) throw new TRPCError({ code: "NOT_FOUND", message: "Attachment not found" });
         if (!canManageTripChatAttachment(result.messageUserId, ctx.user.id)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the photo author can remove it" });
-        await removeTripChatAttachment(input.attachmentId, ctx.user.id);
+        await removeTripChatAttachment(input.attachmentId, ctx.user.id, input.tripId);
         return { success: true };
       }),
 
@@ -2121,13 +2157,20 @@ export const appRouter = router({
         return getTripChatAttachmentReports(input.tripId);
       }),
 
+    listModerationAudit: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripChatModerationAudit(input.tripId);
+      }),
+
     removeAttachment: protectedProcedure
       .input(z.object({ tripId: z.number(), attachmentId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
         const result = await getTripChatAttachment(input.attachmentId);
         if (!result || result.tripId !== input.tripId) throw new TRPCError({ code: "NOT_FOUND", message: "Attachment not found" });
-        await removeTripChatAttachment(input.attachmentId, ctx.user.id);
+        await removeTripChatAttachment(input.attachmentId, ctx.user.id, input.tripId);
         return { success: true };
       }),
 
@@ -2137,7 +2180,7 @@ export const appRouter = router({
         await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
         const reports = await getTripChatAttachmentReports(input.tripId);
         if (!reports.some((entry) => entry.report.id === input.reportId)) throw new TRPCError({ code: "NOT_FOUND", message: "Report not found" });
-        await dismissTripChatAttachmentReport(input.reportId, ctx.user.id);
+        await dismissTripChatAttachmentReport(input.reportId, ctx.user.id, input.tripId);
         return { success: true };
       }),
 
