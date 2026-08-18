@@ -337,6 +337,45 @@ export const tripMessages = mysqlTable("trip_messages", {
 
 export type TripMessage = typeof tripMessages.$inferSelect;
 
+export const tripMessageAttachments = mysqlTable("trip_message_attachments", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: int("messageId").notNull(),
+  imageUrl: varchar("imageUrl", { length: 1024 }).notNull(),
+  imageKey: varchar("imageKey", { length: 1024 }).notNull(),
+  imageAlt: varchar("imageAlt", { length: 180 }),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  isRemoved: boolean("isRemoved").default(false).notNull(),
+  removedAt: timestamp("removedAt"),
+  removedByUserId: int("removedByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripMessageAttachment = typeof tripMessageAttachments.$inferSelect;
+
+export const tripMessageReactions = mysqlTable("trip_message_reactions", {
+  id: int("id").autoincrement().primaryKey(),
+  messageId: int("messageId").notNull(),
+  userId: int("userId").notNull(),
+  emoji: varchar("emoji", { length: 16 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripMessageReaction = typeof tripMessageReactions.$inferSelect;
+
+export const tripMessageAttachmentReports = mysqlTable("trip_message_attachment_reports", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  attachmentId: int("attachmentId").notNull(),
+  reporterUserId: int("reporterUserId").notNull(),
+  reason: varchar("reason", { length: 600 }),
+  status: mysqlEnum("status", ["open", "dismissed", "removed"]).default("open").notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+  resolvedByUserId: int("resolvedByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripMessageAttachmentReport = typeof tripMessageAttachmentReports.$inferSelect;
+
 // ─── Golf Trip AI Assistant ───────────────────────────────────────────────────
 // Saved assistant conversations are private to their owner. A conversation can
 // optionally be tied to a trip so the assistant can include that trip's FAQs.

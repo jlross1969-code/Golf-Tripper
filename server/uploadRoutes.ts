@@ -5,7 +5,7 @@ import { getDb } from "./db";
 import { tripPlayers, pushSubscriptions, trips, rounds } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { createContext } from "./_core/context";
-import { isTripChatImageType } from "../shared/tripChatAttachment";
+import { TRIP_CHAT_IMAGE_MAX_BYTES, isTripChatImageType } from "../shared/tripChatAttachment";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -155,6 +155,7 @@ export function registerUploadRoutes(app: express.Application) {
       if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
       if (!req.file) { res.status(400).json({ error: "No image provided" }); return; }
       if (!isTripChatImageType(req.file.mimetype)) { res.status(400).json({ error: "Use a JPEG, PNG, WebP, or GIF image" }); return; }
+      if (req.file.size <= 0 || req.file.size > TRIP_CHAT_IMAGE_MAX_BYTES) { res.status(400).json({ error: "Use an image smaller than 5 MB" }); return; }
       const tripId = parseInt(req.body.tripId as string, 10);
       if (!tripId || Number.isNaN(tripId)) { res.status(400).json({ error: "tripId required" }); return; }
       const db = await getDb();

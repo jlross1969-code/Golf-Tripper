@@ -785,3 +785,13 @@
 - [x] Support sending a chat image with an optional comment and preserving text-only messages
 - [x] Render responsive image attachments in Trip Chat with upload progress and error states
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Trip Chat Albums, Reactions, and Moderation
+
+- [x] Inspect current Trip Chat attachment and trip-admin authorization patterns
+- [x] Add message attachment, reaction, and report data structures with non-destructive migrations
+- [x] Support one message with up to four validated photo attachments and an optional comment
+- [x] Add secure image reaction toggle and aggregate reaction display
+- [x] Add attachment report submission, admin/co-admin moderation list, and remove action
+- [x] Build mobile album grid, photo selection/removal, reactions, report, and moderator controls
+- [x] Add tests, validate mobile UI, checkpoint, and publish

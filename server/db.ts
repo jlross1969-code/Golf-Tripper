@@ -34,6 +34,11 @@ import {
   sideMatches,
   tripInvites,
   tripMessages,
+  TripMessageAttachment,
+  TripMessageAttachmentReport,
+  tripMessageAttachments,
+  tripMessageAttachmentReports,
+  tripMessageReactions,
   tripPlayers,
   trips,
   users,
@@ -1150,14 +1155,27 @@ export async function updateMatchPlayResult(
 
 // ─── Trip Chat ────────────────────────────────────────────────────────────────
 
-export async function sendTripMessage(data: { tripId: number; userId: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string }): Promise<number> {
+export type TripChatAttachmentInput = { imageUrl: string; imageKey: string; imageAlt?: string };
+
+export async function sendTripMessage(data: { tripId: number; userId: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string; attachments?: TripChatAttachmentInput[] }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(tripMessages).values(data);
-  return (result as any).insertId;
+  const { attachments, ...messageData } = data;
+  const [result] = await db.insert(tripMessages).values(messageData);
+  const messageId = (result as any).insertId as number;
+  if (attachments?.length) {
+    await db.insert(tripMessageAttachments).values(attachments.map((attachment, sortOrder) => ({
+      messageId,
+      imageUrl: attachment.imageUrl,
+      imageKey: attachment.imageKey,
+      imageAlt: attachment.imageAlt ?? "Trip chat image",
+      sortOrder,
+    })));
+  }
+  return messageId;
 }
 
-export async function getTripMessages(tripId: number, limit = 50, beforeId?: number): Promise<(TripMessage & { userName: string | null })[]> {
+export async function getTripMessages(tripId: number, limit = 50, beforeId?: number, currentUserId?: number) {
   const db = await getDb();
   if (!db) return [];
   const rows = await db
@@ -1183,7 +1201,99 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
     )
     .orderBy(desc(tripMessages.id))
     .limit(limit);
-  return rows.map((r) => ({ ...r, userName: r.userNickname ?? r.userName ?? null }));
+  const messageIds = rows.map((row) => row.id);
+  if (!messageIds.length) return [];
+  const attachmentRows = await db.select().from(tripMessageAttachments)
+    .where(and(inArray(tripMessageAttachments.messageId, messageIds), eq(tripMessageAttachments.isRemoved, false)))
+    .orderBy(tripMessageAttachments.sortOrder);
+  const reactionRows = await db.select().from(tripMessageReactions)
+    .where(inArray(tripMessageReactions.messageId, messageIds));
+  const attachmentsByMessage = new Map<number, TripMessageAttachment[]>();
+  attachmentRows.forEach((attachment) => {
+    const entries = attachmentsByMessage.get(attachment.messageId) ?? [];
+    entries.push(attachment);
+    attachmentsByMessage.set(attachment.messageId, entries);
+  });
+  const reactionsByMessage = new Map<number, Map<string, { count: number; reactedByCurrentUser: boolean }>>();
+  reactionRows.forEach((reaction) => {
+    const byEmoji = reactionsByMessage.get(reaction.messageId) ?? new Map();
+    const summary = byEmoji.get(reaction.emoji) ?? { count: 0, reactedByCurrentUser: false };
+    summary.count += 1;
+    summary.reactedByCurrentUser ||= reaction.userId === currentUserId;
+    byEmoji.set(reaction.emoji, summary);
+    reactionsByMessage.set(reaction.messageId, byEmoji);
+  });
+  return rows.map((row) => ({
+    ...row,
+    userName: row.userNickname ?? row.userName ?? null,
+    attachments: attachmentsByMessage.get(row.id) ?? [],
+    reactions: Array.from(reactionsByMessage.get(row.id)?.entries() ?? []).map(([emoji, summary]) => ({ emoji, ...summary })),
+  }));
+}
+
+export async function getTripChatMessage(messageId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [message] = await db.select().from(tripMessages).where(eq(tripMessages.id, messageId)).limit(1);
+  return message;
+}
+
+export async function toggleTripMessageReaction(messageId: number, userId: number, emoji: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [existing] = await db.select().from(tripMessageReactions)
+    .where(and(eq(tripMessageReactions.messageId, messageId), eq(tripMessageReactions.userId, userId), eq(tripMessageReactions.emoji, emoji))).limit(1);
+  if (existing) {
+    await db.delete(tripMessageReactions).where(eq(tripMessageReactions.id, existing.id));
+    return false;
+  }
+  await db.insert(tripMessageReactions).values({ messageId, userId, emoji });
+  return true;
+}
+
+export async function getTripChatAttachment(attachmentId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [attachment] = await db.select({ attachment: tripMessageAttachments, tripId: tripMessages.tripId, messageId: tripMessages.id })
+    .from(tripMessageAttachments)
+    .innerJoin(tripMessages, eq(tripMessageAttachments.messageId, tripMessages.id))
+    .where(eq(tripMessageAttachments.id, attachmentId)).limit(1);
+  return attachment;
+}
+
+export async function createTripChatAttachmentReport(data: { tripId: number; attachmentId: number; reporterUserId: number; reason?: string }): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [existing] = await db.select().from(tripMessageAttachmentReports)
+    .where(and(eq(tripMessageAttachmentReports.attachmentId, data.attachmentId), eq(tripMessageAttachmentReports.reporterUserId, data.reporterUserId), eq(tripMessageAttachmentReports.status, "open"))).limit(1);
+  if (existing) return existing.id;
+  const [result] = await db.insert(tripMessageAttachmentReports).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function getTripChatAttachmentReports(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ report: tripMessageAttachmentReports, attachment: tripMessageAttachments, reporterName: users.name, messageText: tripMessages.message })
+    .from(tripMessageAttachmentReports)
+    .innerJoin(tripMessageAttachments, eq(tripMessageAttachmentReports.attachmentId, tripMessageAttachments.id))
+    .innerJoin(tripMessages, eq(tripMessageAttachments.messageId, tripMessages.id))
+    .leftJoin(users, eq(tripMessageAttachmentReports.reporterUserId, users.id))
+    .where(eq(tripMessageAttachmentReports.tripId, tripId))
+    .orderBy(desc(tripMessageAttachmentReports.createdAt));
+}
+
+export async function removeTripChatAttachment(attachmentId: number, moderatorUserId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripMessageAttachments).set({ isRemoved: true, removedAt: new Date(), removedByUserId: moderatorUserId }).where(eq(tripMessageAttachments.id, attachmentId));
+  await db.update(tripMessageAttachmentReports).set({ status: "removed", resolvedAt: new Date(), resolvedByUserId: moderatorUserId }).where(and(eq(tripMessageAttachmentReports.attachmentId, attachmentId), eq(tripMessageAttachmentReports.status, "open")));
+}
+
+export async function dismissTripChatAttachmentReport(reportId: number, moderatorUserId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripMessageAttachmentReports).set({ status: "dismissed", resolvedAt: new Date(), resolvedByUserId: moderatorUserId }).where(eq(tripMessageAttachmentReports.id, reportId));
 }
 
 // ─── Golf Trip AI Assistant ───────────────────────────────────────────────────

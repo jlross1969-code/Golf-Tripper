@@ -102,6 +102,7 @@ import {
   roundFlagsFromTournamentType,
   getTripPennantLeaderboard,
   promoteInviteSlots,
+  isCoAdminForTrip,
 } from "./db";
 import {
   buildAchievementMessage,
@@ -129,6 +130,13 @@ import {
   getMatchPlayResultsByRound,
   getTripMessages,
   sendTripMessage,
+  getTripChatMessage,
+  toggleTripMessageReaction,
+  getTripChatAttachment,
+  createTripChatAttachmentReport,
+  getTripChatAttachmentReports,
+  removeTripChatAttachment,
+  dismissTripChatAttachmentReport,
   updateMatchPlayResult,
   createInvite,
   getInvitesByTrip,
@@ -171,6 +179,21 @@ const GOLF_TRIP_ASSISTANT_INSTRUCTIONS = `You are the Golf Trip Assistant for th
 For this app's Stableford 4BBB, each player earns their own Stableford points after handicap strokes, and the pair counts the higher points score on each hole. You can also answer general golf-rules questions clearly and practically. Golf-rules answers are general information only, not an official ruling. For competition-specific, exceptional, or disputed situations, state that the player should confirm the current Rules of Golf and ask the event committee for the official decision. Do not invent app features, scores, player data, or official rule references. If a request relies on a particular local rule or information not supplied, ask a brief clarifying question.
 
 Use concise Australian English. Prefer short numbered steps where they aid clarity, but do not use Markdown emphasis. Do not provide legal, medical, gambling, financial, or account-security advice.`;
+
+async function assertTripChatAccess(userId: number, tripId: number, isPlatformAdmin: boolean) {
+  const trip = await getTrip(tripId);
+  if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+  const player = await getTripPlayer(tripId, userId);
+  if (!player && trip.createdBy !== userId && !isPlatformAdmin) throw new TRPCError({ code: "FORBIDDEN", message: "You are not a member of this trip" });
+  return trip;
+}
+
+async function assertTripChatModerator(userId: number, tripId: number, isPlatformAdmin: boolean) {
+  const trip = await assertTripChatAccess(userId, tripId, isPlatformAdmin);
+  if (!isPlatformAdmin && trip.createdBy !== userId && !(await isCoAdminForTrip(userId, tripId))) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Trip admin access required" });
+  }
+}
 
 async function assertAssistantTripAccess(userId: number, tripId: number, isPlatformAdmin: boolean): Promise<void> {
   const trip = await getTrip(tripId);
@@ -1965,8 +1988,9 @@ export const appRouter = router({
   chat: router({
     getMessages: protectedProcedure
       .input(z.object({ tripId: z.number(), limit: z.number().default(50), beforeId: z.number().optional() }))
-      .query(async ({ input }) => {
-        const messages = await getTripMessages(input.tripId, input.limit, input.beforeId);
+      .query(async ({ input, ctx }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const messages = await getTripMessages(input.tripId, input.limit, input.beforeId, ctx.user.id);
         return messages.reverse(); // Return oldest-first for display
       }),
 
@@ -1974,22 +1998,76 @@ export const appRouter = router({
       .input(z.object({
         tripId: z.number(),
         message: z.string().max(1000),
+        attachments: z.array(z.object({ imageUrl: z.string().max(1024), imageKey: z.string().max(1024), imageAlt: z.string().max(180).optional() }).refine((attachment) => isTripChatImageReference(attachment.imageUrl, attachment.imageKey), { message: "Invalid image attachment" })).max(4).optional(),
         imageUrl: z.string().max(1024).optional(),
         imageKey: z.string().max(1024).optional(),
         imageAlt: z.string().max(180).optional(),
-      }).refine((value) => value.message.trim().length > 0 || Boolean(value.imageUrl), { message: "Add a comment or image" })
+      }).refine((value) => value.message.trim().length > 0 || Boolean(value.imageUrl) || Boolean(value.attachments?.length), { message: "Add a comment or image" })
         .refine((value) => !value.imageUrl || isTripChatImageReference(value.imageUrl, value.imageKey), { message: "Invalid image attachment" }))
       .mutation(async ({ ctx, input }) => {
-        if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const attachments = input.attachments?.length ? input.attachments : input.imageUrl && input.imageKey ? [{ imageUrl: input.imageUrl, imageKey: input.imageKey, imageAlt: input.imageAlt }] : undefined;
         const id = await sendTripMessage({
           tripId: input.tripId,
           userId: ctx.user.id,
           message: input.message.trim(),
-          imageUrl: input.imageUrl,
-          imageKey: input.imageKey,
-          imageAlt: input.imageAlt,
+          attachments,
         });
         return { id };
+      }),
+
+    toggleReaction: protectedProcedure
+      .input(z.object({ tripId: z.number(), messageId: z.number(), emoji: z.enum(["👍", "❤️", "😂", "⛳"]) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const message = await getTripChatMessage(input.messageId);
+        if (!message || message.tripId !== input.tripId) throw new TRPCError({ code: "NOT_FOUND", message: "Chat message not found" });
+        return { active: await toggleTripMessageReaction(input.messageId, ctx.user.id, input.emoji) };
+      }),
+
+    reportAttachment: protectedProcedure
+      .input(z.object({ tripId: z.number(), attachmentId: z.number(), reason: z.string().trim().max(600).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const result = await getTripChatAttachment(input.attachmentId);
+        if (!result || result.tripId !== input.tripId || result.attachment.isRemoved) throw new TRPCError({ code: "NOT_FOUND", message: "Attachment not found" });
+        const id = await createTripChatAttachmentReport({ tripId: input.tripId, attachmentId: input.attachmentId, reporterUserId: ctx.user.id, reason: input.reason?.trim() || undefined });
+        return { id };
+      }),
+
+    moderationStatus: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const trip = await getTrip(input.tripId);
+        return { canModerate: ctx.user.role === "admin" || trip?.createdBy === ctx.user.id || await isCoAdminForTrip(ctx.user.id, input.tripId) };
+      }),
+
+    listAttachmentReports: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripChatAttachmentReports(input.tripId);
+      }),
+
+    removeAttachment: protectedProcedure
+      .input(z.object({ tripId: z.number(), attachmentId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const result = await getTripChatAttachment(input.attachmentId);
+        if (!result || result.tripId !== input.tripId) throw new TRPCError({ code: "NOT_FOUND", message: "Attachment not found" });
+        await removeTripChatAttachment(input.attachmentId, ctx.user.id);
+        return { success: true };
+      }),
+
+    dismissAttachmentReport: protectedProcedure
+      .input(z.object({ tripId: z.number(), reportId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const reports = await getTripChatAttachmentReports(input.tripId);
+        if (!reports.some((entry) => entry.report.id === input.reportId)) throw new TRPCError({ code: "NOT_FOUND", message: "Report not found" });
+        await dismissTripChatAttachmentReport(input.reportId, ctx.user.id);
+        return { success: true };
       }),
   }),
   // ─── Invites ─────────────────────────────────────────────────────────────────
