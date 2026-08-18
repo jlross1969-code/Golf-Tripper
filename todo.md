@@ -931,3 +931,11 @@
 - [x] Add financial-manager-only receipt upload and large-expense approval controls
 - [x] Add a player travel checklist with financial-manager-only authoring and management
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Expense Reporting, Supplier Payments, and Checklist Reminders
+
+- [x] Review expense categories, supplier payment state, checklist, and scheduled reminder flows
+- [x] Add secure storage and procedures for expense categories, supplier payment status, and checklist reminder jobs
+- [x] Add financial-manager expense-category reporting and supplier payment-status management
+- [x] Add scheduled checklist deadline reminder delivery to incomplete trip players
+- [x] Add tests, validate mobile UI, checkpoint, and publish

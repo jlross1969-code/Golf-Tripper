@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
-import { createNotification, getTrip, getTripByCourseRevealTaskUid, getTripByPaymentReminderTaskUid, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, sendTripMessage, updateTrip } from "./db";
+import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripByCourseRevealTaskUid, getTripByPaymentReminderTaskUid, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, getTripTravelChecklistByReminderTaskUid, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, markTripTravelChecklistReminderSent, sendTripMessage, updateTrip } from "./db";
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
 
 function cronOnly(user: Awaited<ReturnType<typeof sdk.authenticateRequest>>, res: Response) {
@@ -90,6 +90,30 @@ export function registerScheduledTripEventRoutes(app: Express) {
       res.json({ ok: true, reminded: recipients.length, stageId: stage.id });
     } catch (error) {
       console.error("[ScheduledTripEvents] staged payment reminder error", error);
+      res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.post("/api/scheduled/checklist-reminder", async (req: Request, res: Response) => {
+    try {
+      const taskUid = cronOnly(await sdk.authenticateRequest(req), res);
+      if (!taskUid) return;
+      const item = await getTripTravelChecklistByReminderTaskUid(taskUid);
+      if (!item) return res.json({ ok: true, skipped: "orphan" });
+      if (item.reminderSentAt) return res.json({ ok: true, skipped: "already-sent" });
+      const trip = await getTrip(item.tripId);
+      if (!trip) return res.json({ ok: true, skipped: "trip-missing" });
+      const recipients = await getIncompleteChecklistPlayerIds(item.id, item.tripId);
+      const deadline = item.dueAt ? ` by ${new Date(item.dueAt).toLocaleString("en-AU")}` : "";
+      const message = `Travel checklist reminder: ${item.label}${deadline}.`;
+      if (recipients.length) {
+        await createNotification({ tripId: item.tripId, message, type: "general" });
+        void sendPushToUsers(recipients, { title: `Travel checklist · ${trip.name}`, body: message, tag: `checklist-reminder-${item.id}`, url: `/trip/${item.tripId}/itinerary` });
+      }
+      await markTripTravelChecklistReminderSent(item.id);
+      res.json({ ok: true, reminded: recipients.length, itemId: item.id });
+    } catch (error) {
+      console.error("[ScheduledTripEvents] checklist reminder error", error);
       res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
     }
   });

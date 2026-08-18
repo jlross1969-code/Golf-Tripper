@@ -258,6 +258,9 @@ export const tripSuppliers = mysqlTable("trip_suppliers", {
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 60 }),
   notes: varchar("notes", { length: 500 }),
+  paymentStatus: mysqlEnum("paymentStatus", ["unpaid", "partially_paid", "paid"]).default("unpaid").notNull(),
+  paymentDueCents: int("paymentDueCents").default(0).notNull(),
+  paidCents: int("paidCents").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -279,6 +282,7 @@ export const tripActualExpenses = mysqlTable("trip_actual_expenses", {
   tripId: int("tripId").notNull(),
   plannedLineItemId: int("plannedLineItemId"),
   supplierId: int("supplierId"),
+  category: varchar("category", { length: 80 }).default("Other").notNull(),
   label: varchar("label", { length: 180 }).notNull(),
   amountCents: int("amountCents").notNull(),
   paidAt: timestamp("paidAt").defaultNow().notNull(),
@@ -300,6 +304,9 @@ export const tripTravelChecklistItems = mysqlTable("trip_travel_checklist_items"
   tripId: int("tripId").notNull(),
   label: varchar("label", { length: 240 }).notNull(),
   dueAt: timestamp("dueAt"),
+  reminderAt: timestamp("reminderAt"),
+  reminderCronTaskUid: varchar("reminderCronTaskUid", { length: 65 }),
+  reminderSentAt: timestamp("reminderSentAt"),
   createdByUserId: int("createdByUserId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

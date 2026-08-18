@@ -593,7 +593,7 @@ export async function getTripSuppliers(tripId: number) {
   return db.select().from(tripSuppliers).where(eq(tripSuppliers.tripId, tripId)).orderBy(tripSuppliers.name);
 }
 
-export async function createTripSupplier(data: { tripId: number; name: string; contactName?: string; email?: string; phone?: string; notes?: string }) {
+export async function createTripSupplier(data: { tripId: number; name: string; contactName?: string; email?: string; phone?: string; notes?: string; paymentDueCents?: number; paidCents?: number; paymentStatus?: "unpaid" | "partially_paid" | "paid" }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripSuppliers).values(data);
@@ -604,6 +604,13 @@ export async function deleteTripSupplier(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.delete(tripSuppliers).where(eq(tripSuppliers.id, id));
+}
+
+export async function updateTripSupplierPayment(id: number, paymentDueCents: number, paidCents: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const paymentStatus = paidCents <= 0 ? "unpaid" : paidCents >= paymentDueCents ? "paid" : "partially_paid";
+  await db.update(tripSuppliers).set({ paymentDueCents, paidCents, paymentStatus }).where(eq(tripSuppliers.id, id));
 }
 
 export async function getTripFinancialLineItems(tripId: number) {
@@ -629,7 +636,8 @@ export async function getTripFinancialPlan(tripId: number) {
   const [settings, lines, players, actualExpenses] = await Promise.all([getTripFinancialSettings(tripId), getTripFinancialLineItems(tripId), getTripPlayers(tripId), getTripActualExpenses(tripId)]);
   const plan = calculateTripFinancialPlan(lines, players.length, settings.contingencyPercent, settings.rolloverCents);
   const actualExpensesCents = actualExpenses.filter((expense) => expense.approvalStatus === "approved").reduce((sum, expense) => sum + expense.amountCents, 0);
-  return { settings, lines, actualExpenses, actualExpensesCents, pendingActualExpenses: actualExpenses.filter((expense) => expense.approvalStatus === "pending"), actualVarianceCents: actualExpensesCents - plan.totalCostsCents, ...plan };
+  const categoryTotals = Object.entries(actualExpenses.filter((expense) => expense.approvalStatus === "approved").reduce<Record<string, number>>((totals, expense) => { totals[expense.category] = (totals[expense.category] ?? 0) + expense.amountCents; return totals; }, {})).map(([category, amountCents]) => ({ category, amountCents })).sort((a, b) => b.amountCents - a.amountCents);
+  return { settings, lines, actualExpenses, actualExpensesCents, categoryTotals, pendingActualExpenses: actualExpenses.filter((expense) => expense.approvalStatus === "pending"), actualVarianceCents: actualExpensesCents - plan.totalCostsCents, ...plan };
 }
 
 export async function getTripActualExpenses(tripId: number) {
@@ -638,7 +646,7 @@ export async function getTripActualExpenses(tripId: number) {
   return db.select().from(tripActualExpenses).where(eq(tripActualExpenses.tripId, tripId)).orderBy(desc(tripActualExpenses.paidAt));
 }
 
-export async function createTripActualExpense(data: { tripId: number; plannedLineItemId?: number; supplierId?: number; label: string; amountCents: number; paidAt?: Date; notes?: string; receiptUrl?: string; receiptFileName?: string; approvalStatus?: "pending" | "approved" }) {
+export async function createTripActualExpense(data: { tripId: number; plannedLineItemId?: number; supplierId?: number; category?: string; label: string; amountCents: number; paidAt?: Date; notes?: string; receiptUrl?: string; receiptFileName?: string; approvalStatus?: "pending" | "approved" }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripActualExpenses).values(data);
@@ -667,11 +675,39 @@ export async function getTripTravelChecklist(tripId: number, userId: number) {
   return items.map((item) => ({ ...item, completed: completeIds.has(item.id) }));
 }
 
-export async function createTripTravelChecklistItem(data: { tripId: number; label: string; dueAt?: Date; createdByUserId: number }) {
+export async function createTripTravelChecklistItem(data: { tripId: number; label: string; dueAt?: Date; reminderAt?: Date; createdByUserId: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const [result] = await db.insert(tripTravelChecklistItems).values(data);
   return (result as any).insertId as number;
+}
+
+export async function setTripTravelChecklistReminderTask(itemId: number, reminderCronTaskUid: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripTravelChecklistItems).set({ reminderCronTaskUid }).where(eq(tripTravelChecklistItems.id, itemId));
+}
+
+export async function getTripTravelChecklistByReminderTaskUid(reminderCronTaskUid: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [item] = await db.select().from(tripTravelChecklistItems).where(eq(tripTravelChecklistItems.reminderCronTaskUid, reminderCronTaskUid)).limit(1);
+  return item;
+}
+
+export async function markTripTravelChecklistReminderSent(itemId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripTravelChecklistItems).set({ reminderSentAt: new Date() }).where(eq(tripTravelChecklistItems.id, itemId));
+}
+
+export async function getIncompleteChecklistPlayerIds(itemId: number, tripId: number) {
+  const players = await getTripPlayers(tripId);
+  const db = await getDb();
+  if (!db) return [];
+  const completions = await db.select().from(tripTravelChecklistCompletions).where(eq(tripTravelChecklistCompletions.checklistItemId, itemId));
+  const completeIds = new Set(completions.map((completion) => completion.userId));
+  return players.map((player) => player.userId).filter((userId) => !completeIds.has(userId));
 }
 
 export async function deleteTripTravelChecklistItem(id: number) {
