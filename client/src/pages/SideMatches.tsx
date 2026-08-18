@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, Plus, Users, Swords, Trophy, Minus, ChevronRight, Pencil, Check, X, Shuffle } from "lucide-react";
+import { ArrowLeft, Download, Plus, Users, Swords, Trophy, Minus, ChevronRight, Pencil, Check, X, Shuffle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -361,9 +361,7 @@ export default function SideMatches() {
             <p className="text-xs text-muted-foreground">{roundData.round.name}</p>
           </div>
         </div>
-        <Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}>
-          <Plus className="w-4 h-4" /> New Side Match
-        </Button>
+        <div className="flex gap-2"><a href={`/api/pdf/side-matches/${id}`} target="_blank" rel="noreferrer"><Button size="sm" variant="outline" className="gap-2"><Download className="w-4 h-4" /> PDF</Button></a><Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}><Plus className="w-4 h-4" /> New Side Match</Button></div>
       </header>
 
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-8">

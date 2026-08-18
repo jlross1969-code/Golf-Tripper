@@ -1,5 +1,5 @@
 import { Express, Request, Response } from "express";
-import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
+import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
 import { calculate4BBBStablefordPoints, calculateSkins } from "../shared/scoring";
 import {
   getAchievementsByTrip,
@@ -13,9 +13,34 @@ import {
   getScoresByRoundAndUser,
   getTrip,
   getTripPlayers,
+  getDailySideMatchResults,
 } from "./db";
 
 export function registerPdfRoutes(app: Express) {
+  app.get("/api/pdf/side-matches/:roundId", async (req: Request, res: Response) => {
+    try {
+      const roundId = Number(req.params.roundId);
+      if (!Number.isInteger(roundId)) return res.status(400).json({ error: "Invalid roundId" });
+      const round = await getRound(roundId);
+      if (!round) return res.status(404).json({ error: "Round not found" });
+      const trip = await getTrip(round.tripId);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      const results = await getDailySideMatchResults(roundId);
+      const pdfBuffer = await generateSideMatchResultsPDF({
+        tripName: trip.name,
+        roundName: round.name,
+        roundDate: new Date(round.roundDate).toLocaleDateString("en-AU"),
+        matches: results.map((match) => ({ type: match.type.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()), groupName: `Group ${match.groupId}`, status: match.status, leader: match.leader ? `${match.leader.name} (${match.leader.value} ${match.leader.label})` : null, rows: match.players.map((player) => ({ name: player.name, result: match.type === "stroke" ? `${player.gross} gross` : `${player.stableford} pts` })) })),
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="side-match-results-${round.name.replace(/\s+/g, "-")}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("[PDF] Side match results error:", error);
+      res.status(500).json({ error: "Failed to generate side-match results PDF" });
+    }
+  });
+
   // ── Round Scorecard PDF ──────────────────────────────────────────────────────
   // GET /api/pdf/scorecard/:roundId
   app.get("/api/pdf/scorecard/:roundId", async (req: Request, res: Response) => {

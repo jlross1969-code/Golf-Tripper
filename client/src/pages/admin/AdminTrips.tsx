@@ -34,6 +34,7 @@ type Trip = {
   activeRoundName?: string | null;
   hideCourses?: boolean;
   coursesRevealed?: boolean;
+  courseRevealAt?: Date | null;
 };
 
 export default function AdminTrips() {
@@ -66,6 +67,7 @@ export default function AdminTrips() {
   const [editRules, setEditRules] = useState("");
   const [editLogoUrl, setEditLogoUrl] = useState("");
   const [editHideCourses, setEditHideCourses] = useState(false);
+  const [courseRevealAt, setCourseRevealAt] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
 
   // Delete
@@ -95,6 +97,10 @@ export default function AdminTrips() {
     onSuccess: () => { toast.success("Courses revealed to all players"); refetch(); },
     onError: (e) => toast.error(e.message),
   });
+  const scheduleCourseReveal = trpc.tripPlanning.scheduleCourseReveal.useMutation({
+    onSuccess: () => { toast.success("Course reveal countdown scheduled"); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
 
   const deleteTripMutation = trpc.trips.delete.useMutation({
     onSuccess: () => {
@@ -118,6 +124,7 @@ export default function AdminTrips() {
     setEditRules((trip as any).rules ?? "");
     setEditLogoUrl((trip as any).logoUrl ?? "");
     setEditHideCourses(Boolean((trip as any).hideCourses));
+    setCourseRevealAt((trip as any).courseRevealAt ? new Date((trip as any).courseRevealAt).toISOString().slice(0, 16) : "");
     setEditOpen(true);
   }
 
@@ -434,6 +441,7 @@ export default function AdminTrips() {
                 <span><strong className="text-foreground">Mystery golf trip</strong><span className="mt-0.5 block text-xs text-muted-foreground">Keep course names hidden until you choose to reveal them to all players.</span></span>
               </label>
               {editTrip?.hideCourses && !editTrip?.coursesRevealed && <Button type="button" size="sm" className="mt-3 gap-1.5" disabled={revealCourses.isPending} onClick={() => revealCourses.mutate({ tripId: editTrip.id })}>{revealCourses.isPending ? "Revealing…" : "Reveal courses to players"}</Button>}
+              {editTrip?.hideCourses && !editTrip?.coursesRevealed && <div className="mt-3 border-t border-border pt-3"><label className="mb-1 block text-xs font-medium text-foreground">Automatic reveal countdown</label><div className="flex flex-wrap gap-2"><Input type="datetime-local" value={courseRevealAt} onChange={(event) => setCourseRevealAt(event.target.value)} className="h-9 flex-1" /><Button type="button" size="sm" variant="outline" disabled={!courseRevealAt || scheduleCourseReveal.isPending} onClick={() => scheduleCourseReveal.mutate({ tripId: editTrip.id, revealAt: new Date(courseRevealAt).toISOString() })}>{scheduleCourseReveal.isPending ? "Scheduling…" : "Schedule reveal"}</Button></div><p className="mt-1 text-xs text-muted-foreground">Players see a countdown, then course details are revealed automatically.</p></div>}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground mb-1 block">Description</label>

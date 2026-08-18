@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { parse as parseCookie } from "cookie";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -13,6 +14,8 @@ import {
   createGroup,
   createHoles,
   createNotification,
+  createTripPayment,
+  createTripScheduledAnnouncement,
   createRound,
   createSideMatch,
   createTrip,
@@ -37,6 +40,9 @@ import {
   getSideMatchesByGroup,
   getSideMatchesByRound,
   getTrip,
+  getTripPaymentSummary,
+  getTripPayments,
+  getTripScheduledAnnouncements,
   getTripLeaderboard,
   getTripFourBBBLeaderboard,
   getFourBBBPairScorecard,
@@ -62,6 +68,12 @@ import {
   updateSideMatchStatus,
   deleteTrip,
   updateTrip,
+  setTripPlayerPrice,
+  reviewTripPayment,
+  setTripScheduledAnnouncementTask,
+  getTripScheduledAnnouncementByTaskUid,
+  getTripByCourseRevealTaskUid,
+  markTripScheduledAnnouncementSent,
   upsertScore,
   setPlayerNickname,
   getNtpByRound,
@@ -184,6 +196,7 @@ import {
 } from "./db";
 import { TRPCError } from "@trpc/server";
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
+import { createHeartbeatJob } from "./_core/heartbeat";
 import { invokeLLM } from "./_core/llm";
 import { recentGolfAssistantMessages } from "../shared/golfAssistant";
 import { createAssistantConversationTitle, formatTripFaqContext } from "../shared/assistantEnhancements";
@@ -194,6 +207,7 @@ import { APP_COLOR_SCHEME_IDS } from "../shared/appearance";
 import { copyAppearanceDateToTrip } from "../shared/seasonalAppearanceTemplates";
 import { normaliseTripChatMentionedUserIds } from "../shared/tripChatMention";
 import { shouldHideTripCourses } from "../shared/mysteryCourse";
+import { isFutureSchedule, toOneTimeUtcCron } from "../shared/tripSchedule";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -219,6 +233,16 @@ async function assertTripChatModerator(userId: number, tripId: number, isPlatfor
   if (!isPlatformAdmin && trip.createdBy !== userId && !(await isCoAdminForTrip(userId, tripId))) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Trip admin access required" });
   }
+  return trip;
+}
+
+async function assertTripFinancialManager(userId: number, tripId: number, isPlatformAdmin: boolean) {
+  const trip = await getTrip(tripId);
+  if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+  if (!isPlatformAdmin && trip.createdBy !== userId && trip.financialManagerUserId !== userId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Trip financial-manager access is required" });
+  }
+  return trip;
 }
 
 async function assertAssistantTripAccess(userId: number, tripId: number, isPlatformAdmin: boolean): Promise<void> {
@@ -664,6 +688,107 @@ export const appRouter = router({
         if (!result.allowed) {
           throw new TRPCError({ code: "BAD_REQUEST", message: result.reason ?? "Cannot delete this trip." });
         }
+        return { success: true };
+      }),
+  }),
+
+  tripPlanning: router({
+    listScheduledAnnouncements: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripScheduledAnnouncements(input.tripId);
+      }),
+    scheduleAnnouncement: protectedProcedure
+      .input(z.object({ tripId: z.number(), message: z.string().trim().min(1).max(1000), scheduledAt: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const scheduledAt = new Date(input.scheduledAt);
+        if (Number.isNaN(scheduledAt.getTime()) || !isFutureSchedule(scheduledAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a time at least one minute in the future." });
+        const announcementId = await createTripScheduledAnnouncement({ tripId: input.tripId, createdByUserId: ctx.user.id, message: input.message, scheduledAt });
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        const job = await createHeartbeatJob({ name: `trip-announcement-${input.tripId}-${announcementId}`, cron: toOneTimeUtcCron(scheduledAt), path: "/api/scheduled/trip-announcement", payload: {}, description: `Trip announcement ${announcementId}` }, sessionToken);
+        await setTripScheduledAnnouncementTask(announcementId, job.taskUid);
+        return { id: announcementId, nextExecutionAt: job.nextExecutionAt };
+      }),
+    scheduleCourseReveal: protectedProcedure
+      .input(z.object({ tripId: z.number(), revealAt: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const trip = await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        if (!trip.hideCourses || trip.coursesRevealed) throw new TRPCError({ code: "BAD_REQUEST", message: "Enable mystery-course mode before scheduling a reveal." });
+        const revealAt = new Date(input.revealAt);
+        if (Number.isNaN(revealAt.getTime()) || !isFutureSchedule(revealAt)) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a time at least one minute in the future." });
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        const job = await createHeartbeatJob({ name: `course-reveal-${input.tripId}-${revealAt.getTime()}`, cron: toOneTimeUtcCron(revealAt), path: "/api/scheduled/course-reveal", payload: {}, description: `Mystery-course reveal for trip ${input.tripId}` }, sessionToken);
+        await updateTrip(input.tripId, { courseRevealAt: revealAt, courseRevealCronTaskUid: job.taskUid } as any);
+        return { nextExecutionAt: job.nextExecutionAt };
+      }),
+  }),
+
+  tripFinances: router({
+    access: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const trip = await getTrip(input.tripId);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        const member = await getTripPlayer(input.tripId, ctx.user.id);
+        return { canManage: ctx.user.role === "admin" || trip.createdBy === ctx.user.id || trip.financialManagerUserId === ctx.user.id, isOwner: trip.createdBy === ctx.user.id, isMember: Boolean(member) };
+      }),
+    summary: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        return getTripPaymentSummary(input.tripId);
+      }),
+    myBalance: protectedProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const player = await getTripPlayer(input.tripId, ctx.user.id);
+        if (!player) throw new TRPCError({ code: "FORBIDDEN", message: "You are not a trip player" });
+        const summary = await getTripPaymentSummary(input.tripId);
+        return summary.find((entry) => entry.userId === ctx.user.id) ?? { userId: ctx.user.id, displayName: "Player", priceCents: 0, confirmedCents: 0, outstandingCents: 0, payments: [] };
+      }),
+    setFinancialManager: protectedProcedure
+      .input(z.object({ tripId: z.number(), userId: z.number().nullable() }))
+      .mutation(async ({ ctx, input }) => {
+        const trip = await getTrip(input.tripId);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        if (ctx.user.role !== "admin" && trip.createdBy !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Only the trip owner can manage financial access." });
+        if (input.userId !== null && !(await isCoAdminForTrip(input.userId, input.tripId))) throw new TRPCError({ code: "BAD_REQUEST", message: "Financial access can only be given to a trip co-admin." });
+        await updateTrip(input.tripId, { financialManagerUserId: input.userId } as any);
+        return { success: true };
+      }),
+    setPrice: protectedProcedure
+      .input(z.object({ tripId: z.number(), userId: z.number(), priceCents: z.number().int().min(0).max(10_000_000) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        if (!(await getTripPlayer(input.tripId, input.userId))) throw new TRPCError({ code: "NOT_FOUND", message: "Trip player not found" });
+        await setTripPlayerPrice(input.tripId, input.userId, input.priceCents);
+        return { success: true };
+      }),
+    submitPayment: protectedProcedure
+      .input(z.object({ tripId: z.number(), amountCents: z.number().int().min(1).max(10_000_000), note: z.string().trim().max(240).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const balance = await getTripPaymentSummary(input.tripId).then((summary) => summary.find((entry) => entry.userId === ctx.user.id));
+        if (!balance) throw new TRPCError({ code: "FORBIDDEN", message: "You are not a trip player" });
+        if (input.amountCents > balance.outstandingCents) throw new TRPCError({ code: "BAD_REQUEST", message: "Payment cannot exceed your outstanding balance." });
+        const id = await createTripPayment({ tripId: input.tripId, userId: ctx.user.id, amountCents: input.amountCents, status: "submitted", note: input.note || undefined, submittedByUserId: ctx.user.id });
+        return { id };
+      }),
+    recordPayment: protectedProcedure
+      .input(z.object({ tripId: z.number(), userId: z.number(), amountCents: z.number().int().min(1).max(10_000_000), note: z.string().trim().max(240).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const id = await createTripPayment({ tripId: input.tripId, userId: input.userId, amountCents: input.amountCents, status: "manual_confirmed", note: input.note || undefined, submittedByUserId: ctx.user.id, reviewedByUserId: ctx.user.id, reviewedAt: new Date() });
+        return { id };
+      }),
+    reviewPayment: protectedProcedure
+      .input(z.object({ tripId: z.number(), paymentId: z.number(), status: z.enum(["confirmed", "rejected"]) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const payment = (await getTripPayments(input.tripId)).find((entry) => entry.id === input.paymentId);
+        if (!payment) throw new TRPCError({ code: "NOT_FOUND", message: "Payment submission not found" });
+        await reviewTripPayment(input.paymentId, ctx.user.id, input.status);
         return { success: true };
       }),
   }),

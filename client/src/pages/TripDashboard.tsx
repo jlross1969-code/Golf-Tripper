@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
-import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User, Zap, BookOpen, Sparkles } from "lucide-react";
+import { Flag, BarChart2, Bell, Users, ChevronRight, ArrowLeft, Trophy, Calendar, MessageCircle, Download, Swords, Target, Settings, MapPin, FileText, User, Zap, BookOpen, Sparkles, Wallet } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AchievementAlert from "@/components/AchievementAlert";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -22,6 +22,7 @@ export default function TripDashboard() {
   const { data: notifications } = trpc.notifications.list.useQuery({ tripId: id, limit: 5 });
   const { data: achievements } = trpc.achievements.listByTrip.useQuery({ tripId: id });
   const { data: appearanceSchedules = [] } = trpc.tripAppearance.list.useQuery({ tripId: id }, { enabled: !!id });
+  const { data: myBalance } = trpc.tripFinances.myBalance.useQuery({ tripId: id }, { enabled: !!id && !!user });
 
   const scheduledAppearance = resolveTripAppearanceForDate(appearanceSchedules, (trip as any)?.defaultColorScheme);
 
@@ -45,6 +46,9 @@ export default function TripDashboard() {
 
   const activeRound = rounds?.find((r) => r.status === "active");
   const completedRounds = rounds?.filter((r) => r.status === "completed") ?? [];
+  const revealAt = (trip as any).courseRevealAt ? new Date((trip as any).courseRevealAt) : null;
+  const revealCountdown = revealAt ? Math.max(0, revealAt.getTime() - Date.now()) : null;
+  const revealLabel = revealCountdown === null ? null : revealCountdown <= 0 ? "Course reveal is imminent" : `Course reveal in ${Math.floor(revealCountdown / 86_400_000)}d ${Math.floor((revealCountdown % 86_400_000) / 3_600_000)}h`;
 
   return (
     <div className="min-h-screen bg-background">
@@ -113,6 +117,8 @@ export default function TripDashboard() {
       </header>
 
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        {(trip as any).hideCourses && !(trip as any).coursesRevealed && <div className="rounded-xl border border-primary/30 bg-primary/10 px-5 py-4"><div className="flex items-start gap-3"><Flag className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><div><p className="font-semibold text-foreground">Mystery golf trip</p><p className="mt-1 text-sm text-muted-foreground">Course details are being kept secret by the organiser.{revealLabel ? ` ${revealLabel}.` : ""}</p></div></div></div>}
+        {myBalance && myBalance.priceCents > 0 && <Link href={`/trip/${id}/payments`}><div className="cursor-pointer rounded-xl border border-border bg-card px-5 py-4 transition-colors hover:border-primary/40 hover:bg-primary/5"><div className="flex items-center gap-3"><Wallet className="h-5 w-5 text-primary" /><div className="min-w-0 flex-1"><p className="font-semibold text-foreground">Your trip payment</p><p className="mt-1 text-sm text-muted-foreground">Paid ${((myBalance.confirmedCents ?? 0) / 100).toFixed(2)} of ${(myBalance.priceCents / 100).toFixed(2)}</p></div><div className="text-right"><p className="text-xs text-muted-foreground">Outstanding</p><p className="font-bold text-primary">${(myBalance.outstandingCents / 100).toFixed(2)}</p></div><ChevronRight className="h-4 w-4 text-muted-foreground" /></div></div></Link>}
         {/* Trip Description */}
         {(trip as any).description && (
           <div className="bg-card border border-border rounded-xl px-5 py-4 flex items-start gap-3">

@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { formatDistanceToNow } from "date-fns";
-import { AlertCircle, ArrowLeft, ArrowRight, AtSign, ClipboardList, ChevronLeft, ChevronRight, Download, Flag, ImagePlus, Loader2, Megaphone, MessageCircle, Pencil, Pin, PinOff, Reply, RotateCcw, Search, Send, Share2, ShieldAlert, SmilePlus, Trash2, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, AtSign, CalendarClock, ClipboardList, ChevronLeft, ChevronRight, Download, Flag, ImagePlus, Loader2, Megaphone, MessageCircle, Pencil, Pin, PinOff, Reply, RotateCcw, Search, Send, Share2, ShieldAlert, SmilePlus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { TRIP_CHAT_IMAGE_MAX_BYTES, isTripChatImageType } from "../../../shared/tripChatAttachment";
@@ -24,6 +24,9 @@ export default function TripChat() {
   const { user } = useAuth();
   const [message, setMessage] = useState("");
   const [announcementMode, setAnnouncementMode] = useState(false);
+  const [scheduledAnnouncementOpen, setScheduledAnnouncementOpen] = useState(false);
+  const [scheduledAnnouncementMessage, setScheduledAnnouncementMessage] = useState("");
+  const [scheduledAnnouncementAt, setScheduledAnnouncementAt] = useState("");
   const [editingMessage, setEditingMessage] = useState<{ id: number; message: string } | null>(null);
   const [replyTarget, setReplyTarget] = useState<{ id: number; userName: string | null; message: string } | null>(null);
   const [chatSearch, setChatSearch] = useState("");
@@ -63,6 +66,7 @@ export default function TripChat() {
   const { data: moderationAudit = [] } = trpc.chat.listModerationAudit.useQuery({ tripId: parsedTripId }, { enabled: !!parsedTripId && moderationStatus?.canModerate && auditOpen });
   const { data: unreadMentions = [] } = trpc.chat.unreadMentions.useQuery({ tripId: parsedTripId }, { enabled: !!parsedTripId, refetchInterval: 15000 });
   const { data: pinnedMessages = [] } = trpc.chat.pinnedMessages.useQuery({ tripId: parsedTripId }, { enabled: !!parsedTripId && pinnedMessagesOpen });
+  const { data: scheduledAnnouncements = [] } = trpc.tripPlanning.listScheduledAnnouncements.useQuery({ tripId: parsedTripId }, { enabled: !!parsedTripId && !!moderationStatus?.canModerate && scheduledAnnouncementOpen });
 
   useEffect(() => { pendingImagesRef.current = pendingImages; }, [pendingImages]);
   useEffect(() => () => { pendingImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl)); }, []);
@@ -157,6 +161,7 @@ export default function TripChat() {
   const setPinnedMutation = trpc.chat.setPinned.useMutation({ onSuccess: () => { void utils.chat.getMessages.invalidate({ tripId: parsedTripId }); void utils.chat.pinnedMessages.invalidate({ tripId: parsedTripId }); } });
   const updateOwnMessageMutation = trpc.chat.updateOwnMessage.useMutation({ onSuccess: () => { setEditingMessage(null); void utils.chat.getMessages.invalidate({ tripId: parsedTripId }); } });
   const deleteOwnMessageMutation = trpc.chat.deleteOwnMessage.useMutation({ onSuccess: () => void utils.chat.getMessages.invalidate({ tripId: parsedTripId }) });
+  const scheduleAnnouncementMutation = trpc.tripPlanning.scheduleAnnouncement.useMutation({ onSuccess: () => { setScheduledAnnouncementMessage(""); setScheduledAnnouncementAt(""); void utils.tripPlanning.listScheduledAnnouncements.invalidate({ tripId: parsedTripId }); setUploadError("Announcement scheduled."); }, onError: (error) => setUploadError(error.message) });
 
   const chooseImages = (files: FileList | null) => {
     setUploadError(null);
@@ -216,7 +221,7 @@ export default function TripChat() {
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-3">
         <MessageCircle className="h-5 w-5 text-primary" />
         <div className="min-w-0 flex-1"><h1 className="font-semibold text-foreground">Trip Chat</h1><p className="text-xs text-muted-foreground">All players in this trip</p></div>
-        <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto"><Button variant="outline" size="sm" onClick={() => { setUnreadMentionsOpen(true); if (unreadMentions.length) markMentionsReadMutation.mutate({ tripId: parsedTripId, mentionIds: unreadMentions.map((mention) => mention.mentionId) }); }} className={`gap-1.5 ${unreadMentions.length ? "border-primary/45 bg-primary/10 text-primary" : ""}`} aria-label="Unread mentions"><AtSign className="h-4 w-4" />{unreadMentions.length > 0 && <span>{unreadMentions.length}</span>}</Button><Button variant="outline" size="sm" onClick={() => setPinnedMessagesOpen(true)} className="gap-1.5" aria-label="Pinned messages"><Pin className="h-4 w-4" /></Button>{moderationStatus?.canModerate && <><Button variant={announcementMode ? "default" : "outline"} size="sm" onClick={() => setAnnouncementMode((current) => !current)} className="gap-1.5"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">Announce</span></Button><Button variant="outline" size="sm" onClick={() => setAnalyticsOpen(true)}>Activity</Button><Button variant="outline" size="sm" onClick={() => setAuditOpen(true)} className="gap-1.5"><ClipboardList className="h-4 w-4" /><span className="hidden sm:inline">Audit</span></Button><Button variant="outline" size="sm" onClick={() => setReportsOpen(true)} className="gap-1.5"><ShieldAlert className="h-4 w-4" />Reports</Button></>}</div>
+        <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto"><Button variant="outline" size="sm" onClick={() => { setUnreadMentionsOpen(true); if (unreadMentions.length) markMentionsReadMutation.mutate({ tripId: parsedTripId, mentionIds: unreadMentions.map((mention) => mention.mentionId) }); }} className={`gap-1.5 ${unreadMentions.length ? "border-primary/45 bg-primary/10 text-primary" : ""}`} aria-label="Unread mentions"><AtSign className="h-4 w-4" />{unreadMentions.length > 0 && <span>{unreadMentions.length}</span>}</Button><Button variant="outline" size="sm" onClick={() => setPinnedMessagesOpen(true)} className="gap-1.5" aria-label="Pinned messages"><Pin className="h-4 w-4" /></Button>{moderationStatus?.canModerate && <><Button variant={announcementMode ? "default" : "outline"} size="sm" onClick={() => setAnnouncementMode((current) => !current)} className="gap-1.5"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">Announce</span></Button><Button variant="outline" size="sm" onClick={() => setScheduledAnnouncementOpen(true)} className="gap-1.5" aria-label="Schedule announcement"><CalendarClock className="h-4 w-4" /><span className="hidden sm:inline">Schedule</span></Button><Button variant="outline" size="sm" onClick={() => setAnalyticsOpen(true)}>Activity</Button><Button variant="outline" size="sm" onClick={() => setAuditOpen(true)} className="gap-1.5"><ClipboardList className="h-4 w-4" /><span className="hidden sm:inline">Audit</span></Button><Button variant="outline" size="sm" onClick={() => setReportsOpen(true)} className="gap-1.5"><ShieldAlert className="h-4 w-4" />Reports</Button></>}</div>
       </div>
 
       <div className="border-b border-border bg-card px-4 py-2"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={chatSearch} onChange={(event) => setChatSearch(event.target.value)} placeholder="Search messages or player names" className="h-9 pl-9 text-sm" maxLength={100} /></div></div>
@@ -328,6 +333,7 @@ export default function TripChat() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={scheduledAnnouncementOpen} onOpenChange={setScheduledAnnouncementOpen}><DialogContent><DialogHeader><DialogTitle>Schedule announcement</DialogTitle><DialogDescription>Players will receive this as a trip announcement at the selected local date and time.</DialogDescription></DialogHeader><div className="space-y-3"><Input type="datetime-local" value={scheduledAnnouncementAt} onChange={(event) => setScheduledAnnouncementAt(event.target.value)} /><Textarea value={scheduledAnnouncementMessage} onChange={(event) => setScheduledAnnouncementMessage(event.target.value)} placeholder="Announcement message" maxLength={1000} /><div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-border p-2">{scheduledAnnouncements.length === 0 ? <p className="text-xs text-muted-foreground">No announcements are currently scheduled.</p> : scheduledAnnouncements.filter((item) => item.status === "pending").map((item) => <p key={item.id} className="text-xs text-muted-foreground">{new Date(item.scheduledAt).toLocaleString()} · {item.message}</p>)}</div></div><DialogFooter><Button variant="outline" onClick={() => setScheduledAnnouncementOpen(false)}>Close</Button><Button disabled={!scheduledAnnouncementAt || !scheduledAnnouncementMessage.trim() || scheduleAnnouncementMutation.isPending} onClick={() => scheduleAnnouncementMutation.mutate({ tripId: parsedTripId, message: scheduledAnnouncementMessage.trim(), scheduledAt: new Date(scheduledAnnouncementAt).toISOString() })}>{scheduleAnnouncementMutation.isPending ? "Scheduling…" : "Schedule"}</Button></DialogFooter></DialogContent></Dialog>
       <Dialog open={deletingOwnAttachmentId !== null} onOpenChange={(open) => { if (!open) setDeletingOwnAttachmentId(null); }}><DialogContent><DialogHeader><DialogTitle>Remove this photo?</DialogTitle><DialogDescription>This hides the photo from everyone in the trip chat. It cannot be restored from the chat.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setDeletingOwnAttachmentId(null)}>Cancel</Button><Button variant="destructive" disabled={deleteOwnAttachmentMutation.isPending} onClick={() => deletingOwnAttachmentId && deleteOwnAttachmentMutation.mutate({ tripId: parsedTripId, attachmentId: deletingOwnAttachmentId })}>{deleteOwnAttachmentMutation.isPending ? "Removing…" : "Remove photo"}</Button></DialogFooter></DialogContent></Dialog>
     </div>
   );

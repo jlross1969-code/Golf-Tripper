@@ -42,6 +42,8 @@ import GolfAssistant from "./pages/GolfAssistant";
 import AdminTripFaqs from "./pages/admin/AdminTripFaqs";
 import AppSettings from "./pages/AppSettings";
 import AdminTripAppearance from "./pages/admin/AdminTripAppearance";
+import AdminTripFinances from "./pages/admin/AdminTripFinances";
+import TripPayments from "./pages/TripPayments";
 
 function Router() {
   return (
@@ -60,6 +62,7 @@ function Router() {
       <Route path="/trip/:tripId/players" component={TripPlayers} />
       <Route path="/trip/:tripId/my-handicap" component={MyHandicap} />
       <Route path="/trip/:tripId/my-profile" component={MyProfile} />
+      <Route path="/trip/:tripId/payments" component={TripPayments} />
       <Route path="/round/:roundId/ntp" component={NTPResults} />
       <Route path="/round/:roundId/long-drive" component={LongDriveResults} />
       <Route path="/trip/:tripId/my-group/:roundId" component={GroupPairing} />
@@ -78,6 +81,7 @@ function Router() {
       <Route path="/admin/trips/:tripId/awards" component={AdminAwards} />
       <Route path="/admin/trips/:tripId/faqs" component={AdminTripFaqs} />
       <Route path="/admin/trips/:tripId/appearance" component={AdminTripAppearance} />
+      <Route path="/admin/trips/:tripId/finances" component={AdminTripFinances} />
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />

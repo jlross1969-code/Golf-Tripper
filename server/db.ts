@@ -47,6 +47,8 @@ import {
   tripMessageReactions,
   tripAppearanceSchedules,
   tripAppearanceTemplates,
+  tripPayments,
+  tripScheduledAnnouncements,
   tripPlayers,
   trips,
   users,
@@ -80,6 +82,7 @@ import { getBestBallStablefordPoints } from "../shared/fourBBBScorecard";
 import { calculateCountback, compareCountback, type CountbackBreakdown } from "../shared/countback";
 import { filterTripFaqsForRound } from "../shared/tripFaqVisibility";
 import { getSideMatchDailyLeader, sortSideMatchDailyPlayers } from "../shared/sideMatchDailyResults";
+import { calculateTripPaymentBalance } from "../shared/tripPayments";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -262,6 +265,45 @@ export async function updateTrip(id: number, data: Partial<Trip>): Promise<void>
   await db.update(trips).set(data).where(eq(trips.id, id));
 }
 
+export async function getTripByCourseRevealTaskUid(taskUid: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [trip] = await db.select().from(trips).where(eq(trips.courseRevealCronTaskUid, taskUid)).limit(1);
+  return trip;
+}
+
+export async function createTripScheduledAnnouncement(data: { tripId: number; createdByUserId: number; message: string; scheduledAt: Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripScheduledAnnouncements).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function setTripScheduledAnnouncementTask(id: number, taskUid: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripScheduledAnnouncements).set({ scheduleCronTaskUid: taskUid }).where(eq(tripScheduledAnnouncements.id, id));
+}
+
+export async function getTripScheduledAnnouncementByTaskUid(taskUid: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [announcement] = await db.select().from(tripScheduledAnnouncements).where(eq(tripScheduledAnnouncements.scheduleCronTaskUid, taskUid)).limit(1);
+  return announcement;
+}
+
+export async function markTripScheduledAnnouncementSent(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripScheduledAnnouncements).set({ status: "sent", sentAt: new Date() }).where(and(eq(tripScheduledAnnouncements.id, id), eq(tripScheduledAnnouncements.status, "pending")));
+}
+
+export async function getTripScheduledAnnouncements(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripScheduledAnnouncements).where(eq(tripScheduledAnnouncements.tripId, tripId)).orderBy(desc(tripScheduledAnnouncements.scheduledAt));
+}
+
 /**
  * Derive round format flags from a trip-level tournament type.
  * Used when creating a round or syncing all rounds after a tournament type change.
@@ -411,6 +453,40 @@ export async function updatePlayerHandicap(tripId: number, userId: number, newHa
     .update(tripPlayers)
     .set({ currentHandicap: newHandicap })
     .where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, userId)));
+}
+
+export async function setTripPlayerPrice(tripId: number, userId: number, tripPriceCents: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripPlayers).set({ tripPriceCents }).where(and(eq(tripPlayers.tripId, tripId), eq(tripPlayers.userId, userId)));
+}
+
+export async function createTripPayment(data: { tripId: number; userId: number; amountCents: number; status: "submitted" | "manual_confirmed"; note?: string; submittedByUserId: number; reviewedByUserId?: number; reviewedAt?: Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(tripPayments).values(data);
+  return (result as any).insertId as number;
+}
+
+export async function reviewTripPayment(id: number, reviewerUserId: number, status: "confirmed" | "rejected"): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripPayments).set({ status, reviewedByUserId: reviewerUserId, reviewedAt: new Date() }).where(and(eq(tripPayments.id, id), eq(tripPayments.status, "submitted")));
+}
+
+export async function getTripPayments(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tripPayments).where(eq(tripPayments.tripId, tripId)).orderBy(desc(tripPayments.createdAt));
+}
+
+export async function getTripPaymentSummary(tripId: number) {
+  const [players, payments] = await Promise.all([getTripPlayers(tripId), getTripPayments(tripId)]);
+  return players.map((player) => {
+    const playerPayments = payments.filter((payment) => payment.userId === player.userId);
+    const balance = calculateTripPaymentBalance(player.tripPriceCents, playerPayments);
+    return { userId: player.userId, displayName: player.nickname ?? player.user?.name ?? `Player ${player.userId}`, priceCents: player.tripPriceCents, ...balance, payments: playerPayments };
+  });
 }
 
 export async function removePlayerFromTrip(tripId: number, userId: number): Promise<void> {

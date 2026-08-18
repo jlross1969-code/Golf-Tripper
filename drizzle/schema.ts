@@ -96,6 +96,10 @@ export const trips = mysqlTable("trips", {
   // Mystery trips may keep course names hidden until an admin reveals them.
   hideCourses: boolean("hideCourses").default(false).notNull(),
   coursesRevealed: boolean("coursesRevealed").default(false).notNull(),
+  courseRevealAt: timestamp("courseRevealAt"),
+  courseRevealCronTaskUid: varchar("courseRevealCronTaskUid", { length: 65 }),
+  // Optional co-admin trusted to manage the organiser's trip payment ledger.
+  financialManagerUserId: int("financialManagerUserId"),
   createdBy: int("createdBy").notNull(),
   // ─── Billing ──────────────────────────────────────────────────────────────
   // planTier for this trip. 'free' = up to 8 players, core features only.
@@ -147,6 +151,7 @@ export const tripPlayers = mysqlTable("trip_players", {
   userId: int("userId").notNull(),
   startingHandicap: float("startingHandicap").default(0).notNull(),
   currentHandicap: float("currentHandicap").default(0).notNull(),
+  tripPriceCents: int("tripPriceCents").default(0).notNull(),
   // Player-settable preferred display name (set after accepting invite)
   nickname: varchar("nickname", { length: 64 }),
   // Profile photo stored in S3
@@ -157,6 +162,39 @@ export const tripPlayers = mysqlTable("trip_players", {
 });
 
 export type TripPlayer = typeof tripPlayers.$inferSelect;
+
+// ─── Trip Payment Ledger ──────────────────────────────────────────────────────
+
+export const tripPayments = mysqlTable("trip_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  userId: int("userId").notNull(),
+  amountCents: int("amountCents").notNull(),
+  status: mysqlEnum("status", ["submitted", "confirmed", "rejected", "manual_confirmed"]).default("submitted").notNull(),
+  note: varchar("note", { length: 240 }),
+  submittedByUserId: int("submittedByUserId").notNull(),
+  reviewedByUserId: int("reviewedByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewedAt"),
+});
+
+export type TripPayment = typeof tripPayments.$inferSelect;
+
+// ─── Scheduled Trip Announcements ────────────────────────────────────────────
+
+export const tripScheduledAnnouncements = mysqlTable("trip_scheduled_announcements", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  createdByUserId: int("createdByUserId").notNull(),
+  message: text("message").notNull(),
+  scheduledAt: timestamp("scheduledAt").notNull(),
+  scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+  status: mysqlEnum("status", ["pending", "processing", "sent", "cancelled"]).default("pending").notNull(),
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripScheduledAnnouncement = typeof tripScheduledAnnouncements.$inferSelect;
 
 // ─── Rounds ───────────────────────────────────────────────────────────────────
 

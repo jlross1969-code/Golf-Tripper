@@ -894,3 +894,13 @@
 - [x] Add mystery-course settings with one-tap course reveal and player notification
 - [x] Add daily side-match result aggregation, procedures, and player-facing board
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Scheduled Planning and Trip Payments
+
+- [x] Review recurring scheduling requirements, PDF export, mystery-course, and payment management flows
+- [x] Add secure data models and permissions for scheduled announcements, course reveal countdowns, trip pricing, and player payment records
+- [x] Implement scheduled announcement delivery through the approved background-job pattern
+- [x] Add course reveal countdown controls and daily side-match PDF export
+- [x] Add player payment submissions, balances, and admin confirmation/partial-payment management
+- [x] Add a trip financial-manager permission and access-controlled financial views
+- [x] Add tests, validate mobile UI, checkpoint, and publish
