@@ -79,6 +79,7 @@ import { isAutomaticFourBBBReady, resolveMutualScoreMarkerPairs } from "../share
 import { getBestBallStablefordPoints } from "../shared/fourBBBScorecard";
 import { calculateCountback, compareCountback, type CountbackBreakdown } from "../shared/countback";
 import { filterTripFaqsForRound } from "../shared/tripFaqVisibility";
+import { getSideMatchDailyLeader, sortSideMatchDailyPlayers } from "../shared/sideMatchDailyResults";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -203,6 +204,7 @@ export async function createTrip(data: {
   rules?: string;
   logoUrl?: string;
   defaultColorScheme?: string;
+  hideCourses?: boolean;
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
@@ -221,6 +223,7 @@ export async function createTrip(data: {
     ...(data.rules !== undefined ? { rules: data.rules } : {}),
     ...(data.logoUrl !== undefined ? { logoUrl: data.logoUrl } : {}),
     ...(data.defaultColorScheme !== undefined ? { defaultColorScheme: data.defaultColorScheme } : {}),
+    ...(data.hideCourses !== undefined ? { hideCourses: data.hideCourses, coursesRevealed: false } : {}),
   });
   return (result[0] as any).insertId;
 }
@@ -1168,7 +1171,7 @@ export async function updateMatchPlayResult(
 
 export type TripChatAttachmentInput = { imageUrl: string; imageKey: string; imageAlt?: string; caption?: string };
 
-export async function sendTripMessage(data: { tripId: number; userId: number; parentMessageId?: number; message: string; imageUrl?: string; imageKey?: string; imageAlt?: string; attachments?: TripChatAttachmentInput[]; mentionedUserIds?: number[] }): Promise<number> {
+export async function sendTripMessage(data: { tripId: number; userId: number; parentMessageId?: number; message: string; isAnnouncement?: boolean; imageUrl?: string; imageKey?: string; imageAlt?: string; attachments?: TripChatAttachmentInput[]; mentionedUserIds?: number[] }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const { attachments, mentionedUserIds, ...messageData } = data;
@@ -1208,6 +1211,9 @@ export async function getTripMessages(tripId: number, limit = 50, beforeId?: num
       imageUrl: tripMessages.imageUrl,
       imageKey: tripMessages.imageKey,
       imageAlt: tripMessages.imageAlt,
+      isAnnouncement: tripMessages.isAnnouncement,
+      editedAt: tripMessages.editedAt,
+      deletedAt: tripMessages.deletedAt,
       pinnedAt: tripMessages.pinnedAt,
       pinnedByUserId: tripMessages.pinnedByUserId,
       createdAt: tripMessages.createdAt,
@@ -1298,6 +1304,30 @@ export async function setTripChatMessagePinned(messageId: number, moderatorUserI
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   await db.update(tripMessages).set(pinned ? { pinnedAt: new Date(), pinnedByUserId: moderatorUserId } : { pinnedAt: null, pinnedByUserId: null }).where(eq(tripMessages.id, messageId));
+}
+
+export async function updateTripChatMessage(messageId: number, message: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripMessages).set({ message, editedAt: new Date() }).where(eq(tripMessages.id, messageId));
+}
+
+export async function softDeleteTripChatMessage(messageId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(tripMessages).set({ message: "", deletedAt: new Date(), editedAt: null }).where(eq(tripMessages.id, messageId));
+}
+
+export async function getDailySideMatchResults(roundId: number) {
+  const matches = await getSideMatchesByRound(roundId);
+  const scorecard = await getRoundScorecard(roundId);
+  const scoreByUser = new Map(scorecard.map((player) => [player.userId, { stableford: player.totalStableford, gross: player.totalGross, holesPlayed: player.holesPlayed, name: player.userName ?? "Player" }]));
+  return Promise.all(matches.map(async (match) => {
+    const players = await getSideMatchPlayers(match.id);
+    const totals = players.map((player) => ({ userId: player.userId, partnerId: player.partnerId, name: scoreByUser.get(player.userId)?.name ?? `Player ${player.userId}`, stableford: scoreByUser.get(player.userId)?.stableford ?? 0, gross: scoreByUser.get(player.userId)?.gross ?? 0, holesPlayed: scoreByUser.get(player.userId)?.holesPlayed ?? 0 }));
+    const leader = getSideMatchDailyLeader(match.type, totals);
+    return { ...match, players: sortSideMatchDailyPlayers(match.type, totals), leader: leader ? { userId: leader.userId, name: totals.find((player) => player.userId === leader.userId)?.name ?? "Player", value: leader.value, label: leader.label } : null };
+  }));
 }
 
 export async function getTripChatMessage(messageId: number) {

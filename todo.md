@@ -885,3 +885,12 @@
 - [x] Add threaded reply composition and display
 - [x] Add moderator-only pin and unpin controls for important chat messages
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Messaging, Mystery Courses, and Side-Match Board
+
+- [x] Review existing chat author actions, push delivery, course display, and side-match result flows
+- [x] Add targeted direct-mention push delivery and chat author edit/delete procedures
+- [x] Add admin announcement composition and delivery in Trip Chat
+- [x] Add mystery-course settings with one-tap course reveal and player notification
+- [x] Add daily side-match result aggregation, procedures, and player-facing board
+- [x] Add tests, validate mobile UI, checkpoint, and publish

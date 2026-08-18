@@ -137,6 +137,9 @@ import {
   markTripChatMentionsRead,
   getPinnedTripMessages,
   setTripChatMessagePinned,
+  updateTripChatMessage,
+  softDeleteTripChatMessage,
+  getDailySideMatchResults,
   getTripChatMessage,
   toggleTripMessageReaction,
   getTripChatAttachment,
@@ -180,7 +183,7 @@ import {
   type TeeOrder,
 } from "./db";
 import { TRPCError } from "@trpc/server";
-import { sendPushToTrip } from "./webPush";
+import { sendPushToTrip, sendPushToUsers } from "./webPush";
 import { invokeLLM } from "./_core/llm";
 import { recentGolfAssistantMessages } from "../shared/golfAssistant";
 import { createAssistantConversationTitle, formatTripFaqContext } from "../shared/assistantEnhancements";
@@ -190,6 +193,7 @@ import { canManageTripChatAttachment } from "../shared/tripChatAlbum";
 import { APP_COLOR_SCHEME_IDS } from "../shared/appearance";
 import { copyAppearanceDateToTrip } from "../shared/seasonalAppearanceTemplates";
 import { normaliseTripChatMentionedUserIds } from "../shared/tripChatMention";
+import { shouldHideTripCourses } from "../shared/mysteryCourse";
 
 const golfAssistantMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -568,6 +572,7 @@ export const appRouter = router({
           rules: z.string().optional(),
           logoUrl: z.string().optional(),
           defaultColorScheme: z.enum(APP_COLOR_SCHEME_IDS).nullable().optional(),
+          hideCourses: z.boolean().default(false),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -586,6 +591,7 @@ export const appRouter = router({
           location: input.location,
           description: input.description,
           defaultColorScheme: input.defaultColorScheme ?? undefined,
+          hideCourses: input.hideCourses,
         });
         return { tripId };
       }),
@@ -607,6 +613,7 @@ export const appRouter = router({
           rules: z.string().optional(),
           logoUrl: z.string().optional(),
           defaultColorScheme: z.enum(APP_COLOR_SCHEME_IDS).nullable().optional(),
+          hideCourses: z.boolean().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -634,6 +641,19 @@ export const appRouter = router({
         if (tournamentType !== undefined) {
           await syncRoundsToTournamentType(id, tournamentType);
         }
+        return { success: true };
+      }),
+
+    revealCourses: adminProcedure
+      .input(z.object({ tripId: z.number() }))
+      .mutation(async ({ input }) => {
+        const trip = await getTrip(input.tripId);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        if (!trip.hideCourses) throw new TRPCError({ code: "BAD_REQUEST", message: "Course hiding is not enabled for this trip." });
+        await updateTrip(input.tripId, { coursesRevealed: true } as any);
+        const body = `Course details have been revealed for ${trip.name}. Check your rounds for the full information.`;
+        await createNotification({ tripId: input.tripId, message: body, type: "general" });
+        void sendPushToTrip(input.tripId, { title: `⛳ ${trip.name} courses revealed`, body, tag: `courses-revealed-${input.tripId}`, url: `/trip/${input.tripId}` });
         return { success: true };
       }),
 
@@ -813,7 +833,9 @@ export const appRouter = router({
         if (!round) throw new TRPCError({ code: "NOT_FOUND" });
         const course = await getCourse(round.courseId);
         const courseHoles = await getHolesByCourse(round.courseId);
-        return { round, course, holes: courseHoles };
+        const trip = await getTrip(round.tripId);
+        const courseHidden = shouldHideTripCourses(trip?.hideCourses, trip?.coursesRevealed);
+        return { round, course: courseHidden && course ? { ...course, name: "Mystery Course" } : course, holes: courseHoles, courseHidden };
       }),
 
     create: adminProcedure
@@ -1934,6 +1956,10 @@ export const appRouter = router({
         );
       }),
 
+    dailyResults: publicProcedure
+      .input(z.object({ roundId: z.number() }))
+      .query(async ({ input }) => getDailySideMatchResults(input.roundId)),
+
     create: protectedProcedure
       .input(
         z.object({
@@ -2076,6 +2102,7 @@ export const appRouter = router({
         tripId: z.number(),
         parentMessageId: z.number().optional(),
         message: z.string().max(1000),
+        isAnnouncement: z.boolean().default(false),
         mentionedUserIds: z.array(z.number()).max(10).optional(),
         attachments: z.array(z.object({ imageUrl: z.string().max(1024), imageKey: z.string().max(1024), imageAlt: z.string().max(180).optional(), caption: z.string().trim().max(240).optional() }).refine((attachment) => isTripChatImageReference(attachment.imageUrl, attachment.imageKey), { message: "Invalid image attachment" })).max(4).optional(),
         imageUrl: z.string().max(1024).optional(),
@@ -2089,6 +2116,7 @@ export const appRouter = router({
         const roster = await getTripPlayers(input.tripId);
         const rosterUserIds = new Set(roster.map((player) => player.userId));
         const mentionedUserIds = normaliseTripChatMentionedUserIds(input.mentionedUserIds, ctx.user.id).filter((userId) => rosterUserIds.has(userId));
+        if (input.isAnnouncement) await assertTripChatModerator(ctx.user.id, input.tripId, ctx.user.role === "admin");
         if (input.parentMessageId) {
           const parent = await getTripChatMessage(input.parentMessageId);
           if (!parent || parent.tripId !== input.tripId || parent.parentMessageId !== null) throw new TRPCError({ code: "BAD_REQUEST", message: "Replies must belong to a top-level Trip Chat message." });
@@ -2098,10 +2126,31 @@ export const appRouter = router({
           userId: ctx.user.id,
           parentMessageId: input.parentMessageId,
           message: input.message.trim(),
+          isAnnouncement: input.isAnnouncement,
           attachments,
           mentionedUserIds,
         });
+        if (mentionedUserIds.length) void sendPushToUsers(mentionedUserIds, { title: `${ctx.user.name ?? "A trip player"} mentioned you`, body: input.message.trim() || "You were tagged in a Trip Chat message.", tag: `chat-mention-${id}`, url: `/trip/${input.tripId}/chat` });
+        if (input.isAnnouncement) void sendPushToTrip(input.tripId, { title: "Trip announcement", body: input.message.trim(), tag: `trip-announcement-${id}`, url: `/trip/${input.tripId}/chat` });
         return { id };
+      }),
+    updateOwnMessage: protectedProcedure
+      .input(z.object({ tripId: z.number(), messageId: z.number(), message: z.string().trim().min(1).max(1000) }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const existing = await getTripChatMessage(input.messageId);
+        if (!existing || existing.tripId !== input.tripId || existing.userId !== ctx.user.id || existing.deletedAt) throw new TRPCError({ code: "FORBIDDEN", message: "Only the message author can edit this message." });
+        await updateTripChatMessage(input.messageId, input.message);
+        return { success: true };
+      }),
+    deleteOwnMessage: protectedProcedure
+      .input(z.object({ tripId: z.number(), messageId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripChatAccess(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        const existing = await getTripChatMessage(input.messageId);
+        if (!existing || existing.tripId !== input.tripId || existing.userId !== ctx.user.id || existing.deletedAt) throw new TRPCError({ code: "FORBIDDEN", message: "Only the message author can delete this message." });
+        await softDeleteTripChatMessage(input.messageId);
+        return { success: true };
       }),
     mentionablePlayers: protectedProcedure
       .input(z.object({ tripId: z.number() }))

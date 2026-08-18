@@ -93,6 +93,9 @@ export const trips = mysqlTable("trips", {
   logoUrl: varchar("logoUrl", { length: 512 }),
   // Optional colour scheme applied to players who have not chosen a personal appearance preference.
   defaultColorScheme: varchar("defaultColorScheme", { length: 16 }),
+  // Mystery trips may keep course names hidden until an admin reveals them.
+  hideCourses: boolean("hideCourses").default(false).notNull(),
+  coursesRevealed: boolean("coursesRevealed").default(false).notNull(),
   createdBy: int("createdBy").notNull(),
   // ─── Billing ──────────────────────────────────────────────────────────────
   // planTier for this trip. 'free' = up to 8 players, core features only.
@@ -361,6 +364,9 @@ export const tripMessages = mysqlTable("trip_messages", {
   imageUrl: varchar("imageUrl", { length: 1024 }),
   imageKey: varchar("imageKey", { length: 1024 }),
   imageAlt: varchar("imageAlt", { length: 180 }),
+  isAnnouncement: boolean("isAnnouncement").default(false).notNull(),
+  editedAt: timestamp("editedAt"),
+  deletedAt: timestamp("deletedAt"),
   pinnedAt: timestamp("pinnedAt"),
   pinnedByUserId: int("pinnedByUserId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

@@ -32,6 +32,8 @@ type Trip = {
   description?: string | null;
   status?: string;
   activeRoundName?: string | null;
+  hideCourses?: boolean;
+  coursesRevealed?: boolean;
 };
 
 export default function AdminTrips() {
@@ -51,6 +53,7 @@ export default function AdminTrips() {
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [rules, setRules] = useState("");
+  const [hideCourses, setHideCourses] = useState(false);
 
   // Edit
   const [editOpen, setEditOpen] = useState(false);
@@ -62,6 +65,7 @@ export default function AdminTrips() {
   const [editDescription, setEditDescription] = useState("");
   const [editRules, setEditRules] = useState("");
   const [editLogoUrl, setEditLogoUrl] = useState("");
+  const [editHideCourses, setEditHideCourses] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
 
   // Delete
@@ -74,7 +78,7 @@ export default function AdminTrips() {
       toast.success("Trip created");
       setCreateOpen(false);
       refetch();
-      setName(""); setStartDate(""); setEndDate(""); setTournamentType("stableford"); setLocation(""); setDescription("");
+      setName(""); setStartDate(""); setEndDate(""); setTournamentType("stableford"); setLocation(""); setDescription(""); setHideCourses(false);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -85,6 +89,10 @@ export default function AdminTrips() {
       setEditOpen(false);
       refetch();
     },
+    onError: (e) => toast.error(e.message),
+  });
+  const revealCourses = trpc.trips.revealCourses.useMutation({
+    onSuccess: () => { toast.success("Courses revealed to all players"); refetch(); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -109,6 +117,7 @@ export default function AdminTrips() {
     setEditDescription(trip.description ?? "");
     setEditRules((trip as any).rules ?? "");
     setEditLogoUrl((trip as any).logoUrl ?? "");
+    setEditHideCourses(Boolean((trip as any).hideCourses));
     setEditOpen(true);
   }
 
@@ -370,6 +379,10 @@ export default function AdminTrips() {
               <label className="text-sm font-medium text-foreground mb-1 block">Location</label>
               <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. St Andrews, Scotland" />
             </div>
+            <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/20 p-3 text-sm">
+              <input type="checkbox" checked={hideCourses} onChange={(event) => setHideCourses(event.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+              <span><strong className="text-foreground">Mystery golf trip</strong><span className="mt-0.5 block text-xs text-muted-foreground">Hide course names from players until an admin reveals them. This is off by default.</span></span>
+            </label>
             <div>
               <label className="text-sm font-medium text-foreground mb-1 block">Description</label>
               <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional trip notes or details..." rows={3} />
@@ -384,7 +397,7 @@ export default function AdminTrips() {
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button
               disabled={!name || !startDate || !endDate || createTrip.isPending}
-              onClick={() => (createTrip.mutate as any)({ name, startDate, endDate, tournamentType, location: location || undefined, description: description || undefined, rules: rules || undefined })}
+              onClick={() => (createTrip.mutate as any)({ name, startDate, endDate, tournamentType, location: location || undefined, description: description || undefined, rules: rules || undefined, hideCourses })}
             >
               Create Trip
             </Button>
@@ -414,6 +427,13 @@ export default function AdminTrips() {
             <div>
               <label className="text-sm font-medium text-foreground mb-1 block">Location</label>
               <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="e.g. St Andrews, Scotland" />
+            </div>
+            <div className="rounded-xl border border-border bg-muted/20 p-3">
+              <label className="flex items-start gap-3 text-sm">
+                <input type="checkbox" checked={editHideCourses} onChange={(event) => setEditHideCourses(event.target.checked)} className="mt-0.5 h-4 w-4 accent-primary" />
+                <span><strong className="text-foreground">Mystery golf trip</strong><span className="mt-0.5 block text-xs text-muted-foreground">Keep course names hidden until you choose to reveal them to all players.</span></span>
+              </label>
+              {editTrip?.hideCourses && !editTrip?.coursesRevealed && <Button type="button" size="sm" className="mt-3 gap-1.5" disabled={revealCourses.isPending} onClick={() => revealCourses.mutate({ tripId: editTrip.id })}>{revealCourses.isPending ? "Revealing…" : "Reveal courses to players"}</Button>}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground mb-1 block">Description</label>
@@ -459,6 +479,7 @@ export default function AdminTrips() {
                 location: editLocation || undefined,
                 description: editDescription || undefined,
                 rules: editRules || undefined,
+                hideCourses: editHideCourses,
               })}
             >
               Save Changes

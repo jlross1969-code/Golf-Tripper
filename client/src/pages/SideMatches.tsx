@@ -15,6 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import { sortSideMatchDailyPlayers } from "../../../shared/sideMatchDailyResults";
 
 const SIDE_MATCH_TYPES = [
   { value: "match_play", label: "Match Play" },
@@ -277,6 +278,7 @@ export default function SideMatches() {
   const { data: roundData, isLoading } = trpc.rounds.get.useQuery({ id });
   const { data: groups } = trpc.groups.list.useQuery({ roundId: id });
   const { data: sideMatches, refetch } = trpc.sideMatches.list.useQuery({ roundId: id });
+  const { data: dailySideMatchResults = [] } = trpc.sideMatches.dailyResults.useQuery({ roundId: id });
   const { data: groupMatches, isLoading: gmLoading } = trpc.groupMatch.getByRound.useQuery({ roundId: id });
   const { data: myGroup } = trpc.groups.getMyGroup.useQuery({ roundId: id }, { enabled: !!user });
   const { data: allMatchPlay = [] } = trpc.matchPlay.getByRound.useQuery({ roundId: id });
@@ -367,6 +369,19 @@ export default function SideMatches() {
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-8">
 
         <AutomaticMatchBoard teamMatch={myTeamMatch} singlesMatches={mySinglesMatches} roundId={id} />
+
+        <section className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div><h2 className="font-semibold text-foreground flex items-center gap-2"><Trophy className="w-4 h-4 text-primary" /> Daily side-match results</h2><p className="mt-1 text-xs text-muted-foreground">Live totals for every added side match in this round.</p></div>
+            <Badge variant="outline" className="border-primary/40 text-primary">Live</Badge>
+          </div>
+          {dailySideMatchResults.length === 0 ? <div className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No additional side-match results are available yet.</div> : <div className="space-y-3">{dailySideMatchResults.map((match) => {
+            const group = groups?.find((item) => item.id === match.groupId);
+            const typeLabel = SIDE_MATCH_TYPES.find((item) => item.value === match.type)?.label ?? match.type;
+            const orderedPlayers = sortSideMatchDailyPlayers(match.type, match.players);
+            return <Card key={match.id} className="border-border"><CardHeader className="px-4 pb-2 pt-4"><CardTitle className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2"><Badge variant="secondary">{typeLabel}</Badge><span className="truncate text-xs font-normal text-muted-foreground">{group?.name ?? `Group ${match.groupId}`}</span></span><Badge variant={match.status === "active" ? "default" : "outline"}>{match.status}</Badge></CardTitle></CardHeader><CardContent className="space-y-2 px-4 pb-4">{match.leader ? <p className="text-xs font-semibold text-primary">Leading: {match.leader.name} · {match.leader.value} {match.leader.label}</p> : <p className="text-xs text-muted-foreground">Waiting for scores to be entered.</p>}<div className="divide-y divide-border/70 rounded-lg border border-border">{orderedPlayers.map((player, playerIndex) => <div key={player.userId} className="flex items-center justify-between gap-3 px-3 py-2 text-sm"><span className="min-w-0 truncate"><span className="mr-2 text-xs text-muted-foreground">{playerIndex + 1}</span>{player.name}</span><span className="shrink-0 font-semibold text-foreground">{match.type === "stroke" ? `${player.gross} gross` : `${player.stableford} pts`}</span></div>)}</div></CardContent></Card>;
+          })}</div>}
+        </section>
 
         {/* ── Group 4BBB Matchplay section ── */}
         <section>

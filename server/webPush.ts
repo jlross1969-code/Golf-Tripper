@@ -81,3 +81,18 @@ export async function sendPushToTrip(tripId: number, payload: PushPayload): Prom
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
   }
 }
+
+/** Sends a Web Push notification only to the specified players. */
+export async function sendPushToUsers(userIds: number[], payload: PushPayload): Promise<void> {
+  ensureVapid();
+  if (!vapidInitialised || !userIds.length) return;
+  const db = await getDb();
+  if (!db) return;
+  const uniqueUserIds = [...new Set(userIds)];
+  const subs: SubRow[] = await db.select().from(pushSubscriptions).where(inArray(pushSubscriptions.userId, uniqueUserIds));
+  if (!subs.length) return;
+  const payloadStr = JSON.stringify(payload);
+  const results = await Promise.allSettled(subs.map((sub) => webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payloadStr)));
+  const expired = results.flatMap((result, index) => result.status === "rejected" && ([404, 410].includes((result.reason as { statusCode?: number })?.statusCode ?? 0)) ? [subs[index].endpoint] : []);
+  for (const endpoint of expired) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+}
