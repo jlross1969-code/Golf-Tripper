@@ -932,6 +932,23 @@ export const appRouter = router({
       await setTripPaymentReminderStageTask(id, job.taskUid);
       return { id, nextExecutionAt: job.nextExecutionAt };
     }),
+    scanReceipt: protectedProcedure.input(z.object({ tripId: z.number(), imageUrl: z.string().url().max(1024) })).mutation(async ({ ctx, input }) => {
+      await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+      const response = await invokeLLM({
+        model: "gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: "Extract receipt details conservatively. Never invent missing values. Amount is in the receipt currency and must be expressed in cents. Return JSON only." },
+          { role: "user", content: [{ type: "text", text: "Read this receipt and extract supplier, expense label, category, total amount in cents, purchase date (ISO yyyy-mm-dd), and a confidence value from 0 to 1. Use empty strings or 0 when unknown." }, { type: "image_url", image_url: { url: input.imageUrl, detail: "high" } }] },
+        ],
+        response_format: { type: "json_schema", json_schema: { name: "receipt_extraction", strict: true, schema: { type: "object", properties: { supplierName: { type: "string" }, label: { type: "string" }, category: { type: "string" }, amountCents: { type: "integer" }, purchaseDate: { type: "string" }, confidence: { type: "number" } }, required: ["supplierName", "label", "category", "amountCents", "purchaseDate", "confidence"], additionalProperties: false } } },
+      } as any);
+      try {
+        const parsed = JSON.parse((response.choices[0]?.message?.content as string) || "{}");
+        return { supplierName: String(parsed.supplierName ?? "").slice(0, 180), label: String(parsed.label ?? "").slice(0, 180), category: String(parsed.category ?? "Other").slice(0, 80) || "Other", amountCents: Math.max(0, Math.min(100_000_000, Number(parsed.amountCents) || 0)), purchaseDate: /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.purchaseDate ?? "")) ? String(parsed.purchaseDate) : "", confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)) };
+      } catch {
+        throw new TRPCError({ code: "BAD_GATEWAY", message: "Could not read this receipt. Please enter the expense details manually." });
+      }
+    }),
     addActualExpense: protectedProcedure.input(z.object({ tripId: z.number(), plannedLineItemId: z.number().optional(), supplierId: z.number().optional(), category: z.string().trim().min(1).max(80).default("Other"), label: z.string().trim().min(1).max(180), amountCents: z.number().int().min(0).max(100_000_000), paidAt: z.string().optional(), notes: z.string().trim().max(500).optional(), receiptUrl: z.string().max(512).optional(), receiptFileName: z.string().max(255).optional() })).mutation(async ({ ctx, input }) => {
       await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
       const plan = await getTripFinancialPlan(input.tripId);

@@ -1,5 +1,5 @@
 import { Express, Request, Response } from "express";
-import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, generateItineraryPDF, generateExpenseCategoryReportPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
+import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, generateItineraryPDF, generateExpenseCategoryReportPDF, generateTripFinanceSummaryPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
 import { calculate4BBBStablefordPoints, calculateSkins } from "../shared/scoring";
 import { sdk } from "./_core/sdk";
 import {
@@ -124,6 +124,25 @@ export function registerPdfRoutes(app: Express) {
     } catch (error) {
       console.error("[PDF] expense categories error", error);
       res.status(500).json({ error: "Failed to generate expense category PDF" });
+    }
+  });
+
+  app.get("/api/pdf/trip-finance-summary/:tripId", async (req: Request, res: Response) => {
+    try {
+      const tripId = Number(req.params.tripId);
+      if (!Number.isInteger(tripId)) return res.status(400).json({ error: "Invalid tripId" });
+      const user = await sdk.authenticateRequest(req);
+      const trip = await getTrip(tripId);
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+      if (user.role !== "admin" && trip.createdBy !== user.id && trip.financialManagerUserId !== user.id) return res.status(403).json({ error: "Financial manager access required" });
+      const [plan, payments, suppliers] = await Promise.all([getTripFinancialPlan(tripId), getTripPaymentSummary(tripId), getTripSuppliers(tripId)]);
+      const pdf = await generateTripFinanceSummaryPDF({ tripName: trip.name, generatedAt: new Date().toLocaleString("en-AU"), budgetCents: plan.totalCostsCents, approvedActualCents: plan.actualExpensesCents, pendingExpenseCount: plan.pendingActualExpenses.length, varianceCents: plan.actualVarianceCents, outstandingPlayerCents: payments.reduce((sum, entry) => sum + entry.outstandingCents, 0), outstandingSupplierCents: suppliers.reduce((sum, supplier) => sum + Math.max(0, supplier.paymentDueCents - supplier.paidCents), 0), categories: plan.categoryTotals });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${trip.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-finance-summary.pdf"`);
+      res.send(pdf);
+    } catch (error) {
+      console.error("[PDF] trip finance summary", error);
+      res.status(500).json({ error: "Failed to generate trip finance summary" });
     }
   });
 

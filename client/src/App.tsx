@@ -47,6 +47,7 @@ import TripPayments from "./pages/TripPayments";
 import TripItinerary from "./pages/TripItinerary";
 import TripDocuments from "./pages/TripDocuments";
 import AdminFinancialReports from "./pages/admin/AdminFinancialReports";
+import AdminReceiptOcr from "./pages/admin/AdminReceiptOcr";
 
 function Router() {
   return (
@@ -88,6 +89,7 @@ function Router() {
       <Route path="/admin/trips/:tripId/appearance" component={AdminTripAppearance} />
       <Route path="/admin/trips/:tripId/finances" component={AdminTripFinances} />
       <Route path="/admin/trips/:tripId/financial-reports" component={AdminFinancialReports} />
+      <Route path="/admin/trips/:tripId/receipt-ocr" component={AdminReceiptOcr} />
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />

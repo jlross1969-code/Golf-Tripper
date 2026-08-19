@@ -67,6 +67,7 @@ export default function AdminTripFinances() {
   const removeSupplier = trpc.tripFinances.removeSupplier.useMutation({ ...mutationOptions, onSuccess: () => void refetchSuppliers() });
   const updateSupplierPayment = trpc.tripFinances.updateSupplierPayment.useMutation({ ...mutationOptions, onSuccess: () => { toast.success("Supplier payment status updated"); void refetchSuppliers(); } });
   const addActual = trpc.tripFinances.addActualExpense.useMutation({ ...mutationOptions, onSuccess: () => { toast.success("Actual expense added"); setActualLabel(""); setActualAmount(""); setActualNote(""); setReceiptFile(null); void refetchPlan(); } });
+  const scanReceipt = trpc.tripFinances.scanReceipt.useMutation({ ...mutationOptions, onSuccess: (extraction) => { setActualLabel(extraction.label); setActualAmount(extraction.amountCents ? (extraction.amountCents / 100).toFixed(2) : ""); setActualCategory(extraction.category || "Other"); setActualNote([extraction.supplierName ? `Receipt supplier: ${extraction.supplierName}` : "", extraction.purchaseDate ? `Date: ${extraction.purchaseDate}` : ""].filter(Boolean).join(" · ")); toast.success(`Receipt details extracted (${Math.round(extraction.confidence * 100)}% confidence). Review before adding.`); } });
   const approveActual = trpc.tripFinances.approveActualExpense.useMutation({ ...mutationOptions, onSuccess: () => { toast.success("Expense approved"); void refetchPlan(); } });
   const removeActual = trpc.tripFinances.removeActualExpense.useMutation({ ...mutationOptions, onSuccess: () => void refetchPlan() });
   const applyPrice = trpc.tripFinances.applySuggestedPrice.useMutation({ ...mutationOptions, onSuccess: () => { toast.success("Calculated price applied to every player"); refresh(); } });
@@ -88,6 +89,15 @@ export default function AdminTripFinances() {
       receiptUrl = payload.url; receiptFileName = payload.fileName;
     }
     addActual.mutate({ tripId: id, label: actualLabel.trim(), category: actualCategory.trim() || "Other", amountCents: Math.round(Number(actualAmount) * 100), supplierId: actualSupplierId ? Number(actualSupplierId) : undefined, notes: actualNote.trim() || undefined, receiptUrl, receiptFileName });
+  };
+  const scanSelectedReceipt = async () => {
+    if (!receiptFile) return toast.error("Choose a receipt image first");
+    if (!receiptFile.type.startsWith("image/")) return toast.error("Receipt OCR supports JPEG, PNG, or WebP images. You can still attach a PDF manually.");
+    const body = new FormData(); body.append("tripId", String(id)); body.append("receipt", receiptFile);
+    const response = await fetch("/api/upload/trip-expense-receipt", { method: "POST", body });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return toast.error(payload.error ?? "Receipt upload failed");
+    scanReceipt.mutate({ tripId: id, imageUrl: payload.url });
   };
   const updateSupplierFromPrompt = (supplier: typeof suppliers[number]) => {
     const due = Number(window.prompt(`Amount due for ${supplier.name}`, String(supplier.paymentDueCents / 100)) ?? "");

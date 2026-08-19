@@ -982,3 +982,12 @@
 - [x] Add exportable supplier invoice audit reports
 - [x] Add budget-threshold configuration and automatic organiser warning delivery
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Supplier Calendar, Receipt OCR, and Finance Summary
+
+- [x] Review supplier schedule, receipt upload/OCR, and finance report data flows
+- [x] Add secure supplier calendar and receipt OCR extraction procedures
+- [x] Build a supplier payment due-date calendar with due/overdue status
+- [x] Add reviewable receipt OCR extraction to pre-fill actual expense entries
+- [x] Add a printable trip finance summary PDF report
+- [x] Add tests, validate mobile UI, checkpoint, and publish
