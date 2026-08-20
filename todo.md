@@ -991,3 +991,23 @@
 - [x] Add reviewable receipt OCR extraction to pre-fill actual expense entries
 - [x] Add a printable trip finance summary PDF report
 - [x] Add tests, validate mobile UI, checkpoint, and publish
+
+## Session - Confirmed Data Reset and Test Trip Seeding
+
+- [x] Review current database scope and authentication constraints for test players
+- [x] Prepare a safe reset and four-trip/eight-player testing seed plan
+- [x] Obtain explicit confirmation before any destructive database operation
+- [x] Clear trip-scoped records and create four test trips with eight fictitious player entries
+- [x] Verify seeded records and report available test access limitations
+
+## Session - Shared Test Player Roster
+
+- [x] Add the same eight fictitious test player profiles to each seeded trip
+- [x] Verify all four trips contain the complete shared roster
+
+## Session - Sample Finance Data and Test Access Guide
+
+- [x] Review seeded trip finance, payment, and authentication constraints
+- [x] Prepare varied sample expenses and player payment transactions across all test trips
+- [x] Seed the finance plans, supplier expenses, and payment transactions
+- [x] Verify seeded financial totals and provide accurate test-player access instructions
