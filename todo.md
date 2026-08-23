@@ -1023,3 +1023,10 @@
 - [x] Inspect local repository status and configured GitHub remotes
 - [x] Commit current project source and push a backup to GitHub
 - [x] Verify the GitHub backup and report its location
+
+## Session - Portable Database Export
+
+- [x] Inventory live database tables and define the data-only backup scope
+- [x] Export application tables into portable structured data files with integrity metadata
+- [x] Create a database restoration guide and package the export archive
+- [x] Verify and deliver the portable database backup package
