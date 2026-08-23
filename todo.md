@@ -1020,6 +1020,6 @@
 
 ## Session - GitHub Source Backup
 
-- [ ] Inspect local repository status and configured GitHub remotes
-- [ ] Commit current project source and push a backup to GitHub
-- [ ] Verify the GitHub backup and report its location
+- [x] Inspect local repository status and configured GitHub remotes
+- [x] Commit current project source and push a backup to GitHub
+- [x] Verify the GitHub backup and report its location
