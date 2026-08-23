@@ -1011,3 +1011,15 @@
 - [x] Prepare varied sample expenses and player payment transactions across all test trips
 - [x] Seed the finance plans, supplier expenses, and payment transactions
 - [x] Verify seeded financial totals and provide accurate test-player access instructions
+
+## Session - Six-Hole Started Trip Scenario
+
+- [x] Review round and hole data requirements for a six-hole started-trip scenario
+- [x] Create a first six-hole round on one test trip and mark the trip as started
+- [x] Verify the round and started-state testing scenario
+
+## Session - GitHub Source Backup
+
+- [ ] Inspect local repository status and configured GitHub remotes
+- [ ] Commit current project source and push a backup to GitHub
+- [ ] Verify the GitHub backup and report its location
