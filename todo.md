@@ -1030,3 +1030,11 @@
 - [x] Export application tables into portable structured data files with integrity metadata
 - [x] Create a database restoration guide and package the export archive
 - [x] Verify and deliver the portable database backup package
+
+## Session - Private Storage, Monthly Export, and Object Archive
+
+- [ ] Review private storage options, scheduled-job requirements, and stored file references
+- [ ] Create encrypted private backup storage and upload the current database export
+- [ ] Implement and schedule monthly database export automation
+- [ ] Create and verify a separate archive of stored document and receipt files
+- [ ] Report all backup locations and restoration guidance

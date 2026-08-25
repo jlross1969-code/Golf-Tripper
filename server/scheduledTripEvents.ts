@@ -3,6 +3,8 @@ import { sdk } from "./_core/sdk";
 import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripByCourseRevealTaskUid, getTripByFinancialDigestTaskUid, getTripByPaymentReminderTaskUid, getTripDocumentByExpiryReminderTaskUid, getTripFinancialPlan, getTripPaymentReminderStageByTaskUid, getTripPaymentSummary, getTripScheduledAnnouncementByTaskUid, getTripSupplierByInvoiceReminderTaskUid, getTripSuppliers, getTripTravelChecklistByReminderTaskUid, markTripDocumentExpiryReminderSent, markTripFinancialDigestSent, markTripPaymentReminderStageSent, markTripScheduledAnnouncementSent, markTripSupplierInvoiceReminderSent, markTripTravelChecklistReminderSent, sendTripMessage, updateTrip } from "./db";
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
 import { buildFinancialDigestMessage } from "../shared/financialDigest";
+import { getProjectBackupSettingsByTaskUid } from "./projectBackupDb";
+import { createPrivateProjectBackup } from "./projectBackupService";
 
 function cronOnly(user: Awaited<ReturnType<typeof sdk.authenticateRequest>>, res: Response) {
   if (!user.isCron || !user.taskUid) {
@@ -13,6 +15,21 @@ function cronOnly(user: Awaited<ReturnType<typeof sdk.authenticateRequest>>, res
 }
 
 export function registerScheduledTripEventRoutes(app: Express) {
+  app.post("/api/scheduled/monthly-project-backup", async (req: Request, res: Response) => {
+    try {
+      const taskUid = cronOnly(await sdk.authenticateRequest(req), res);
+      if (!taskUid) return;
+      const settings = await getProjectBackupSettingsByTaskUid(taskUid);
+      if (!settings) return res.json({ ok: true, skipped: "orphan" });
+      if (!settings.monthlyEnabled) return res.json({ ok: true, skipped: "disabled" });
+      const result = await createPrivateProjectBackup();
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      console.error("[ScheduledTripEvents] monthly backup error", error);
+      res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
+    }
+  });
+
   app.post("/api/scheduled/trip-announcement", async (req: Request, res: Response) => {
     try {
       const taskUid = cronOnly(await sdk.authenticateRequest(req), res);

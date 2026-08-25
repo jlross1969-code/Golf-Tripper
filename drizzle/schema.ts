@@ -38,6 +38,22 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
+// ─── Project backups ─────────────────────────────────────────────────────────
+
+export const projectBackups = mysqlTable("project_backups", {
+  id: int("id").autoincrement().primaryKey(),
+  monthlyEnabled: boolean("monthlyEnabled").default(false).notNull(),
+  monthlyCronTaskUid: varchar("monthlyCronTaskUid", { length: 65 }),
+  lastDatabaseBackupKey: varchar("lastDatabaseBackupKey", { length: 512 }),
+  lastObjectArchiveKey: varchar("lastObjectArchiveKey", { length: 512 }),
+  lastBackupAt: timestamp("lastBackupAt"),
+  lastBackupSummary: text("lastBackupSummary"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ProjectBackup = typeof projectBackups.$inferSelect;
+
 // ─── Courses ──────────────────────────────────────────────────────────────────
 
 export const courses = mysqlTable("courses", {
