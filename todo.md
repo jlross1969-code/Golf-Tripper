@@ -1033,8 +1033,8 @@
 
 ## Session - Private Storage, Monthly Export, and Object Archive
 
-- [ ] Review private storage options, scheduled-job requirements, and stored file references
-- [ ] Create encrypted private backup storage and upload the current database export
-- [ ] Implement and schedule monthly database export automation
-- [ ] Create and verify a separate archive of stored document and receipt files
-- [ ] Report all backup locations and restoration guidance
+- [x] Review private storage options, scheduled-job requirements, and stored file references
+- [x] Create encrypted private backup storage and upload the current database export
+- [x] Implement and schedule monthly database export automation
+- [x] Create and verify a separate archive of stored document and receipt files
+- [x] Report all backup locations and restoration guidance

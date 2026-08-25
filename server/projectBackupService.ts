@@ -49,6 +49,11 @@ export async function createPrivateProjectBackup() {
     { source: "trip_documents", query: "SELECT id, fileKey AS objectKey, fileName, mimeType FROM trip_documents WHERE fileKey IS NOT NULL" },
     { source: "trip_actual_expenses", query: "SELECT id, receiptUrl AS objectKey, receiptFileName AS fileName, NULL AS mimeType FROM trip_actual_expenses WHERE receiptUrl IS NOT NULL" },
     { source: "trip_suppliers", query: "SELECT id, invoiceAttachmentKey AS objectKey, invoiceAttachmentFileName AS fileName, NULL AS mimeType FROM trip_suppliers WHERE invoiceAttachmentKey IS NOT NULL" },
+    { source: "trips", query: "SELECT id, logoUrl AS objectKey, name AS fileName, NULL AS mimeType FROM trips WHERE logoUrl IS NOT NULL" },
+    { source: "trip_players", query: "SELECT id, photoUrl AS objectKey, NULL AS fileName, NULL AS mimeType FROM trip_players WHERE photoUrl IS NOT NULL" },
+    { source: "rounds", query: "SELECT id, logoUrl AS objectKey, name AS fileName, NULL AS mimeType FROM rounds WHERE logoUrl IS NOT NULL" },
+    { source: "trip_messages", query: "SELECT id, COALESCE(imageKey, imageUrl) AS objectKey, imageAlt AS fileName, NULL AS mimeType FROM trip_messages WHERE imageKey IS NOT NULL OR imageUrl IS NOT NULL" },
+    { source: "trip_message_attachments", query: "SELECT id, COALESCE(imageKey, imageUrl) AS objectKey, imageAlt AS fileName, NULL AS mimeType FROM trip_message_attachments WHERE imageKey IS NOT NULL OR imageUrl IS NOT NULL" },
   ];
   const objects: ArchivedObject[] = [];
   for (const source of objectSources) {
