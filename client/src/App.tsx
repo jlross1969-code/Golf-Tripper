@@ -13,6 +13,7 @@ import AdminRounds from "./pages/admin/AdminRounds";
 import AdminGroups from "./pages/admin/AdminGroups";
 import AdminHandicap from "./pages/admin/AdminHandicap";
 import AdminCourses from "./pages/admin/AdminCourses";
+import AdminBackups from "./pages/admin/AdminBackups";
 import TripRecap from "./pages/TripRecap";
 import TripSettleUp from "./pages/TripSettleUp";
 import SpectatorView from "./pages/SpectatorView";
@@ -98,6 +99,7 @@ function Router() {
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />
+      <Route path="/admin/backups" component={AdminBackups} />
       <Route path="/admin/plans" component={AdminPlanManagement} />
       <Route path="/join/:token" component={JoinTrip} />
       <Route path="/join-trip/:tripId" component={JoinTripShare} />

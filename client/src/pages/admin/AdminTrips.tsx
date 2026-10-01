@@ -252,6 +252,11 @@ export default function AdminTrips() {
                 <CreditCard className="w-4 h-4" /> Plans
               </Button>
             </Link>
+            <Link href="/admin/backups">
+              <Button variant="outline" size="sm" className="gap-2">
+                <Upload className="w-4 h-4" /> Backups
+              </Button>
+            </Link>
             <Link href="/admin/courses">
               <Button variant="outline" size="sm" className="gap-2">
                 <Settings className="w-4 h-4" /> Manage Courses

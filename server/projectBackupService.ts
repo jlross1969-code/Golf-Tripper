@@ -53,7 +53,7 @@ function storageKey(value: string | null | undefined) {
   return value.replace(/^\/+/, "") || null;
 }
 
-async function fetchStoredFile(key: string) {
+export async function fetchStoredFile(key: string) {
   const url = await storageGetSignedUrl(key);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Could not read stored object ${key}`);

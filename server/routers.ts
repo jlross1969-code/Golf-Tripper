@@ -5,6 +5,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
+import { getProjectBackupSettings } from "./projectBackupDb";
+import { createPrivateProjectBackup, decryptBackup, fetchStoredFile } from "./projectBackupService";
 import { duplicateTrip } from "./tripDuplicate";
 import { addSettlement, deleteSettlement, getSettlement, listSettlements, setSettlementPaid } from "./settleUpDb";
 import { simplifyDebts } from "../shared/settleUp";
@@ -2223,6 +2225,42 @@ export const appRouter = router({
         if (!text) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The recap could not be written" });
         return { text };
       }),
+  }),
+
+  // ─── Backup status (platform admin) ─────────────────────────────────────────
+  backup: router({
+    status: adminProcedure.query(async () => {
+      const settings = await getProjectBackupSettings();
+      let summary: Record<string, unknown> | null = null;
+      try { summary = settings?.lastBackupSummary ? JSON.parse(settings.lastBackupSummary) : null; } catch { summary = null; }
+      return {
+        lastBackupAt: settings?.lastBackupAt ?? null,
+        monthlyEnabled: settings?.monthlyEnabled ?? false,
+        databaseKey: settings?.lastDatabaseBackupKey ?? null,
+        summary,
+      };
+    }),
+
+    /** Downloads the latest backup parts and decrypts them to prove they are restorable. */
+    verify: adminProcedure.mutation(async () => {
+      const settings = await getProjectBackupSettings();
+      if (!settings?.lastDatabaseBackupKey) throw new TRPCError({ code: "NOT_FOUND", message: "No backup has been made yet" });
+      let objectPartKeys: string[] = settings.lastObjectArchiveKey ? [settings.lastObjectArchiveKey] : [];
+      try {
+        const parsed = settings.lastBackupSummary ? JSON.parse(settings.lastBackupSummary) : null;
+        if (Array.isArray(parsed?.objectPartKeys)) objectPartKeys = parsed.objectPartKeys;
+      } catch { /* fall back to the single stored key */ }
+      try {
+        const database = decryptBackup(await fetchStoredFile(settings.lastDatabaseBackupKey));
+        let objectCount = 0;
+        for (const key of objectPartKeys) objectCount += decryptBackup(await fetchStoredFile(key)).objects?.length ?? 0;
+        return { ok: true as const, tables: database.tables?.length ?? 0, rows: (database.tables ?? []).reduce((n: number, t: { rows: unknown[] }) => n + t.rows.length, 0), objects: objectCount };
+      } catch (error) {
+        return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+      }
+    }),
+
+    runNow: adminProcedure.mutation(async () => createPrivateProjectBackup()),
   }),
 
   // ─── Achievements ─────────────────────────────────────────────────────────
