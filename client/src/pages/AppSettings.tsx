@@ -2,10 +2,13 @@ import { Button } from "@/components/ui/button";
 import { COLOR_SCHEME_OPTIONS, useTheme } from "@/contexts/ThemeContext";
 import { Check, ChevronLeft, Palette } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
+import { TEXT_SIZES, getTextSize, setTextSize, type TextSize } from "@/lib/textSize";
 
 export default function AppSettings() {
   const { colorScheme, setColorScheme, hasPersonalColorScheme, clearPersonalColorScheme } = useTheme();
 
+  const [textSize, setTextSizeState] = useState<TextSize>(getTextSize());
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">
@@ -13,6 +16,15 @@ export default function AppSettings() {
         <div className="flex min-w-0 items-center gap-2"><Palette className="h-5 w-5 text-primary" /><div><h1 className="font-semibold">App Settings</h1><p className="text-xs text-muted-foreground">Personal appearance preferences</p></div></div>
       </header>
       <main className="mx-auto max-w-xl space-y-4 p-4 pb-32 sm:pt-8">
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <h2 className="text-base font-semibold">Text size</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Make everything larger, handy on the course in bright sun. Stays on this device.</p>
+          <div className="mt-3 flex gap-2" role="radiogroup" aria-label="Text size">
+            {TEXT_SIZES.map((size) => (
+              <button key={size.id} type="button" role="radio" aria-checked={textSize === size.id} onClick={() => { setTextSizeState(size.id); setTextSize(size.id); }} className={`flex-1 rounded-xl border px-3 py-2 text-sm ${textSize === size.id ? "border-primary bg-primary/10 ring-2 ring-primary/25" : "border-border hover:bg-muted/50"}`}>{size.label}</button>
+            ))}
+          </div>
+        </section>
         <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <h2 className="text-base font-semibold">Colour scheme</h2>
           <p className="mt-1 text-sm text-muted-foreground">Choose the background and accent colours you prefer. A personal choice stays on this device and takes priority over a trip default.</p>
