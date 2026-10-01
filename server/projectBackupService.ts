@@ -6,10 +6,34 @@ import { updateProjectBackupSettings } from "./projectBackupDb";
 type TableSnapshot = { name: string; rows: unknown[] };
 type ArchivedObject = { source: string; recordId: number; key: string; fileName: string | null; mimeType: string | null; base64: string };
 
+/** Candidate keys, newest first. A dedicated key survives session-secret rotation. */
+export function backupKeys() {
+  const keys: Buffer[] = [];
+  if (process.env.BACKUP_ENCRYPTION_KEY) keys.push(crypto.createHash("sha256").update(`${process.env.BACKUP_ENCRYPTION_KEY}:golf-trip-app:private-backups:v2`).digest());
+  if (process.env.JWT_SECRET) keys.push(crypto.createHash("sha256").update(`${process.env.JWT_SECRET}:golf-trip-app:private-backups:v1`).digest());
+  if (!keys.length) throw new Error("Set BACKUP_ENCRYPTION_KEY (or JWT_SECRET) for backup encryption");
+  return keys;
+}
+
 function backupKey() {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error("JWT_SECRET is unavailable for backup encryption");
-  return crypto.createHash("sha256").update(`${secret}:golf-trip-app:private-backups:v1`).digest();
+  return backupKeys()[0];
+}
+
+export function decryptBackup(data: Buffer) {
+  const iv = data.subarray(0, 12);
+  const tag = data.subarray(12, 28);
+  const body = data.subarray(28);
+  let lastError: unknown;
+  for (const key of backupKeys()) {
+    try {
+      const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+      decipher.setAuthTag(tag);
+      return JSON.parse(Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8"));
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(`Could not decrypt backup with the available keys: ${lastError instanceof Error ? lastError.message : lastError}`);
 }
 
 function encryptJson(payload: unknown) {
