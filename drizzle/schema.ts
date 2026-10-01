@@ -123,6 +123,9 @@ export const trips = mysqlTable("trips", {
   paymentReminderCronTaskUid: varchar("paymentReminderCronTaskUid", { length: 65 }),
   // Optional co-admin trusted to manage the organiser's trip payment ledger.
   financialManagerUserId: int("financialManagerUserId"),
+  // Where players send their trip payment (a Stripe/PayPal/bank-app link and/or plain instructions such as a PayID).
+  paymentLinkUrl: varchar("paymentLinkUrl", { length: 1024 }),
+  paymentInstructions: varchar("paymentInstructions", { length: 1000 }),
   financialDigestEnabled: boolean("financialDigestEnabled").default(false).notNull(),
   financialDigestHourUtc: int("financialDigestHourUtc").default(8).notNull(),
   financialDigestCronTaskUid: varchar("financialDigestCronTaskUid", { length: 65 }),

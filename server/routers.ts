@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
+import { matchHandicapRows, parseHandicapCsv } from "../shared/handicapImport";
 import { buildAlbums } from "../shared/gallery";
 import { getTripPhotos } from "./galleryDb";
 import { getCareerStats } from "./careerStats";
@@ -833,6 +834,18 @@ export const appRouter = router({
   }),
 
   tripFinances: router({
+    setPaymentInfo: protectedProcedure
+      .input(z.object({
+        tripId: z.number().int().positive(),
+        paymentLinkUrl: z.string().trim().max(1024).refine((v) => v === "" || /^https:\/\//i.test(v), "Use a secure https:// link").optional(),
+        paymentInstructions: z.string().trim().max(1000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        await updateTrip(input.tripId, { paymentLinkUrl: input.paymentLinkUrl || null, paymentInstructions: input.paymentInstructions || null });
+        return { success: true };
+      }),
+
     access: protectedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ ctx, input }) => {
@@ -1211,6 +1224,29 @@ export const appRouter = router({
         });
         await updatePlayerHandicap(input.tripId, input.userId, input.newHandicap);
         return { success: true };
+      }),
+
+    /** Bulk-set handicaps from pasted "name or email, handicap" lines. Use dryRun to preview matches. */
+    importHandicaps: adminProcedure
+      .input(z.object({ tripId: z.number().int().positive(), csv: z.string().max(50_000), dryRun: z.boolean().default(true) }))
+      .mutation(async ({ input, ctx }) => {
+        const rows = parseHandicapCsv(input.csv);
+        if (!rows.length) throw new TRPCError({ code: "BAD_REQUEST", message: "No rows found. Use one \"name or email, handicap\" per line." });
+        if (rows.length > 500) throw new TRPCError({ code: "BAD_REQUEST", message: "Too many rows (max 500)" });
+        const roster = await getTripPlayers(input.tripId);
+        const matches = matchHandicapRows(rows, roster.map((p) => ({ userId: p.userId, email: p.user?.email, name: p.user?.name, nickname: p.nickname })));
+        let applied = 0;
+        if (!input.dryRun) {
+          for (const match of matches) {
+            if (match.status !== "matched") continue;
+            const tp = roster.find((p) => p.userId === match.userId);
+            if (!tp || tp.currentHandicap === match.row.handicap) continue;
+            await recordHandicapChange({ tripId: input.tripId, userId: match.userId, oldHandicap: tp.currentHandicap, newHandicap: match.row.handicap, reason: "Bulk import by admin", isManual: true, adjustedBy: ctx.user.id });
+            await updatePlayerHandicap(input.tripId, match.userId, match.row.handicap);
+            applied++;
+          }
+        }
+        return { applied, dryRun: input.dryRun, results: matches.map((m) => ({ identifier: m.row.identifier, handicap: m.row.handicap, status: m.status, reason: "reason" in m ? m.reason : null })) };
       }),
 
     handicapHistory: tripScopedProcedure
