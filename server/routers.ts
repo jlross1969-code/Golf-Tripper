@@ -5,7 +5,9 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
-import { assertTripManager, tripScopedProcedure, tripViewForUser, assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
+import { addSettlement, deleteSettlement, getSettlement, listSettlements, setSettlementPaid } from "./settleUpDb";
+import { simplifyDebts } from "../shared/settleUp";
+import { loadRound, assertTripMember, assertTripManager, tripScopedProcedure, tripViewForUser, assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
 import {
   addPlayerToGroup,
   addPlayerToTrip,
@@ -2110,6 +2112,59 @@ export const appRouter = router({
             .map((p) => ({ userName: p.userName, photoUrl: p.photoUrl, holesPlayed: p.rounds.reduce((n, r) => n + r.holesPlayed, 0), gross: p.cumulativeGross, net: p.cumulativeNet, stableford: p.cumulativeStableford }))
             .sort((x, y) => y.stableford - x.stableford),
         };
+      }),
+  }),
+
+  // ─── Side-bet / settle-up ledger ────────────────────────────────────────────
+  settleUp: router({
+    summary: tripScopedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const entries = await listSettlements(input.tripId);
+        const open = entries.filter((e) => !e.settledAt);
+        return { entries, payments: simplifyDebts(open) };
+      }),
+
+    add: protectedProcedure
+      .input(z.object({
+        tripId: z.number().int().positive(),
+        roundId: z.number().int().positive().optional(),
+        fromUserId: z.number().int().positive(),
+        toUserId: z.number().int().positive(),
+        amountCents: z.number().int().min(1).max(10_000_000),
+        reason: z.string().trim().min(1).max(200),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripMember(ctx.user, input.tripId);
+        if (input.fromUserId === input.toUserId) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose two different players" });
+        for (const userId of [input.fromUserId, input.toUserId]) {
+          if (!(await getTripPlayer(input.tripId, userId))) throw new TRPCError({ code: "BAD_REQUEST", message: "Both players must be on the trip" });
+        }
+        if (input.roundId && (await loadRound(input.roundId)).tripId !== input.tripId) throw new TRPCError({ code: "BAD_REQUEST", message: "Round does not belong to this trip" });
+        return { id: await addSettlement({ ...input, createdBy: ctx.user.id }) };
+      }),
+
+    markPaid: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive(), id: z.number().int().positive(), paid: z.boolean() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripMember(ctx.user, input.tripId);
+        const entry = await getSettlement(input.id);
+        if (!entry || entry.tripId !== input.tripId) throw new TRPCError({ code: "NOT_FOUND", message: "Entry not found" });
+        // Only the person owed (or a trip manager) can confirm payment.
+        if (entry.toUserId !== ctx.user.id) await assertTripManager(ctx.user, input.tripId);
+        await setSettlementPaid(input.id, input.tripId, input.paid);
+        return { success: true };
+      }),
+
+    remove: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive(), id: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripMember(ctx.user, input.tripId);
+        const entry = await getSettlement(input.id);
+        if (!entry || entry.tripId !== input.tripId) throw new TRPCError({ code: "NOT_FOUND", message: "Entry not found" });
+        if (entry.createdBy !== ctx.user.id) await assertTripManager(ctx.user, input.tripId);
+        await deleteSettlement(input.id, input.tripId);
+        return { success: true };
       }),
   }),
 

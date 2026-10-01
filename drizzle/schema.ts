@@ -981,3 +981,18 @@ export const scoreDisputes = mysqlTable("score_disputes", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   resolvedAt: timestamp("resolvedAt"),
 }, (t) => [index("score_disputes_round_idx").on(t.roundId, t.status)]);
+
+// ─── Side-bet / settle-up ledger ──────────────────────────────────────────────
+
+export const tripSettlements = mysqlTable("trip_settlements", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  roundId: int("roundId"),
+  fromUserId: int("fromUserId").notNull(),
+  toUserId: int("toUserId").notNull(),
+  amountCents: int("amountCents").notNull(),
+  reason: varchar("reason", { length: 200 }).notNull(),
+  settledAt: timestamp("settledAt"),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("trip_settlements_trip_idx").on(t.tripId)]);
