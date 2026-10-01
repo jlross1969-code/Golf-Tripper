@@ -88,6 +88,7 @@ import {
   matchPlayFixtureHoles,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { arrangeFreshFaces, pairKey } from "../shared/freshFaces";
 import { isAutomaticFourBBBReady, resolveMutualScoreMarkerPairs } from "../shared/sideMatchAutomation";
 import { getBestBallStablefordPoints } from "../shared/fourBBBScorecard";
 import { calculateCountback, compareCountback, type CountbackBreakdown } from "../shared/countback";
@@ -3921,7 +3922,7 @@ export async function getAllTripPlayersAndInvites(tripId: number): Promise<{
 
 // ─── Smart Group Seeding ───────────────────────────────────────────────────────
 
-export type SeedMethod = "random" | "handicap_mix" | "top_together" | "previous_round";
+export type SeedMethod = "random" | "handicap_mix" | "top_together" | "previous_round" | "fresh_faces";
 export type PairingMethod = "random" | "keep_last" | "seed_4bbb";
 export type TeeOrder = "top_first" | "bottom_first";
 
@@ -4080,6 +4081,19 @@ export async function previewSmartSeed(
     for (let i = 0; i < sorted.length; i++) {
       buckets[Math.floor(i / groupSize)].push(sorted[i]);
     }
+  } else if (seedMethod === "fresh_faces") {
+    // Count how often each pair has already shared a group on this trip.
+    const pairCounts = new Map<string, number>();
+    const priorGroups = await db.select({ id: groups.id }).from(groups).where(eq(groups.tripId, tripId));
+    const members = priorGroups.length
+      ? await db.select({ groupId: groupPlayers.groupId, userId: groupPlayers.userId }).from(groupPlayers).where(inArray(groupPlayers.groupId, priorGroups.map((g) => g.id)))
+      : [];
+    const byGroup = new Map<number, number[]>();
+    for (const m of members) if (m.userId) byGroup.set(m.groupId, [...(byGroup.get(m.groupId) ?? []), m.userId]);
+    byGroup.forEach((ids) => {
+      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) pairCounts.set(pairKey(ids[i], ids[j]), (pairCounts.get(pairKey(ids[i], ids[j])) ?? 0) + 1);
+    });
+    buckets = arrangeFreshFaces(allUserIds, hcpMap, numGroups, pairCounts);
   } else if (seedMethod === "previous_round") {
     const tripRoundList = await db
       .select({ id: rounds.id, status: rounds.status, roundDate: rounds.roundDate, individualScoringMode: rounds.individualScoringMode })

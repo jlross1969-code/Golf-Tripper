@@ -1730,7 +1730,7 @@ export const appRouter = router({
     previewSmartSeed: adminProcedure
       .input(z.object({
         tripId: z.number(),
-        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round"]),
+        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round", "fresh_faces"]),
         pairingMethod: z.enum(["random", "keep_last", "seed_4bbb"]),
         teeOrder: z.enum(["top_first", "bottom_first"]),
         groupSize: z.number().min(2).max(8).default(4),
@@ -1752,7 +1752,7 @@ export const appRouter = router({
       .input(z.object({
         targetRoundId: z.number(),
         tripId: z.number(),
-        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round"]),
+        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round", "fresh_faces"]),
         pairingMethod: z.enum(["random", "keep_last", "seed_4bbb"]),
         teeOrder: z.enum(["top_first", "bottom_first"]),
         groupSize: z.number().min(2).max(8).default(4),
