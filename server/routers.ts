@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
+import { announceLeaderChange } from "./leaderNotifications";
 import { addAttestation, getAttestations, isCardSigned, removeAttestations, sharedGroup } from "./scoreAttestation";
 import { getProjectBackupSettings } from "./projectBackupDb";
 import { createPrivateProjectBackup, decryptBackup, fetchStoredFile } from "./projectBackupService";
@@ -1996,6 +1997,7 @@ export const appRouter = router({
         });
         await logScoreChange({ roundId: input.roundId, userId: input.userId, holeId: input.holeId, holeNumber: input.holeNumber, oldGross: previousGross, newGross: effectiveGross, changedBy: ctx.user.id, source: input.source ?? "entry" });
         await recalcMatchesForPlayerScore(input.roundId, input.userId);
+        void announceLeaderChange(input.roundId);
 
         // Detect achievement (use original gross so eagles/HIO aren't suppressed)
         const achievementType = detectAchievement(input.grossScore, input.par);
