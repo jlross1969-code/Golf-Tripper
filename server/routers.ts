@@ -2198,7 +2198,7 @@ export const appRouter = router({
         return { achievementId: id };
       }),
 
-    confirm: protectedProcedure
+    confirm: tripScopedProcedure
       .input(z.object({ achievementId: z.number(), tripId: z.number(), playerName: z.string() }))
       .mutation(async ({ input }) => {
         const achievement = await confirmAchievement(input.achievementId);
@@ -3242,7 +3242,7 @@ export const appRouter = router({
   // ─── Custom Awards ──────────────────────────────────────────────────────────────
   awards: router({
     // List all awards for a trip (with winner if assigned)
-    list: protectedProcedure
+    list: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         return getAwardsByTrip(input.tripId);
@@ -3335,7 +3335,7 @@ export const appRouter = router({
       }),
 
     // All players: get leaderboard for a round
-    getLeaderboard: protectedProcedure
+    getLeaderboard: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         return getLongDriveLeaderboard(input.roundId);
@@ -3414,7 +3414,7 @@ export const appRouter = router({
         return { driveDistanceM, isNewLeader };
       }),
     // Admin: get all long drive entries grouped by hole for a round
-    getByRound: protectedProcedure
+    getByRound: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const db = await (await import("./db")).getDb();
@@ -3462,7 +3462,7 @@ export const appRouter = router({
     }),
 
     // Returns the plan tier for a specific trip.
-    getTripPlan: protectedProcedure
+    getTripPlan: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         const { getDb } = await import("./db");
