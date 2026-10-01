@@ -5,6 +5,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
+import { buildAlbums } from "../shared/gallery";
+import { getTripPhotos } from "./galleryDb";
 import { getCareerStats } from "./careerStats";
 import { announceLeaderChange } from "./leaderNotifications";
 import { addAttestation, getAttestations, isCardSigned, removeAttestations, sharedGroup } from "./scoreAttestation";
@@ -2185,6 +2187,15 @@ export const appRouter = router({
         if (entry.createdBy !== ctx.user.id) await assertTripManager(ctx.user, input.tripId);
         await deleteSettlement(input.id, input.tripId);
         return { success: true };
+      }),
+  }),
+
+  gallery: router({
+    albums: tripScopedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const [photos, tripRounds] = await Promise.all([getTripPhotos(input.tripId), getRoundsByTrip(input.tripId)]);
+        return buildAlbums(photos, tripRounds.map((r) => ({ id: r.id, name: r.name, roundDate: r.roundDate })));
       }),
   }),
 
