@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
+import { tripScopedProcedure, tripViewForUser, assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
 import {
   addPlayerToGroup,
   addPlayerToTrip,
@@ -606,15 +606,22 @@ export const appRouter = router({
       const playerRows = await Promise.all(
         tripIds.map((tid) => getTripPlayer(tid, ctx.user.id))
       );
-      return allTrips.map((t, i) => ({
-        ...t,
-        isCoAdmin: !!(playerRows[i]?.isCoAdmin),
-      }));
+      // Only trips the caller belongs to (platform admins see everything).
+      const visible: typeof allTrips = [];
+      const visibleFlags: boolean[] = [];
+      for (let i = 0; i < allTrips.length; i++) {
+        const t = allTrips[i];
+        if (ctx.user.role === "admin" || t.createdBy === ctx.user.id || playerRows[i]) {
+          visible.push(await tripViewForUser(ctx.user, t) as typeof t);
+          visibleFlags.push(!!(playerRows[i]?.isCoAdmin));
+        }
+      }
+      return visible.map((t, i) => ({ ...t, isCoAdmin: visibleFlags[i] }));
     }),
 
-    get: publicProcedure.input(z.object({ id: z.number() })).query(({ input }) => getTrip(input.id)),
+    get: publicProcedure.input(z.object({ id: z.number() })).query(async ({ input, ctx }) => tripViewForUser(ctx.user, await getTrip(input.id))),
 
-    getTeeSheet: publicProcedure
+    getTeeSheet: tripScopedProcedure
       .input(z.object({ roundId: z.number(), tripId: z.number() }))
       .query(async ({ input }) => {
         const groupList = await getGroupsByRound(input.roundId);
@@ -1141,7 +1148,7 @@ export const appRouter = router({
 
     players: router({
     allUsers: protectedProcedure.query(() => getAllUsers()),
-    tripPlayers: publicProcedure
+    tripPlayers: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(({ input }) => getTripPlayers(input.tripId)),
     allForTrip: adminProcedure
@@ -1186,7 +1193,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    handicapHistory: publicProcedure
+    handicapHistory: tripScopedProcedure
       .input(z.object({ tripId: z.number(), userId: z.number().optional() }))
       .query(({ input }) => getHandicapHistory(input.tripId, input.userId)),
 
@@ -1291,15 +1298,14 @@ export const appRouter = router({
   // ─── Rounds ───────────────────────────────────────────────────────────────
 
   rounds: router({
-    list: publicProcedure
+    list: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(({ input }) => getRoundsByTrip(input.tripId)),
 
-    get: publicProcedure
+    get: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        const round = await getRound(input.id);
-        if (!round) throw new TRPCError({ code: "NOT_FOUND" });
+      .query(async ({ input, ctx }) => {
+        const round = await assertRoundMember(ctx.user, input.id);
         const course = await getCourse(round.courseId);
         const courseHoles = await getHolesByCourse(round.courseId);
         const trip = await getTrip(round.tripId);
@@ -1512,7 +1518,7 @@ export const appRouter = router({
   // ─── Groups ───────────────────────────────────────────────────────────────
 
   groups: router({
-    list: publicProcedure
+    list: tripScopedProcedure
       .input(z.object({ roundId: z.number(), tripId: z.number().optional() }))
       .query(async ({ input }) => {
         const groupList = await getGroupsByRound(input.roundId);
@@ -1783,7 +1789,7 @@ export const appRouter = router({
   // ─── Group Matches (4BBB Matchplay between pairs) ─────────────────────────
   groupMatch: router({
     // Get all group matches for a round with running status
-    getByRound: publicProcedure
+    getByRound: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const matches = (await import("./db").then(db => db.getMatchPlayResultsByRound(input.roundId)))
@@ -1836,9 +1842,10 @@ export const appRouter = router({
       }),
 
     // Get hole-by-hole 4BBB scores for a match (for the detailed view)
-    getHoleByHole: publicProcedure
+    getHoleByHole: protectedProcedure
       .input(z.object({ matchId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, await roundIdForMatchPlay(input.matchId));
         const { getDb } = await import("./db");
         const { matchPlayResults: mpr, scores: scoresTable, holes: holesTable, rounds: roundsTable, groupPlayers: gpTable, tripPlayers: tpTable, users: usersTable, groups: grpTable } = await import("../drizzle/schema");
         const { eq: eqOp, inArray: inArr, and: andOp } = await import("drizzle-orm");
@@ -1979,7 +1986,7 @@ export const appRouter = router({
         };
       }),
 
-    getScorecard: publicProcedure
+    getScorecard: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(({ input }) => getRoundScorecard(input.roundId)),
 
@@ -2013,7 +2020,7 @@ export const appRouter = router({
         return { netScore, stablefordPoints, achievementType };
       }),
 
-    getPlayerScorecard: publicProcedure
+    getPlayerScorecard: tripScopedProcedure
       .input(z.object({ roundId: z.number(), userId: z.number() }))
       .query(async ({ input }) => {
         const round = await getRound(input.roundId);
@@ -2077,7 +2084,7 @@ export const appRouter = router({
         return { success: true, message };
       }),
 
-    listByTrip: publicProcedure
+    listByTrip: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         const achievementList = await getAchievementsByTrip(input.tripId);
@@ -2096,7 +2103,7 @@ export const appRouter = router({
   // ─── Notifications ────────────────────────────────────────────────────────
 
   notifications: router({
-    list: publicProcedure
+    list: tripScopedProcedure
       .input(z.object({ tripId: z.number(), limit: z.number().optional() }))
       .query(({ input }) => getNotificationsByTrip(input.tripId, input.limit ?? 50)),
   }),
@@ -2176,7 +2183,7 @@ export const appRouter = router({
         return { updated };
       }),
 
-    history: publicProcedure
+    history: tripScopedProcedure
       .input(z.object({ tripId: z.number(), userId: z.number().optional() }))
       .query(({ input }) => getHandicapHistory(input.tripId, input.userId)),
   }),
@@ -2184,7 +2191,7 @@ export const appRouter = router({
   // ─── Leaderboards ─────────────────────────────────────────────────────────
 
   leaderboard: router({
-    daily: publicProcedure
+    daily: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const round = await getRound(input.roundId);
@@ -2324,7 +2331,7 @@ export const appRouter = router({
         return { round, trip, roundScoringMode, strokePlay: strokePlayWithAch, fourBBB: fourBBBResults, skins: skinsResults, effectiveBaseline };
       }),
 
-        trip: publicProcedure
+        trip: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         const leaderboard = await getTripLeaderboard(input.tripId);
@@ -2382,7 +2389,7 @@ export const appRouter = router({
         return { strokePlay, stableford, fourBBB, ambrose, hasAmbroseRound, hasFourBBBRound, bestDayStableford, bestDayStroke, individualScoringMode, tournamentType, pennantLeaderboard, hasMatchPlayRound };
       }),
 
-    fourBBBPairScorecard: publicProcedure
+    fourBBBPairScorecard: tripScopedProcedure
       .input(z.object({ roundId: z.number(), player1Id: z.number(), player2Id: z.number() }))
       .query(async ({ input }) => {
         const scorecard = await getFourBBBPairScorecard(input.roundId, input.player1Id, input.player2Id);
@@ -2394,7 +2401,7 @@ export const appRouter = router({
   // ─── Side Matches ─────────────────────────────────────────────────────────
 
   sideMatches: router({
-    list: publicProcedure
+    list: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const matches = await getSideMatchesByRound(input.roundId);
@@ -2421,7 +2428,7 @@ export const appRouter = router({
         );
       }),
 
-    listByGroup: publicProcedure
+    listByGroup: tripScopedProcedure
       .input(z.object({ groupId: z.number() }))
       .query(async ({ input }) => {
         const matches = await getSideMatchesByGroup(input.groupId);
@@ -2433,7 +2440,7 @@ export const appRouter = router({
         );
       }),
 
-    dailyResults: publicProcedure
+    dailyResults: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => getDailySideMatchResults(input.roundId)),
 
@@ -2483,7 +2490,7 @@ export const appRouter = router({
         return { id };
       }),
 
-    getByRound: publicProcedure
+    getByRound: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const results = await getMatchPlayResultsByRound(input.roundId);
@@ -3055,7 +3062,7 @@ export const appRouter = router({
   // ─── Nearest to Pin ─────────────────────────────────────────────────────────
   ntp: router({
     // Public: get all NTP holes for a round with entries and current leader
-    getByRound: publicProcedure
+    getByRound: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(({ input }) => getNtpByRound(input.roundId)),
 
@@ -3378,14 +3385,14 @@ export const appRouter = router({
   // ─── Ambrose ──────────────────────────────────────────────────────────────
   ambrose: router({
     // Get the leaderboard for an Ambrose round (team standings)
-    getLeaderboard: publicProcedure
+    getLeaderboard: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         return getAmbroseLeaderboard(input.roundId);
       }),
 
     // Get Ambrose scores for a specific group in a round
-    getGroupScores: publicProcedure
+    getGroupScores: tripScopedProcedure
       .input(z.object({ roundId: z.number(), groupId: z.number() }))
       .query(async ({ input }) => {
         return getAmbroseScoresByGroup(input.roundId, input.groupId);
@@ -3434,7 +3441,7 @@ export const appRouter = router({
       }),
 
     // Get trip-level Ambrose leaderboard
-    getTripLeaderboard: publicProcedure
+    getTripLeaderboard: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         return getTripAmbroseLeaderboard(input.tripId);
@@ -3444,7 +3451,7 @@ export const appRouter = router({
   // ─── Pennant Match Play ─────────────────────────────────────────────────────
   pennant: router({
     // Get all teams (with players) for a round
-    getTeams: publicProcedure
+    getTeams: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => getPennantTeams(input.roundId)),
 
@@ -3483,7 +3490,7 @@ export const appRouter = router({
       }),
 
     // Get all fixtures (with hole results) for a round
-    getFixtures: publicProcedure
+    getFixtures: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => getPennantFixtures(input.roundId)),
 
@@ -3540,7 +3547,7 @@ export const appRouter = router({
       }),
 
     // Get team score summary (actual + estimated)
-    getTeamScore: publicProcedure
+    getTeamScore: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => getPennantTeamScore(input.roundId)),
   }),
