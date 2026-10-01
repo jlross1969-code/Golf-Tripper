@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
 import {
   addPlayerToGroup,
   addPlayerToTrip,
@@ -1925,20 +1926,28 @@ export const appRouter = router({
     submit: protectedProcedure
       .input(
         z.object({
-          roundId: z.number(),
-          userId: z.number(),
-          holeId: z.number(),
-          holeNumber: z.number(),
-          par: z.number(),
-          strokeIndex: z.number(),
-          grossScore: z.number().min(1),
-          handicap: z.number().min(0),
+          roundId: z.number().int().positive(),
+          userId: z.number().int().positive(),
+          holeId: z.number().int().positive(),
+          holeNumber: z.number().int().min(1).max(36),
+          par: z.number().int().min(3).max(6),
+          strokeIndex: z.number().int().min(1).max(36),
+          grossScore: z.number().int().min(1).max(30),
+          handicap: z.number().min(0).max(54),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input: rawInput, ctx }) => {
+        const round = await assertRoundMember(ctx.user, rawInput.roundId);
+        if (rawInput.userId !== ctx.user.id && !(await getTripPlayer(round.tripId, rawInput.userId))) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Player is not part of this trip" });
+        }
+        const courseHoles = await getHolesByCourse(round.courseId);
+        const hole = courseHoles.find((h) => h.id === rawInput.holeId);
+        if (!hole) throw new TRPCError({ code: "BAD_REQUEST", message: "Hole does not belong to this round" });
+        // Par and stroke index come from the course, never from the client.
+        const input = { ...rawInput, par: hole.par, strokeIndex: hole.strokeIndex, holeNumber: hole.holeNumber ?? rawInput.holeNumber };
         // Apply mercy rule cap if enabled for this round
         let effectiveGross = input.grossScore;
-        const round = await getRound(input.roundId);
         if (round?.mercyRuleEnabled) {
           const maxScore = input.par + (round.mercyRuleStrokes ?? 5);
           if (effectiveGross > maxScore) effectiveGross = maxScore;
@@ -2437,7 +2446,8 @@ export const appRouter = router({
           players: z.array(z.object({ userId: z.number(), partnerId: z.number().optional() })),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, input.roundId);
         const matchId = await createSideMatch({ groupId: input.groupId, roundId: input.roundId, type: input.type });
         for (const p of input.players) {
           await addSideMatchPlayer({ sideMatchId: matchId, userId: p.userId, partnerId: p.partnerId });
@@ -2447,7 +2457,8 @@ export const appRouter = router({
 
     updateStatus: protectedProcedure
       .input(z.object({ id: z.number(), status: z.enum(["pending", "active", "completed"]) }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, await roundIdForSideMatch(input.id));
         await updateSideMatchStatus(input.id, input.status);
         return { success: true };
       }),
@@ -2466,7 +2477,8 @@ export const appRouter = router({
           player2PartnerId: z.number().optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, input.roundId);
         const id = await createMatchPlayResult(input);
         return { id };
       }),
@@ -2507,21 +2519,27 @@ export const appRouter = router({
     submitHoleResult: protectedProcedure
       .input(
         z.object({
-          matchId: z.number(),
-          holeNumber: z.number(),
-          player1NetScore: z.number(),
-          player2NetScore: z.number(),
-          totalHoles: z.number().default(18),
+          matchId: z.number().int().positive(),
+          holeNumber: z.number().int().min(1).max(36),
+          player1NetScore: z.number().min(-10).max(40),
+          player2NetScore: z.number().min(-10).max(40),
+          totalHoles: z.number().int().min(1).max(36).default(18),
           // For alternate shot: which player tees off next hole
           nextTeePlayer: z.number().optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const match = await getMatchPlayResult(input.matchId);
         if (!match) throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
+        await assertRoundMember(ctx.user, match.roundId);
 
-        const existingResults: { holeNumber: number; result: "player1" | "player2" | "halved" }[] =
-          JSON.parse(match.holeResults || "[]");
+        let existingResults: { holeNumber: number; result: "player1" | "player2" | "halved" }[] = [];
+        try {
+          const parsed = JSON.parse(match.holeResults || "[]");
+          if (Array.isArray(parsed)) existingResults = parsed;
+        } catch {
+          existingResults = [];
+        }
 
         // Remove any existing result for this hole (re-entry)
         const filtered = existingResults.filter((r) => r.holeNumber !== input.holeNumber);
@@ -3383,9 +3401,8 @@ export const appRouter = router({
         grossScore: z.number().min(1).max(20),
         selectedDriveUserId: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
-        const round = await getRound(input.roundId);
-        if (!round) throw new TRPCError({ code: "NOT_FOUND", message: "Round not found" });
+      .mutation(async ({ input, ctx }) => {
+        const round = await assertRoundMember(ctx.user, input.roundId);
         const courseHoles = await getHolesByCourse(round.courseId);
         const hole = courseHoles.find((h) => h.id === input.holeId);
         if (!hole) throw new TRPCError({ code: "NOT_FOUND", message: "Hole not found" });
@@ -3433,8 +3450,9 @@ export const appRouter = router({
 
     // Create a team
     createTeam: protectedProcedure
-      .input(z.object({ roundId: z.number(), name: z.string().min(1), emoji: z.string().default("🏌️") }))
-      .mutation(async ({ input }) => {
+      .input(z.object({ roundId: z.number(), name: z.string().trim().min(1).max(100), emoji: z.string().max(10).default("🏌️") }))
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
         const id = await createPennantTeam(input.roundId, input.name, input.emoji);
         return { id };
       }),
@@ -3442,17 +3460,27 @@ export const appRouter = router({
     // Delete a team (also removes all its players)
     deleteTeam: protectedProcedure
       .input(z.object({ teamId: z.number() }))
-      .mutation(async ({ input }) => deletePennantTeam(input.teamId)),
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, await roundIdForPennantTeam(input.teamId));
+        return deletePennantTeam(input.teamId);
+      }),
 
     // Assign a player to a team (moves them from any other team)
     assignPlayer: protectedProcedure
       .input(z.object({ teamId: z.number(), roundId: z.number(), userId: z.number().nullable().optional(), tripPlayerId: z.number().nullable().optional(), inviteId: z.number().optional() }))
-      .mutation(async ({ input }) => assignPlayerToTeam(input.teamId, input.roundId, input.userId ?? null, input.tripPlayerId ?? null, input.inviteId)),
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
+        if ((await roundIdForPennantTeam(input.teamId)) !== input.roundId) throw new TRPCError({ code: "BAD_REQUEST", message: "Team does not belong to this round" });
+        return assignPlayerToTeam(input.teamId, input.roundId, input.userId ?? null, input.tripPlayerId ?? null, input.inviteId);
+      }),
 
     // Remove a player from their team
     removePlayer: protectedProcedure
       .input(z.object({ roundId: z.number(), userId: z.number() }))
-      .mutation(async ({ input }) => removePlayerFromTeam(input.roundId, input.userId)),
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
+        return removePlayerFromTeam(input.roundId, input.userId);
+      }),
 
     // Get all fixtures (with hole results) for a round
     getFixtures: publicProcedure
@@ -3472,7 +3500,11 @@ export const appRouter = router({
         player1BId: z.number(),
         player2BId: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
+        for (const teamId of [input.teamAId, input.teamBId]) {
+          if ((await roundIdForPennantTeam(teamId)) !== input.roundId) throw new TRPCError({ code: "BAD_REQUEST", message: "Team does not belong to this round" });
+        }
         const id = await createPennantFixture(input);
         return { id };
       }),
@@ -3480,21 +3512,25 @@ export const appRouter = router({
     // Delete a fixture
     deleteFixture: protectedProcedure
       .input(z.object({ fixtureId: z.number() }))
-      .mutation(async ({ input }) => deletePennantFixture(input.fixtureId)),
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, await roundIdForPennantFixture(input.fixtureId));
+        return deletePennantFixture(input.fixtureId);
+      }),
 
     // Submit hole scores for a fixture hole
     submitHole: protectedProcedure
       .input(z.object({
-        fixtureId: z.number(),
-        holeNumber: z.number(),
-        gross1A: z.number(),
-        gross2A: z.number().optional(),
-        gross1B: z.number(),
-        gross2B: z.number().optional(),
-        holeStrokeIndex: z.number(),
-        holePar: z.number(),
+        fixtureId: z.number().int().positive(),
+        holeNumber: z.number().int().min(1).max(36),
+        gross1A: z.number().int().min(1).max(30),
+        gross2A: z.number().int().min(1).max(30).optional(),
+        gross1B: z.number().int().min(1).max(30),
+        gross2B: z.number().int().min(1).max(30).optional(),
+        holeStrokeIndex: z.number().int().min(1).max(36),
+        holePar: z.number().int().min(3).max(6),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, await roundIdForPennantFixture(input.fixtureId));
         await submitPennantHoleScores(
           input.fixtureId, input.holeNumber,
           input.gross1A, input.gross2A ?? null,
