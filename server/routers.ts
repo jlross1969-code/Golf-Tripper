@@ -2104,7 +2104,7 @@ export const appRouter = router({
 
   notifications: router({
     list: tripScopedProcedure
-      .input(z.object({ tripId: z.number(), limit: z.number().optional() }))
+      .input(z.object({ tripId: z.number(), limit: z.number().int().min(1).max(200).optional() }))
       .query(({ input }) => getNotificationsByTrip(input.tripId, input.limit ?? 50)),
   }),
 

@@ -1,11 +1,13 @@
 import {
   boolean,
   float,
+  index,
   int,
   mysqlEnum,
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -182,7 +184,7 @@ export const tripPlayers = mysqlTable("trip_players", {
   // Co-admin: can perform admin actions on this trip (max 4 per trip, assigned by owner)
   isCoAdmin: boolean("isCoAdmin").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("trip_players_trip_user_idx").on(t.tripId, t.userId)]);
 
 export type TripPlayer = typeof tripPlayers.$inferSelect;
 
@@ -412,7 +414,7 @@ export const rounds = mysqlTable("rounds", {
   // Optional round-specific logo (falls back to trip logo if not set)
   logoUrl: varchar("logoUrl", { length: 512 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("rounds_trip_idx").on(t.tripId)]);
 
 export type Round = typeof rounds.$inferSelect;
 
@@ -430,7 +432,7 @@ export const groups = mysqlTable("groups", {
   // Starting hole number (1-18)
   startingHole: int("startingHole"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("groups_round_idx").on(t.roundId)]);
 
 export type Group = typeof groups.$inferSelect;
 
@@ -453,7 +455,7 @@ export const groupPlayers = mysqlTable("group_players", {
   teamName: varchar("teamName", { length: 64 }),
   // Optional emoji mascot for the pair (single emoji, shared by both players)
   teamEmoji: varchar("teamEmoji", { length: 8 }),
-});
+}, (t) => [index("group_players_group_idx").on(t.groupId), index("group_players_user_idx").on(t.userId)]);
 
 export type GroupPlayer = typeof groupPlayers.$inferSelect;
 
@@ -470,7 +472,7 @@ export const scores = mysqlTable("scores", {
   mercyCapped: boolean("mercyCapped").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => [uniqueIndex("scores_round_user_hole_unique").on(t.roundId, t.userId, t.holeId), index("scores_user_idx").on(t.userId)]);
 
 export type Score = typeof scores.$inferSelect;
 
@@ -488,7 +490,7 @@ export const achievements = mysqlTable("achievements", {
   confirmed: boolean("confirmed").default(false).notNull(),
   broadcastSent: boolean("broadcastSent").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("achievements_round_idx").on(t.roundId)]);
 
 export type Achievement = typeof achievements.$inferSelect;
 
@@ -501,7 +503,7 @@ export const notifications = mysqlTable("notifications", {
   type: mysqlEnum("type", ["achievement", "round_start", "round_complete", "handicap_update", "general"]).notNull(),
   achievementId: int("achievementId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("notifications_trip_created_idx").on(t.tripId, t.createdAt)]);
 
 export type Notification = typeof notifications.$inferSelect;
 
@@ -592,7 +594,7 @@ export const tripMessages = mysqlTable("trip_messages", {
   pinnedAt: timestamp("pinnedAt"),
   pinnedByUserId: int("pinnedByUserId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("trip_messages_trip_idx").on(t.tripId)]);
 
 export type TripMessage = typeof tripMessages.$inferSelect;
 
