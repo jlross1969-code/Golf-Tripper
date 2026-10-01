@@ -949,3 +949,33 @@ export const matchPlayFixtureHoles = mysqlTable("match_play_fixture_holes", {
 });
 
 export type MatchPlayFixtureHole = typeof matchPlayFixtureHoles.$inferSelect;
+
+// ─── Score audit log and disputes ─────────────────────────────────────────────
+
+export const scoreAuditLog = mysqlTable("score_audit_log", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  userId: int("userId").notNull(),
+  holeId: int("holeId").notNull(),
+  holeNumber: int("holeNumber").notNull(),
+  oldGross: int("oldGross"),
+  newGross: int("newGross").notNull(),
+  changedBy: int("changedBy").notNull(),
+  source: mysqlEnum("source", ["entry", "admin_correction", "offline_sync"]).default("entry").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("score_audit_round_idx").on(t.roundId, t.userId, t.holeId)]);
+
+export const scoreDisputes = mysqlTable("score_disputes", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  userId: int("userId").notNull(),
+  holeId: int("holeId").notNull(),
+  holeNumber: int("holeNumber").notNull(),
+  raisedBy: int("raisedBy").notNull(),
+  note: varchar("note", { length: 500 }).notNull(),
+  status: mysqlEnum("status", ["open", "resolved", "dismissed"]).default("open").notNull(),
+  resolvedBy: int("resolvedBy"),
+  resolutionNote: varchar("resolutionNote", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+}, (t) => [index("score_disputes_round_idx").on(t.roundId, t.status)]);

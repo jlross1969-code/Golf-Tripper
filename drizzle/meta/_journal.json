@@ -330,6 +330,13 @@
       "when": 1790848823058,
       "tag": "0046_nifty_sprite",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1790849514879,
+      "tag": "0047_gifted_gamma_corps",
+      "breakpoints": true
     }
   ]
 }

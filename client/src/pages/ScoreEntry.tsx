@@ -650,6 +650,7 @@ export default function ScoreEntry() {
           <Flag className="w-5 h-5 text-primary" />
           <div>
             <h1 className="font-bold text-foreground text-sm">{round.name}</h1>
+            <Link href={`/round/${id}/review`} className="text-xs text-primary underline">History &amp; disputes</Link>
             {myGroup?.teeTime && (
               <p className="text-xs text-muted-foreground">
                 Tee {myGroup.teeTime}{myGroup.startingHole ? ` · Hole ${myGroup.startingHole}` : ""}

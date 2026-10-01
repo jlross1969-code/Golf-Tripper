@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
 import { tripScopedProcedure, tripViewForUser, assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
 import {
   addPlayerToGroup,
@@ -1941,6 +1942,7 @@ export const appRouter = router({
           strokeIndex: z.number().int().min(1).max(36),
           grossScore: z.number().int().min(1).max(30),
           handicap: z.number().min(0).max(54),
+          source: z.enum(["entry", "offline_sync"]).optional(),
         })
       )
       .mutation(async ({ input: rawInput, ctx }) => {
@@ -1963,6 +1965,7 @@ export const appRouter = router({
         const netScore = calculateNetScore(effectiveGross, input.handicap, input.strokeIndex);
         const stablefordPoints = calculateStablefordPoints(netScore, input.par);
 
+        const previousGross = await getCurrentGross(input.roundId, input.userId, input.holeId);
         await upsertScore({
           roundId: input.roundId,
           userId: input.userId,
@@ -1972,6 +1975,7 @@ export const appRouter = router({
           stablefordPoints,
           mercyCapped: effectiveGross !== input.grossScore,
         });
+        await logScoreChange({ roundId: input.roundId, userId: input.userId, holeId: input.holeId, holeNumber: input.holeNumber, oldGross: previousGross, newGross: effectiveGross, changedBy: ctx.user.id, source: input.source ?? "entry" });
         await recalcMatchesForPlayerScore(input.roundId, input.userId);
 
         // Detect achievement (use original gross so eagles/HIO aren't suppressed)
@@ -2003,9 +2007,11 @@ export const appRouter = router({
           handicap: z.number().min(0),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const netScore = calculateNetScore(input.grossScore, input.handicap, input.strokeIndex);
         const stablefordPoints = calculateStablefordPoints(netScore, input.par);
+        const previousGross = await getCurrentGross(input.roundId, input.userId, input.holeId);
+        await logScoreChange({ roundId: input.roundId, userId: input.userId, holeId: input.holeId, holeNumber: input.holeNumber, oldGross: previousGross, newGross: input.grossScore, changedBy: ctx.user.id, source: "admin_correction" });
         await upsertScore({
           roundId: input.roundId,
           userId: input.userId,
@@ -2034,6 +2040,33 @@ export const appRouter = router({
           hole: h,
           score: scoreMap.get(h.id) ?? null,
         }));
+      }),
+  }),
+
+  scoreReview: router({
+    history: tripScopedProcedure
+      .input(z.object({ roundId: z.number().int().positive(), userId: z.number().int().positive().optional() }))
+      .query(({ input }) => getScoreHistory(input.roundId, input.userId)),
+
+    disputes: tripScopedProcedure
+      .input(z.object({ roundId: z.number().int().positive() }))
+      .query(({ input }) => listDisputes(input.roundId)),
+
+    raiseDispute: protectedProcedure
+      .input(z.object({ roundId: z.number().int().positive(), userId: z.number().int().positive(), holeId: z.number().int().positive(), holeNumber: z.number().int().min(1).max(36), note: z.string().trim().min(3).max(500) }))
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, input.roundId);
+        return { id: await createDispute({ ...input, raisedBy: ctx.user.id }) };
+      }),
+
+    resolveDispute: protectedProcedure
+      .input(z.object({ id: z.number().int().positive(), status: z.enum(["resolved", "dismissed"]), note: z.string().trim().max(500).optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const dispute = await getDispute(input.id);
+        if (!dispute) throw new TRPCError({ code: "NOT_FOUND", message: "Dispute not found" });
+        await assertRoundManager(ctx.user, dispute.roundId);
+        await resolveDispute(input.id, ctx.user.id, input.status, input.note ?? null);
+        return { success: true };
       }),
   }),
 
