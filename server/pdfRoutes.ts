@@ -1,4 +1,4 @@
-import { Express, Request, Response } from "express";
+import { Express, NextFunction, Request, Response } from "express";
 import { generateScorecardPDF, generateTripResultsPDF, generateTeeSheetPDF, generateRoundSummaryPDF, generateSideMatchResultsPDF, generateItineraryPDF, generateExpenseCategoryReportPDF, generateTripFinanceSummaryPDF, ScorecardData, TripResultsData, TeeSheetData, TeeSheetPlayer, RoundSummaryData } from "./pdfExport";
 import { calculate4BBBStablefordPoints, calculateSkins } from "../shared/scoring";
 import { sdk } from "./_core/sdk";
@@ -19,10 +19,48 @@ import {
   getTripSuppliers,
   getTripSupplierInvoiceReviews,
   getTripPlayers,
+  getTripPlayer,
+  isCoAdminForTrip,
   getDailySideMatchResults,
 } from "./db";
 
+type MembershipTarget = { tripId?: number; roundId?: number };
+
+async function requireTripMembership(req: Request, res: Response, next: NextFunction, target: MembershipTarget) {
+  try {
+    let tripId = target.tripId;
+    if (tripId === undefined && target.roundId !== undefined) {
+      if (!Number.isInteger(target.roundId)) return res.status(400).json({ error: "Invalid roundId" });
+      tripId = (await getRound(target.roundId))?.tripId;
+      if (tripId === undefined) return res.status(404).json({ error: "Round not found" });
+    }
+    if (tripId === undefined || !Number.isInteger(tripId)) return res.status(400).json({ error: "Invalid tripId" });
+    const user = await sdk.authenticateRequest(req).catch(() => null);
+    if (!user) return res.status(401).json({ error: "Login required" });
+    const trip = await getTrip(tripId);
+    if (!trip) return res.status(404).json({ error: "Trip not found" });
+    const allowed =
+      user.role === "admin" ||
+      trip.createdBy === user.id ||
+      !!(await getTripPlayer(tripId, user.id)) ||
+      (await isCoAdminForTrip(user.id, tripId));
+    if (!allowed) return res.status(403).json({ error: "You are not a member of this trip" });
+    next();
+  } catch (error) {
+    console.error("[PDF] Access check failed", error);
+    res.status(500).json({ error: "Access check failed" });
+  }
+}
+
 export function registerPdfRoutes(app: Express) {
+  // Report routes expose trip data, so require a logged-in trip member.
+  app.get("/api/pdf/itinerary/:tripId", (req, res, next) => requireTripMembership(req, res, next, { tripId: Number(req.params.tripId) }));
+  app.get("/api/pdf/trip/:tripId", (req, res, next) => requireTripMembership(req, res, next, { tripId: Number(req.params.tripId) }));
+  app.get("/api/pdf/teesheet/:tripId/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId) }));
+  app.get("/api/pdf/side-matches/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId) }));
+  app.get("/api/pdf/scorecard/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId) }));
+  app.get("/api/pdf/round-summary/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId) }));
+
   app.get("/api/pdf/itinerary/:tripId", async (req: Request, res: Response) => {
     try {
       const tripId = Number(req.params.tripId);
