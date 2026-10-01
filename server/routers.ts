@@ -5,7 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
-import { tripScopedProcedure, tripViewForUser, assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
+import { assertTripManager, tripScopedProcedure, tripViewForUser, assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
 import {
   addPlayerToGroup,
   addPlayerToTrip,
@@ -2067,6 +2067,49 @@ export const appRouter = router({
         await assertRoundManager(ctx.user, dispute.roundId);
         await resolveDispute(input.id, ctx.user.id, input.status, input.note ?? null);
         return { success: true };
+      }),
+  }),
+
+  // ─── Spectator (read-only, token-gated, no login) ───────────────────────────
+  spectator: router({
+    getLink: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive(), origin: z.string().url() }))
+      .mutation(async ({ input, ctx }) => {
+        const trip = await assertTripManager(ctx.user, input.tripId);
+        let token = trip.spectatorToken;
+        if (!token) {
+          token = (await import("nanoid")).nanoid(32);
+          await updateTrip(input.tripId, { spectatorToken: token });
+        }
+        return { url: `${input.origin}/watch/${input.tripId}?t=${token}` };
+      }),
+
+    revoke: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripManager(ctx.user, input.tripId);
+        await updateTrip(input.tripId, { spectatorToken: null });
+        return { success: true };
+      }),
+
+    view: publicProcedure
+      .input(z.object({ tripId: z.number().int().positive(), token: z.string().min(16).max(64) }))
+      .query(async ({ input }) => {
+        const trip = await getTrip(input.tripId);
+        const expected = trip?.spectatorToken;
+        const a = Buffer.from(input.token);
+        const b = Buffer.from(expected ?? "");
+        if (!trip || !expected || a.length !== b.length || !(await import("node:crypto")).timingSafeEqual(a, b)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "This spectator link is not valid" });
+        }
+        const [leaderboard, rounds] = await Promise.all([getTripLeaderboard(input.tripId), getRoundsByTrip(input.tripId)]);
+        return {
+          trip: { name: trip.name, startDate: trip.startDate, endDate: trip.endDate, location: trip.location, logoUrl: trip.logoUrl },
+          rounds: rounds.map((r) => ({ id: r.id, name: r.name, roundDate: r.roundDate, status: r.status })),
+          leaderboard: leaderboard
+            .map((p) => ({ userName: p.userName, photoUrl: p.photoUrl, holesPlayed: p.rounds.reduce((n, r) => n + r.holesPlayed, 0), gross: p.cumulativeGross, net: p.cumulativeNet, stableford: p.cumulativeStableford }))
+            .sort((x, y) => y.stableford - x.stableford),
+        };
       }),
   }),
 

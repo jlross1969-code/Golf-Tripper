@@ -107,6 +107,8 @@ export const trips = mysqlTable("trips", {
   location: varchar("location", { length: 255 }),
   description: text("description"),
   shareToken: varchar("shareToken", { length: 64 }),
+  // Read-only spectator link token. Separate from shareToken, which lets people join the trip.
+  spectatorToken: varchar("spectatorToken", { length: 64 }),
   rules: text("rules"),
   logoUrl: varchar("logoUrl", { length: 512 }),
   // Optional colour scheme applied to players who have not chosen a personal appearance preference.

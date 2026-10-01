@@ -337,6 +337,13 @@
       "when": 1790849514879,
       "tag": "0047_gifted_gamma_corps",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "5",
+      "when": 1790849661782,
+      "tag": "0048_many_retro_girl",
+      "breakpoints": true
     }
   ]
 }

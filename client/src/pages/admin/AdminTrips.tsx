@@ -171,6 +171,22 @@ export default function AdminTrips() {
     onError: (e) => toast.error(e.message),
   });
 
+  const spectatorLinkMutation = trpc.spectator.getLink.useMutation({
+    onSuccess: async (data) => {
+      try {
+        await navigator.clipboard.writeText(data.url);
+        toast.success("Spectator link copied. Anyone with it can view the leaderboard.");
+      } catch {
+        toast.error("Could not copy to clipboard");
+      }
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const revokeSpectatorMutation = trpc.spectator.revoke.useMutation({
+    onSuccess: () => toast.success("Spectator link revoked."),
+    onError: (e) => toast.error(e.message),
+  });
+
   function copyInviteLink(tripId: number) {
     getShareLinkMutation.mutate({ tripId, origin: window.location.origin });
   }
@@ -293,6 +309,18 @@ export default function AdminTrips() {
                       disabled={getShareLinkMutation.isPending}
                       onClick={() => copyInviteLink(trip.id)}>
                       <Copy className="w-3 h-3" /> Copy Invite
+                    </Button>
+                    <Button size="sm" variant="outline" className="gap-1 text-xs"
+                      disabled={spectatorLinkMutation.isPending}
+                      title="Copy a read-only leaderboard link for friends and family"
+                      onClick={() => spectatorLinkMutation.mutate({ tripId: trip.id, origin: window.location.origin })}>
+                      <Copy className="w-3 h-3" /> Spectator link
+                    </Button>
+                    <Button size="sm" variant="outline" className="gap-1 text-xs text-amber-400 border-amber-800 hover:bg-amber-900/30"
+                      disabled={revokeSpectatorMutation.isPending}
+                      title="Revoke the spectator link"
+                      onClick={() => revokeSpectatorMutation.mutate({ tripId: trip.id })}>
+                      <Link2Off className="w-3 h-3" />
                     </Button>
                     {(trip as any).shareToken && (
                       <Button size="sm" variant="outline" className="gap-1 text-xs text-amber-400 border-amber-800 hover:bg-amber-900/30"
