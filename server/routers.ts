@@ -2178,6 +2178,53 @@ export const appRouter = router({
       }),
   }),
 
+  // ─── Trip recap ─────────────────────────────────────────────────────────────
+  recap: router({
+    get: tripScopedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const [trip, leaderboard, rounds, awardList, achievementList] = await Promise.all([
+          getTrip(input.tripId), getTripLeaderboard(input.tripId), getRoundsByTrip(input.tripId), getAwardsByTrip(input.tripId), getAchievementsByTrip(input.tripId),
+        ]);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        return {
+          trip: { name: trip.name, startDate: trip.startDate, endDate: trip.endDate, location: trip.location },
+          standings: leaderboard
+            .map((p) => ({ name: p.userName ?? "Player", stableford: p.cumulativeStableford, net: p.cumulativeNet, gross: p.cumulativeGross, holesPlayed: p.rounds.reduce((n, r) => n + r.holesPlayed, 0) }))
+            .sort((a, b) => b.stableford - a.stableford),
+          rounds: rounds.map((r) => ({ name: r.name, roundDate: r.roundDate })),
+          awards: awardList.filter((a) => a.winner).map((a) => ({ name: (a as { name?: string }).name ?? "Award", winner: a.winner?.displayName ?? "Unknown" })),
+          highlights: achievementList.map((a) => ({ player: a.playerName ?? "Player", type: a.type, holeNumber: a.holeNumber, par: a.par, grossScore: a.grossScore })),
+        };
+      }),
+
+    narrative: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripManager(ctx.user, input.tripId);
+        const [trip, leaderboard, awardList, achievementList] = await Promise.all([getTrip(input.tripId), getTripLeaderboard(input.tripId), getAwardsByTrip(input.tripId), getAchievementsByTrip(input.tripId)]);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        const facts = {
+          trip: trip.name,
+          standings: leaderboard.map((p) => ({ name: p.userName, stableford: p.cumulativeStableford })).sort((a, b) => b.stableford - a.stableford).slice(0, 10),
+          awards: awardList.filter((a) => a.winner).map((a) => ({ award: (a as { name?: string }).name, winner: a.winner?.displayName })),
+          highlights: achievementList.map((a) => ({ player: a.playerName, type: a.type, hole: a.holeNumber })),
+        };
+        const response = await invokeLLM({
+          model: "gpt-5-mini",
+          maxTokens: 700,
+          messages: [
+            { role: "system", content: "Write a warm, light-hearted 3 paragraph trip recap in Australian English using ONLY the facts supplied. Do not invent scores, names, or events. No Markdown." },
+            { role: "user", content: JSON.stringify(facts) },
+          ],
+        });
+        const content = response.choices[0]?.message.content;
+        const text = typeof content === "string" ? content.trim() : content?.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
+        if (!text) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The recap could not be written" });
+        return { text };
+      }),
+  }),
+
   // ─── Achievements ─────────────────────────────────────────────────────────
 
   achievements: router({
