@@ -1010,3 +1010,26 @@ export const scoreAttestations = mysqlTable("score_attestations", {
   role: mysqlEnum("role", ["player", "marker"]).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (t) => [uniqueIndex("score_attestations_unique").on(t.roundId, t.userId, t.attestedBy)]);
+
+// ─── Email/password login ─────────────────────────────────────────────────────
+
+export const passwordCredentials = mysqlTable("password_credentials", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+// Single-use emailed tokens. Only a SHA-256 of the token is stored.
+export const authTokens = mysqlTable("auth_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  purpose: mysqlEnum("purpose", ["verify_email", "reset_password"]).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  // Registration details held until the email address is proven.
+  name: varchar("name", { length: 255 }),
+  passwordHash: varchar("passwordHash", { length: 255 }),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("auth_tokens_email_idx").on(t.email)]);

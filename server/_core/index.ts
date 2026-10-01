@@ -7,6 +7,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { registerPasswordAuthRoutes } from "../passwordAuth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -67,6 +68,7 @@ async function startServer() {
   app.use("/api/upload", rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  registerPasswordAuthRoutes(app);
   registerPdfRoutes(app);
   registerUploadRoutes(app);
   registerScheduledTripEventRoutes(app);

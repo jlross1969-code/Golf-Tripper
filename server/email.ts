@@ -177,3 +177,17 @@ This invite link is personal to you. If you didn't expect this email, you can sa
     return { success: false, error: message };
   }
 }
+
+/** Plain transactional email (verification, password reset). Never throws. */
+export async function sendPlainEmail(params: { to: string; subject: string; text: string }): Promise<{ success: boolean; error?: string }> {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("[Email] RESEND_API_KEY not set — skipping email send");
+    return { success: false, error: "Email service not configured" };
+  }
+  try {
+    const result = await resend.emails.send({ from: "Golf Trip App <onboarding@resend.dev>", to: params.to, subject: params.subject, text: params.text });
+    return result.error ? { success: false, error: result.error.message } : { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}

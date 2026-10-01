@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { applyTextSize, getTextSize } from "./lib/textSize";
-import { getLoginUrl } from "./const";
+import { getSignInUrl } from "./const";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -19,7 +19,8 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
 
-  window.location.href = getLoginUrl();
+  if (window.location.pathname.startsWith("/login")) return;
+  window.location.href = getSignInUrl();
 };
 
 queryClient.getQueryCache().subscribe(event => {
