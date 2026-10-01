@@ -187,6 +187,20 @@ export default function AdminTrips() {
     onError: (e) => toast.error(e.message),
   });
 
+  const duplicateTripMutation = trpc.trips.duplicate.useMutation({
+    onSuccess: (data) => { toast.success(`Trip copied with ${data.roundCount} rounds (shifted ${data.shiftDays} days)`); refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function duplicateTrip(trip: { id: number; name: string; startDate: Date | string }) {
+    const name = window.prompt("Name for the new trip", `${trip.name} (copy)`);
+    if (!name) return;
+    const defaultStart = new Date(new Date(trip.startDate).getTime() + 365 * 86_400_000).toISOString().slice(0, 10);
+    const start = window.prompt("Start date of the new trip (YYYY-MM-DD). Rounds and itinerary shift to match.", defaultStart);
+    if (!start) return;
+    duplicateTripMutation.mutate({ sourceTripId: trip.id, name, startDate: start });
+  }
+
   function copyInviteLink(tripId: number) {
     getShareLinkMutation.mutate({ tripId, origin: window.location.origin });
   }
@@ -303,6 +317,13 @@ export default function AdminTrips() {
                     {isGlobalAdmin && (
                       <Button size="sm" variant="outline" className="gap-1 text-xs flex-1" onClick={() => openEdit(trip as Trip)}>
                         <Pencil className="w-3 h-3" /> Edit
+                      </Button>
+                    )}
+                    {isGlobalAdmin && (
+                      <Button size="sm" variant="outline" className="gap-1 text-xs" disabled={duplicateTripMutation.isPending}
+                        title="Copy settings, rounds and itinerary into a new trip"
+                        onClick={() => duplicateTrip(trip as Trip)}>
+                        <Copy className="w-3 h-3" /> Duplicate
                       </Button>
                     )}
                     <Button size="sm" variant="outline" className="gap-1 text-xs flex-1 text-primary border-primary/30 hover:bg-primary/10"

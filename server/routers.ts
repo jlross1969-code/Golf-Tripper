@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
+import { duplicateTrip } from "./tripDuplicate";
 import { addSettlement, deleteSettlement, getSettlement, listSettlements, setSettlementPaid } from "./settleUpDb";
 import { simplifyDebts } from "../shared/settleUp";
 import { loadRound, assertTripMember, assertTripManager, tripScopedProcedure, tripViewForUser, assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
@@ -682,6 +683,15 @@ export const appRouter = router({
           hideCourses: input.hideCourses,
         });
         return { tripId };
+      }),
+
+    duplicate: adminProcedure
+      .input(z.object({ sourceTripId: z.number().int().positive(), name: z.string().trim().min(1).max(255), startDate: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const start = new Date(input.startDate);
+        if (Number.isNaN(start.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid start date" });
+        if (!(await getTrip(input.sourceTripId))) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        return duplicateTrip(input.sourceTripId, ctx.user.id, input.name, start);
       }),
 
     update: adminProcedure
