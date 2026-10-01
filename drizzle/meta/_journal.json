@@ -351,6 +351,13 @@
       "when": 1790849813620,
       "tag": "0049_abnormal_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1790850203949,
+      "tag": "0050_petite_betty_brant",
+      "breakpoints": true
     }
   ]
 }

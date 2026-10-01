@@ -996,3 +996,14 @@ export const tripSettlements = mysqlTable("trip_settlements", {
   createdBy: int("createdBy").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (t) => [index("trip_settlements_trip_idx").on(t.tripId)]);
+
+// ─── Scorecard attestation (player + marker sign-off) ─────────────────────────
+
+export const scoreAttestations = mysqlTable("score_attestations", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  userId: int("userId").notNull(),
+  attestedBy: int("attestedBy").notNull(),
+  role: mysqlEnum("role", ["player", "marker"]).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [uniqueIndex("score_attestations_unique").on(t.roundId, t.userId, t.attestedBy)]);

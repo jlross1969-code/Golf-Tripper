@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
+import { addAttestation, getAttestations, isCardSigned, removeAttestations, sharedGroup } from "./scoreAttestation";
 import { getProjectBackupSettings } from "./projectBackupDb";
 import { createPrivateProjectBackup, decryptBackup, fetchStoredFile } from "./projectBackupService";
 import { duplicateTrip } from "./tripDuplicate";
@@ -1967,6 +1968,10 @@ export const appRouter = router({
         const courseHoles = await getHolesByCourse(round.courseId);
         const hole = courseHoles.find((h) => h.id === rawInput.holeId);
         if (!hole) throw new TRPCError({ code: "BAD_REQUEST", message: "Hole does not belong to this round" });
+        if (await isCardSigned(round.id, rawInput.userId)) {
+          try { await assertTripManager(ctx.user, round.tripId); }
+          catch { throw new TRPCError({ code: "FORBIDDEN", message: "This scorecard has been signed by the player and marker. Ask a trip admin to correct it." }); }
+        }
         // Par and stroke index come from the course, never from the client.
         const input = { ...rawInput, par: hole.par, strokeIndex: hole.strokeIndex, holeNumber: hole.holeNumber ?? rawInput.holeNumber };
         // Apply mercy rule cap if enabled for this round
@@ -2261,6 +2266,35 @@ export const appRouter = router({
     }),
 
     runNow: adminProcedure.mutation(async () => createPrivateProjectBackup()),
+  }),
+
+  // ─── Scorecard attestation ──────────────────────────────────────────────────
+  attestation: router({
+    list: tripScopedProcedure
+      .input(z.object({ roundId: z.number().int().positive() }))
+      .query(({ input }) => getAttestations(input.roundId)),
+
+    /** Player signs their own card; a groupmate signs as marker. */
+    sign: protectedProcedure
+      .input(z.object({ roundId: z.number().int().positive(), userId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, input.roundId);
+        const role = input.userId === ctx.user.id ? "player" : "marker";
+        if (role === "marker" && !(await sharedGroup(input.roundId, ctx.user.id, input.userId))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only someone in the player's group can mark their card" });
+        }
+        await addAttestation({ roundId: input.roundId, userId: input.userId, attestedBy: ctx.user.id, role });
+        return { role, signed: await isCardSigned(input.roundId, input.userId) };
+      }),
+
+    /** Trip admins can reopen a card for correction. */
+    reopen: protectedProcedure
+      .input(z.object({ roundId: z.number().int().positive(), userId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
+        await removeAttestations(input.roundId, input.userId);
+        return { success: true };
+      }),
   }),
 
   // ─── Achievements ─────────────────────────────────────────────────────────

@@ -18,6 +18,15 @@ export default function ScoreReview() {
   const { data: history } = trpc.scoreReview.history.useQuery({ roundId: id });
   const { data: disputes } = trpc.scoreReview.disputes.useQuery({ roundId: id });
   const { data: players } = trpc.players.tripPlayers.useQuery({ tripId: round?.round.tripId ?? 0 }, { enabled: !!round });
+  const { data: attestations } = trpc.attestation.list.useQuery({ roundId: id });
+  const sign = trpc.attestation.sign.useMutation({
+    onSuccess: (r) => { utils.attestation.list.invalidate({ roundId: id }); toast.success(r.signed ? "Card signed by both" : `Signed as ${r.role}`); },
+    onError: (e) => toast.error(e.message),
+  });
+  const reopen = trpc.attestation.reopen.useMutation({
+    onSuccess: () => utils.attestation.list.invalidate({ roundId: id }),
+    onError: (e) => toast.error(e.message),
+  });
   const [resolutionNote, setResolutionNote] = useState("");
   const [disputeNote, setDisputeNote] = useState("");
 
@@ -46,6 +55,28 @@ export default function ScoreReview() {
         <h1 className="font-bold text-foreground">Score history &amp; disputes</h1>
       </header>
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-8">
+        <section>
+          <h2 className="text-lg font-bold mb-1">Scorecard sign-off</h2>
+          <p className="text-xs text-muted-foreground mb-3">Players sign their own card and a playing partner signs as marker. Signed cards lock for editing.</p>
+          <ul className="divide-y divide-border bg-card border border-border rounded-xl">
+            {players?.map((p) => {
+              const rows = attestations?.filter((a) => a.userId === p.userId) ?? [];
+              const playerSigned = rows.some((a) => a.role === "player");
+              const markerSigned = rows.some((a) => a.role === "marker");
+              return (
+                <li key={p.userId} className="p-3 flex flex-wrap items-center gap-2 text-sm">
+                  <span className="flex-1 min-w-32 font-medium">{nameOf(p.userId)}</span>
+                  <Badge variant={playerSigned ? "secondary" : "outline"}>player {playerSigned ? "✓" : "–"}</Badge>
+                  <Badge variant={markerSigned ? "secondary" : "outline"}>marker {markerSigned ? "✓" : "–"}</Badge>
+                  <Button size="sm" variant="outline" disabled={sign.isPending} onClick={() => sign.mutate({ roundId: id, userId: p.userId })}>
+                    {p.userId === me?.id ? "Sign my card" : "Sign as marker"}
+                  </Button>
+                  {playerSigned && markerSigned && <Button size="sm" variant="ghost" onClick={() => reopen.mutate({ roundId: id, userId: p.userId })}>Reopen</Button>}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
         <section>
           <h2 className="text-lg font-bold mb-3 flex items-center gap-2"><Flag className="w-5 h-5 text-primary" /> Disputes</h2>
           {myLatest && (
