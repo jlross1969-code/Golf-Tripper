@@ -14,6 +14,7 @@ import AdminGroups from "./pages/admin/AdminGroups";
 import AdminHandicap from "./pages/admin/AdminHandicap";
 import AdminCourses from "./pages/admin/AdminCourses";
 import AdminBackups from "./pages/admin/AdminBackups";
+import MyStats from "./pages/MyStats";
 import TripRecap from "./pages/TripRecap";
 import TripSettleUp from "./pages/TripSettleUp";
 import SpectatorView from "./pages/SpectatorView";
@@ -106,6 +107,7 @@ function Router() {
       <Route path="/watch/:tripId" component={SpectatorView} />
       <Route path="/trip/:tripId/settle-up" component={TripSettleUp} />
       <Route path="/trip/:tripId/recap" component={TripRecap} />
+      <Route path="/stats" component={MyStats} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
+import { getCareerStats } from "./careerStats";
 import { announceLeaderChange } from "./leaderNotifications";
 import { addAttestation, getAttestations, isCardSigned, removeAttestations, sharedGroup } from "./scoreAttestation";
 import { getProjectBackupSettings } from "./projectBackupDb";
@@ -2185,6 +2186,10 @@ export const appRouter = router({
         await deleteSettlement(input.id, input.tripId);
         return { success: true };
       }),
+  }),
+
+  stats: router({
+    myCareer: protectedProcedure.query(({ ctx }) => getCareerStats(ctx.user.id)),
   }),
 
   // ─── Trip recap ─────────────────────────────────────────────────────────────

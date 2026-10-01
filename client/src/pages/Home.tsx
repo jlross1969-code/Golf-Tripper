@@ -33,6 +33,9 @@ export default function Home() {
               <Link href="/assistant">
                 <Button variant="outline" size="sm" className="gap-2"><Sparkles className="w-3.5 h-3.5" /> Assistant</Button>
               </Link>
+              <Link href="/stats">
+                <Button variant="outline" size="sm" className="gap-2"><BarChart2 className="w-3.5 h-3.5" /> My stats</Button>
+              </Link>
               <Link href="/settings">
                 <Button variant="outline" size="sm" className="gap-2"><Settings className="w-3.5 h-3.5" /> Settings</Button>
               </Link>
