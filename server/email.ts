@@ -1,6 +1,12 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Created on first use: the Resend constructor throws when the key is missing, which would
+// otherwise crash any process that merely imports this module.
+let client: Resend | null = null;
+function getResend() {
+  client ??= new Resend(process.env.RESEND_API_KEY);
+  return client;
+}
 
 export interface InviteEmailParams {
   toName: string;
@@ -156,7 +162,7 @@ This invite link is personal to you. If you didn't expect this email, you can sa
 `;
 
   try {
-    const result = await resend.emails.send({
+    const result = await getResend().emails.send({
       from: "Golf Trip App <onboarding@resend.dev>",
       to: toEmail,
       subject: `You're invited to ${tripName} ⛳`,
@@ -185,7 +191,7 @@ export async function sendPlainEmail(params: { to: string; subject: string; text
     return { success: false, error: "Email service not configured" };
   }
   try {
-    const result = await resend.emails.send({ from: "Golf Trip App <onboarding@resend.dev>", to: params.to, subject: params.subject, text: params.text });
+    const result = await getResend().emails.send({ from: "Golf Trip App <onboarding@resend.dev>", to: params.to, subject: params.subject, text: params.text });
     return result.error ? { success: false, error: result.error.message } : { success: true };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) };
