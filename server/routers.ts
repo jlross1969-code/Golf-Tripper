@@ -4,6 +4,19 @@ import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { createDispute, getCurrentGross, getDispute, getScoreHistory, listDisputes, logScoreChange, resolveDispute } from "./scoreAudit";
+import { matchHandicapRows, parseHandicapCsv } from "../shared/handicapImport";
+import { buildAlbums } from "../shared/gallery";
+import { getTripPhotos } from "./galleryDb";
+import { getCareerStats } from "./careerStats";
+import { announceLeaderChange } from "./leaderNotifications";
+import { addAttestation, getAttestations, isCardSigned, removeAttestations, sharedGroup } from "./scoreAttestation";
+import { getProjectBackupSettings } from "./projectBackupDb";
+import { createPrivateProjectBackup, decryptBackup, fetchStoredFile } from "./projectBackupService";
+import { duplicateTrip } from "./tripDuplicate";
+import { addSettlement, deleteSettlement, getSettlement, listSettlements, setSettlementPaid } from "./settleUpDb";
+import { simplifyDebts } from "../shared/settleUp";
+import { loadRound, assertTripMember, assertTripManager, tripScopedProcedure, tripViewForUser, assertRoundManager, assertRoundMember, roundIdForMatchPlay, roundIdForPennantFixture, roundIdForPennantTeam, roundIdForSideMatch } from "./tripAccess";
 import {
   addPlayerToGroup,
   addPlayerToTrip,
@@ -605,15 +618,22 @@ export const appRouter = router({
       const playerRows = await Promise.all(
         tripIds.map((tid) => getTripPlayer(tid, ctx.user.id))
       );
-      return allTrips.map((t, i) => ({
-        ...t,
-        isCoAdmin: !!(playerRows[i]?.isCoAdmin),
-      }));
+      // Only trips the caller belongs to (platform admins see everything).
+      const visible: typeof allTrips = [];
+      const visibleFlags: boolean[] = [];
+      for (let i = 0; i < allTrips.length; i++) {
+        const t = allTrips[i];
+        if (ctx.user.role === "admin" || t.createdBy === ctx.user.id || playerRows[i]) {
+          visible.push(await tripViewForUser(ctx.user, t) as typeof t);
+          visibleFlags.push(!!(playerRows[i]?.isCoAdmin));
+        }
+      }
+      return visible.map((t, i) => ({ ...t, isCoAdmin: visibleFlags[i] }));
     }),
 
-    get: publicProcedure.input(z.object({ id: z.number() })).query(({ input }) => getTrip(input.id)),
+    get: publicProcedure.input(z.object({ id: z.number() })).query(async ({ input, ctx }) => tripViewForUser(ctx.user, await getTrip(input.id))),
 
-    getTeeSheet: publicProcedure
+    getTeeSheet: tripScopedProcedure
       .input(z.object({ roundId: z.number(), tripId: z.number() }))
       .query(async ({ input }) => {
         const groupList = await getGroupsByRound(input.roundId);
@@ -671,6 +691,15 @@ export const appRouter = router({
           hideCourses: input.hideCourses,
         });
         return { tripId };
+      }),
+
+    duplicate: adminProcedure
+      .input(z.object({ sourceTripId: z.number().int().positive(), name: z.string().trim().min(1).max(255), startDate: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const start = new Date(input.startDate);
+        if (Number.isNaN(start.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid start date" });
+        if (!(await getTrip(input.sourceTripId))) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        return duplicateTrip(input.sourceTripId, ctx.user.id, input.name, start);
       }),
 
     update: adminProcedure
@@ -805,6 +834,18 @@ export const appRouter = router({
   }),
 
   tripFinances: router({
+    setPaymentInfo: protectedProcedure
+      .input(z.object({
+        tripId: z.number().int().positive(),
+        paymentLinkUrl: z.string().trim().max(1024).refine((v) => v === "" || /^https:\/\//i.test(v), "Use a secure https:// link").optional(),
+        paymentInstructions: z.string().trim().max(1000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await assertTripFinancialManager(ctx.user.id, input.tripId, ctx.user.role === "admin");
+        await updateTrip(input.tripId, { paymentLinkUrl: input.paymentLinkUrl || null, paymentInstructions: input.paymentInstructions || null });
+        return { success: true };
+      }),
+
     access: protectedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ ctx, input }) => {
@@ -1140,7 +1181,7 @@ export const appRouter = router({
 
     players: router({
     allUsers: protectedProcedure.query(() => getAllUsers()),
-    tripPlayers: publicProcedure
+    tripPlayers: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(({ input }) => getTripPlayers(input.tripId)),
     allForTrip: adminProcedure
@@ -1185,7 +1226,30 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    handicapHistory: publicProcedure
+    /** Bulk-set handicaps from pasted "name or email, handicap" lines. Use dryRun to preview matches. */
+    importHandicaps: adminProcedure
+      .input(z.object({ tripId: z.number().int().positive(), csv: z.string().max(50_000), dryRun: z.boolean().default(true) }))
+      .mutation(async ({ input, ctx }) => {
+        const rows = parseHandicapCsv(input.csv);
+        if (!rows.length) throw new TRPCError({ code: "BAD_REQUEST", message: "No rows found. Use one \"name or email, handicap\" per line." });
+        if (rows.length > 500) throw new TRPCError({ code: "BAD_REQUEST", message: "Too many rows (max 500)" });
+        const roster = await getTripPlayers(input.tripId);
+        const matches = matchHandicapRows(rows, roster.map((p) => ({ userId: p.userId, email: p.user?.email, name: p.user?.name, nickname: p.nickname })));
+        let applied = 0;
+        if (!input.dryRun) {
+          for (const match of matches) {
+            if (match.status !== "matched") continue;
+            const tp = roster.find((p) => p.userId === match.userId);
+            if (!tp || tp.currentHandicap === match.row.handicap) continue;
+            await recordHandicapChange({ tripId: input.tripId, userId: match.userId, oldHandicap: tp.currentHandicap, newHandicap: match.row.handicap, reason: "Bulk import by admin", isManual: true, adjustedBy: ctx.user.id });
+            await updatePlayerHandicap(input.tripId, match.userId, match.row.handicap);
+            applied++;
+          }
+        }
+        return { applied, dryRun: input.dryRun, results: matches.map((m) => ({ identifier: m.row.identifier, handicap: m.row.handicap, status: m.status, reason: "reason" in m ? m.reason : null })) };
+      }),
+
+    handicapHistory: tripScopedProcedure
       .input(z.object({ tripId: z.number(), userId: z.number().optional() }))
       .query(({ input }) => getHandicapHistory(input.tripId, input.userId)),
 
@@ -1290,15 +1354,14 @@ export const appRouter = router({
   // ─── Rounds ───────────────────────────────────────────────────────────────
 
   rounds: router({
-    list: publicProcedure
+    list: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(({ input }) => getRoundsByTrip(input.tripId)),
 
-    get: publicProcedure
+    get: protectedProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ input }) => {
-        const round = await getRound(input.id);
-        if (!round) throw new TRPCError({ code: "NOT_FOUND" });
+      .query(async ({ input, ctx }) => {
+        const round = await assertRoundMember(ctx.user, input.id);
         const course = await getCourse(round.courseId);
         const courseHoles = await getHolesByCourse(round.courseId);
         const trip = await getTrip(round.tripId);
@@ -1511,7 +1574,7 @@ export const appRouter = router({
   // ─── Groups ───────────────────────────────────────────────────────────────
 
   groups: router({
-    list: publicProcedure
+    list: tripScopedProcedure
       .input(z.object({ roundId: z.number(), tripId: z.number().optional() }))
       .query(async ({ input }) => {
         const groupList = await getGroupsByRound(input.roundId);
@@ -1708,7 +1771,7 @@ export const appRouter = router({
     previewSmartSeed: adminProcedure
       .input(z.object({
         tripId: z.number(),
-        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round"]),
+        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round", "fresh_faces"]),
         pairingMethod: z.enum(["random", "keep_last", "seed_4bbb"]),
         teeOrder: z.enum(["top_first", "bottom_first"]),
         groupSize: z.number().min(2).max(8).default(4),
@@ -1730,7 +1793,7 @@ export const appRouter = router({
       .input(z.object({
         targetRoundId: z.number(),
         tripId: z.number(),
-        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round"]),
+        seedMethod: z.enum(["random", "handicap_mix", "top_together", "previous_round", "fresh_faces"]),
         pairingMethod: z.enum(["random", "keep_last", "seed_4bbb"]),
         teeOrder: z.enum(["top_first", "bottom_first"]),
         groupSize: z.number().min(2).max(8).default(4),
@@ -1782,7 +1845,7 @@ export const appRouter = router({
   // ─── Group Matches (4BBB Matchplay between pairs) ─────────────────────────
   groupMatch: router({
     // Get all group matches for a round with running status
-    getByRound: publicProcedure
+    getByRound: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const matches = (await import("./db").then(db => db.getMatchPlayResultsByRound(input.roundId)))
@@ -1835,9 +1898,10 @@ export const appRouter = router({
       }),
 
     // Get hole-by-hole 4BBB scores for a match (for the detailed view)
-    getHoleByHole: publicProcedure
+    getHoleByHole: protectedProcedure
       .input(z.object({ matchId: z.number() }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, await roundIdForMatchPlay(input.matchId));
         const { getDb } = await import("./db");
         const { matchPlayResults: mpr, scores: scoresTable, holes: holesTable, rounds: roundsTable, groupPlayers: gpTable, tripPlayers: tpTable, users: usersTable, groups: grpTable } = await import("../drizzle/schema");
         const { eq: eqOp, inArray: inArr, and: andOp } = await import("drizzle-orm");
@@ -1925,20 +1989,33 @@ export const appRouter = router({
     submit: protectedProcedure
       .input(
         z.object({
-          roundId: z.number(),
-          userId: z.number(),
-          holeId: z.number(),
-          holeNumber: z.number(),
-          par: z.number(),
-          strokeIndex: z.number(),
-          grossScore: z.number().min(1),
-          handicap: z.number().min(0),
+          roundId: z.number().int().positive(),
+          userId: z.number().int().positive(),
+          holeId: z.number().int().positive(),
+          holeNumber: z.number().int().min(1).max(36),
+          par: z.number().int().min(3).max(6),
+          strokeIndex: z.number().int().min(1).max(36),
+          grossScore: z.number().int().min(1).max(30),
+          handicap: z.number().min(0).max(54),
+          source: z.enum(["entry", "offline_sync"]).optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input: rawInput, ctx }) => {
+        const round = await assertRoundMember(ctx.user, rawInput.roundId);
+        if (rawInput.userId !== ctx.user.id && !(await getTripPlayer(round.tripId, rawInput.userId))) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Player is not part of this trip" });
+        }
+        const courseHoles = await getHolesByCourse(round.courseId);
+        const hole = courseHoles.find((h) => h.id === rawInput.holeId);
+        if (!hole) throw new TRPCError({ code: "BAD_REQUEST", message: "Hole does not belong to this round" });
+        if (await isCardSigned(round.id, rawInput.userId)) {
+          try { await assertTripManager(ctx.user, round.tripId); }
+          catch { throw new TRPCError({ code: "FORBIDDEN", message: "This scorecard has been signed by the player and marker. Ask a trip admin to correct it." }); }
+        }
+        // Par and stroke index come from the course, never from the client.
+        const input = { ...rawInput, par: hole.par, strokeIndex: hole.strokeIndex, holeNumber: hole.holeNumber ?? rawInput.holeNumber };
         // Apply mercy rule cap if enabled for this round
         let effectiveGross = input.grossScore;
-        const round = await getRound(input.roundId);
         if (round?.mercyRuleEnabled) {
           const maxScore = input.par + (round.mercyRuleStrokes ?? 5);
           if (effectiveGross > maxScore) effectiveGross = maxScore;
@@ -1947,6 +2024,7 @@ export const appRouter = router({
         const netScore = calculateNetScore(effectiveGross, input.handicap, input.strokeIndex);
         const stablefordPoints = calculateStablefordPoints(netScore, input.par);
 
+        const previousGross = await getCurrentGross(input.roundId, input.userId, input.holeId);
         await upsertScore({
           roundId: input.roundId,
           userId: input.userId,
@@ -1956,7 +2034,9 @@ export const appRouter = router({
           stablefordPoints,
           mercyCapped: effectiveGross !== input.grossScore,
         });
+        await logScoreChange({ roundId: input.roundId, userId: input.userId, holeId: input.holeId, holeNumber: input.holeNumber, oldGross: previousGross, newGross: effectiveGross, changedBy: ctx.user.id, source: input.source ?? "entry" });
         await recalcMatchesForPlayerScore(input.roundId, input.userId);
+        void announceLeaderChange(input.roundId);
 
         // Detect achievement (use original gross so eagles/HIO aren't suppressed)
         const achievementType = detectAchievement(input.grossScore, input.par);
@@ -1970,7 +2050,7 @@ export const appRouter = router({
         };
       }),
 
-    getScorecard: publicProcedure
+    getScorecard: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(({ input }) => getRoundScorecard(input.roundId)),
 
@@ -1987,9 +2067,11 @@ export const appRouter = router({
           handicap: z.number().min(0),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const netScore = calculateNetScore(input.grossScore, input.handicap, input.strokeIndex);
         const stablefordPoints = calculateStablefordPoints(netScore, input.par);
+        const previousGross = await getCurrentGross(input.roundId, input.userId, input.holeId);
+        await logScoreChange({ roundId: input.roundId, userId: input.userId, holeId: input.holeId, holeNumber: input.holeNumber, oldGross: previousGross, newGross: input.grossScore, changedBy: ctx.user.id, source: "admin_correction" });
         await upsertScore({
           roundId: input.roundId,
           userId: input.userId,
@@ -2004,7 +2086,7 @@ export const appRouter = router({
         return { netScore, stablefordPoints, achievementType };
       }),
 
-    getPlayerScorecard: publicProcedure
+    getPlayerScorecard: tripScopedProcedure
       .input(z.object({ roundId: z.number(), userId: z.number() }))
       .query(async ({ input }) => {
         const round = await getRound(input.roundId);
@@ -2018,6 +2100,254 @@ export const appRouter = router({
           hole: h,
           score: scoreMap.get(h.id) ?? null,
         }));
+      }),
+  }),
+
+  scoreReview: router({
+    history: tripScopedProcedure
+      .input(z.object({ roundId: z.number().int().positive(), userId: z.number().int().positive().optional() }))
+      .query(({ input }) => getScoreHistory(input.roundId, input.userId)),
+
+    disputes: tripScopedProcedure
+      .input(z.object({ roundId: z.number().int().positive() }))
+      .query(({ input }) => listDisputes(input.roundId)),
+
+    raiseDispute: protectedProcedure
+      .input(z.object({ roundId: z.number().int().positive(), userId: z.number().int().positive(), holeId: z.number().int().positive(), holeNumber: z.number().int().min(1).max(36), note: z.string().trim().min(3).max(500) }))
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, input.roundId);
+        return { id: await createDispute({ ...input, raisedBy: ctx.user.id }) };
+      }),
+
+    resolveDispute: protectedProcedure
+      .input(z.object({ id: z.number().int().positive(), status: z.enum(["resolved", "dismissed"]), note: z.string().trim().max(500).optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const dispute = await getDispute(input.id);
+        if (!dispute) throw new TRPCError({ code: "NOT_FOUND", message: "Dispute not found" });
+        await assertRoundManager(ctx.user, dispute.roundId);
+        await resolveDispute(input.id, ctx.user.id, input.status, input.note ?? null);
+        return { success: true };
+      }),
+  }),
+
+  // ─── Spectator (read-only, token-gated, no login) ───────────────────────────
+  spectator: router({
+    getLink: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive(), origin: z.string().url() }))
+      .mutation(async ({ input, ctx }) => {
+        const trip = await assertTripManager(ctx.user, input.tripId);
+        let token = trip.spectatorToken;
+        if (!token) {
+          token = (await import("nanoid")).nanoid(32);
+          await updateTrip(input.tripId, { spectatorToken: token });
+        }
+        return { url: `${input.origin}/watch/${input.tripId}?t=${token}` };
+      }),
+
+    revoke: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripManager(ctx.user, input.tripId);
+        await updateTrip(input.tripId, { spectatorToken: null });
+        return { success: true };
+      }),
+
+    view: publicProcedure
+      .input(z.object({ tripId: z.number().int().positive(), token: z.string().min(16).max(64) }))
+      .query(async ({ input }) => {
+        const trip = await getTrip(input.tripId);
+        const expected = trip?.spectatorToken;
+        const a = Buffer.from(input.token);
+        const b = Buffer.from(expected ?? "");
+        if (!trip || !expected || a.length !== b.length || !(await import("node:crypto")).timingSafeEqual(a, b)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "This spectator link is not valid" });
+        }
+        const [leaderboard, rounds] = await Promise.all([getTripLeaderboard(input.tripId), getRoundsByTrip(input.tripId)]);
+        return {
+          trip: { name: trip.name, startDate: trip.startDate, endDate: trip.endDate, location: trip.location, logoUrl: trip.logoUrl },
+          rounds: rounds.map((r) => ({ id: r.id, name: r.name, roundDate: r.roundDate, status: r.status })),
+          leaderboard: leaderboard
+            .map((p) => ({ userName: p.userName, photoUrl: p.photoUrl, holesPlayed: p.rounds.reduce((n, r) => n + r.holesPlayed, 0), gross: p.cumulativeGross, net: p.cumulativeNet, stableford: p.cumulativeStableford }))
+            .sort((x, y) => y.stableford - x.stableford),
+        };
+      }),
+  }),
+
+  // ─── Side-bet / settle-up ledger ────────────────────────────────────────────
+  settleUp: router({
+    summary: tripScopedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const entries = await listSettlements(input.tripId);
+        const open = entries.filter((e) => !e.settledAt);
+        return { entries, payments: simplifyDebts(open) };
+      }),
+
+    add: protectedProcedure
+      .input(z.object({
+        tripId: z.number().int().positive(),
+        roundId: z.number().int().positive().optional(),
+        fromUserId: z.number().int().positive(),
+        toUserId: z.number().int().positive(),
+        amountCents: z.number().int().min(1).max(10_000_000),
+        reason: z.string().trim().min(1).max(200),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripMember(ctx.user, input.tripId);
+        if (input.fromUserId === input.toUserId) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose two different players" });
+        for (const userId of [input.fromUserId, input.toUserId]) {
+          if (!(await getTripPlayer(input.tripId, userId))) throw new TRPCError({ code: "BAD_REQUEST", message: "Both players must be on the trip" });
+        }
+        if (input.roundId && (await loadRound(input.roundId)).tripId !== input.tripId) throw new TRPCError({ code: "BAD_REQUEST", message: "Round does not belong to this trip" });
+        return { id: await addSettlement({ ...input, createdBy: ctx.user.id }) };
+      }),
+
+    markPaid: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive(), id: z.number().int().positive(), paid: z.boolean() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripMember(ctx.user, input.tripId);
+        const entry = await getSettlement(input.id);
+        if (!entry || entry.tripId !== input.tripId) throw new TRPCError({ code: "NOT_FOUND", message: "Entry not found" });
+        // Only the person owed (or a trip manager) can confirm payment.
+        if (entry.toUserId !== ctx.user.id) await assertTripManager(ctx.user, input.tripId);
+        await setSettlementPaid(input.id, input.tripId, input.paid);
+        return { success: true };
+      }),
+
+    remove: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive(), id: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripMember(ctx.user, input.tripId);
+        const entry = await getSettlement(input.id);
+        if (!entry || entry.tripId !== input.tripId) throw new TRPCError({ code: "NOT_FOUND", message: "Entry not found" });
+        if (entry.createdBy !== ctx.user.id) await assertTripManager(ctx.user, input.tripId);
+        await deleteSettlement(input.id, input.tripId);
+        return { success: true };
+      }),
+  }),
+
+  gallery: router({
+    albums: tripScopedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const [photos, tripRounds] = await Promise.all([getTripPhotos(input.tripId), getRoundsByTrip(input.tripId)]);
+        return buildAlbums(photos, tripRounds.map((r) => ({ id: r.id, name: r.name, roundDate: r.roundDate })));
+      }),
+  }),
+
+  stats: router({
+    myCareer: protectedProcedure.query(({ ctx }) => getCareerStats(ctx.user.id)),
+  }),
+
+  // ─── Trip recap ─────────────────────────────────────────────────────────────
+  recap: router({
+    get: tripScopedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const [trip, leaderboard, rounds, awardList, achievementList] = await Promise.all([
+          getTrip(input.tripId), getTripLeaderboard(input.tripId), getRoundsByTrip(input.tripId), getAwardsByTrip(input.tripId), getAchievementsByTrip(input.tripId),
+        ]);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        return {
+          trip: { name: trip.name, startDate: trip.startDate, endDate: trip.endDate, location: trip.location },
+          standings: leaderboard
+            .map((p) => ({ name: p.userName ?? "Player", stableford: p.cumulativeStableford, net: p.cumulativeNet, gross: p.cumulativeGross, holesPlayed: p.rounds.reduce((n, r) => n + r.holesPlayed, 0) }))
+            .sort((a, b) => b.stableford - a.stableford),
+          rounds: rounds.map((r) => ({ name: r.name, roundDate: r.roundDate })),
+          awards: awardList.filter((a) => a.winner).map((a) => ({ name: (a as { name?: string }).name ?? "Award", winner: a.winner?.displayName ?? "Unknown" })),
+          highlights: achievementList.map((a) => ({ player: a.playerName ?? "Player", type: a.type, holeNumber: a.holeNumber, par: a.par, grossScore: a.grossScore })),
+        };
+      }),
+
+    narrative: protectedProcedure
+      .input(z.object({ tripId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertTripManager(ctx.user, input.tripId);
+        const [trip, leaderboard, awardList, achievementList] = await Promise.all([getTrip(input.tripId), getTripLeaderboard(input.tripId), getAwardsByTrip(input.tripId), getAchievementsByTrip(input.tripId)]);
+        if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
+        const facts = {
+          trip: trip.name,
+          standings: leaderboard.map((p) => ({ name: p.userName, stableford: p.cumulativeStableford })).sort((a, b) => b.stableford - a.stableford).slice(0, 10),
+          awards: awardList.filter((a) => a.winner).map((a) => ({ award: (a as { name?: string }).name, winner: a.winner?.displayName })),
+          highlights: achievementList.map((a) => ({ player: a.playerName, type: a.type, hole: a.holeNumber })),
+        };
+        const response = await invokeLLM({
+          model: "gpt-5-mini",
+          maxTokens: 700,
+          messages: [
+            { role: "system", content: "Write a warm, light-hearted 3 paragraph trip recap in Australian English using ONLY the facts supplied. Do not invent scores, names, or events. No Markdown." },
+            { role: "user", content: JSON.stringify(facts) },
+          ],
+        });
+        const content = response.choices[0]?.message.content;
+        const text = typeof content === "string" ? content.trim() : content?.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
+        if (!text) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "The recap could not be written" });
+        return { text };
+      }),
+  }),
+
+  // ─── Backup status (platform admin) ─────────────────────────────────────────
+  backup: router({
+    status: adminProcedure.query(async () => {
+      const settings = await getProjectBackupSettings();
+      let summary: Record<string, unknown> | null = null;
+      try { summary = settings?.lastBackupSummary ? JSON.parse(settings.lastBackupSummary) : null; } catch { summary = null; }
+      return {
+        lastBackupAt: settings?.lastBackupAt ?? null,
+        monthlyEnabled: settings?.monthlyEnabled ?? false,
+        databaseKey: settings?.lastDatabaseBackupKey ?? null,
+        summary,
+      };
+    }),
+
+    /** Downloads the latest backup parts and decrypts them to prove they are restorable. */
+    verify: adminProcedure.mutation(async () => {
+      const settings = await getProjectBackupSettings();
+      if (!settings?.lastDatabaseBackupKey) throw new TRPCError({ code: "NOT_FOUND", message: "No backup has been made yet" });
+      let objectPartKeys: string[] = settings.lastObjectArchiveKey ? [settings.lastObjectArchiveKey] : [];
+      try {
+        const parsed = settings.lastBackupSummary ? JSON.parse(settings.lastBackupSummary) : null;
+        if (Array.isArray(parsed?.objectPartKeys)) objectPartKeys = parsed.objectPartKeys;
+      } catch { /* fall back to the single stored key */ }
+      try {
+        const database = decryptBackup(await fetchStoredFile(settings.lastDatabaseBackupKey));
+        let objectCount = 0;
+        for (const key of objectPartKeys) objectCount += decryptBackup(await fetchStoredFile(key)).objects?.length ?? 0;
+        return { ok: true as const, tables: database.tables?.length ?? 0, rows: (database.tables ?? []).reduce((n: number, t: { rows: unknown[] }) => n + t.rows.length, 0), objects: objectCount };
+      } catch (error) {
+        return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+      }
+    }),
+
+    runNow: adminProcedure.mutation(async () => createPrivateProjectBackup()),
+  }),
+
+  // ─── Scorecard attestation ──────────────────────────────────────────────────
+  attestation: router({
+    list: tripScopedProcedure
+      .input(z.object({ roundId: z.number().int().positive() }))
+      .query(({ input }) => getAttestations(input.roundId)),
+
+    /** Player signs their own card; a groupmate signs as marker. */
+    sign: protectedProcedure
+      .input(z.object({ roundId: z.number().int().positive(), userId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, input.roundId);
+        const role = input.userId === ctx.user.id ? "player" : "marker";
+        if (role === "marker" && !(await sharedGroup(input.roundId, ctx.user.id, input.userId))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only someone in the player's group can mark their card" });
+        }
+        await addAttestation({ roundId: input.roundId, userId: input.userId, attestedBy: ctx.user.id, role });
+        return { role, signed: await isCardSigned(input.roundId, input.userId) };
+      }),
+
+    /** Trip admins can reopen a card for correction. */
+    reopen: protectedProcedure
+      .input(z.object({ roundId: z.number().int().positive(), userId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
+        await removeAttestations(input.roundId, input.userId);
+        return { success: true };
       }),
   }),
 
@@ -2041,7 +2371,7 @@ export const appRouter = router({
         return { achievementId: id };
       }),
 
-    confirm: protectedProcedure
+    confirm: tripScopedProcedure
       .input(z.object({ achievementId: z.number(), tripId: z.number(), playerName: z.string() }))
       .mutation(async ({ input }) => {
         const achievement = await confirmAchievement(input.achievementId);
@@ -2068,7 +2398,7 @@ export const appRouter = router({
         return { success: true, message };
       }),
 
-    listByTrip: publicProcedure
+    listByTrip: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         const achievementList = await getAchievementsByTrip(input.tripId);
@@ -2087,8 +2417,8 @@ export const appRouter = router({
   // ─── Notifications ────────────────────────────────────────────────────────
 
   notifications: router({
-    list: publicProcedure
-      .input(z.object({ tripId: z.number(), limit: z.number().optional() }))
+    list: tripScopedProcedure
+      .input(z.object({ tripId: z.number(), limit: z.number().int().min(1).max(200).optional() }))
       .query(({ input }) => getNotificationsByTrip(input.tripId, input.limit ?? 50)),
   }),
 
@@ -2167,7 +2497,7 @@ export const appRouter = router({
         return { updated };
       }),
 
-    history: publicProcedure
+    history: tripScopedProcedure
       .input(z.object({ tripId: z.number(), userId: z.number().optional() }))
       .query(({ input }) => getHandicapHistory(input.tripId, input.userId)),
   }),
@@ -2175,7 +2505,7 @@ export const appRouter = router({
   // ─── Leaderboards ─────────────────────────────────────────────────────────
 
   leaderboard: router({
-    daily: publicProcedure
+    daily: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const round = await getRound(input.roundId);
@@ -2315,7 +2645,7 @@ export const appRouter = router({
         return { round, trip, roundScoringMode, strokePlay: strokePlayWithAch, fourBBB: fourBBBResults, skins: skinsResults, effectiveBaseline };
       }),
 
-        trip: publicProcedure
+        trip: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         const leaderboard = await getTripLeaderboard(input.tripId);
@@ -2373,7 +2703,7 @@ export const appRouter = router({
         return { strokePlay, stableford, fourBBB, ambrose, hasAmbroseRound, hasFourBBBRound, bestDayStableford, bestDayStroke, individualScoringMode, tournamentType, pennantLeaderboard, hasMatchPlayRound };
       }),
 
-    fourBBBPairScorecard: publicProcedure
+    fourBBBPairScorecard: tripScopedProcedure
       .input(z.object({ roundId: z.number(), player1Id: z.number(), player2Id: z.number() }))
       .query(async ({ input }) => {
         const scorecard = await getFourBBBPairScorecard(input.roundId, input.player1Id, input.player2Id);
@@ -2385,7 +2715,7 @@ export const appRouter = router({
   // ─── Side Matches ─────────────────────────────────────────────────────────
 
   sideMatches: router({
-    list: publicProcedure
+    list: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const matches = await getSideMatchesByRound(input.roundId);
@@ -2412,7 +2742,7 @@ export const appRouter = router({
         );
       }),
 
-    listByGroup: publicProcedure
+    listByGroup: tripScopedProcedure
       .input(z.object({ groupId: z.number() }))
       .query(async ({ input }) => {
         const matches = await getSideMatchesByGroup(input.groupId);
@@ -2424,7 +2754,7 @@ export const appRouter = router({
         );
       }),
 
-    dailyResults: publicProcedure
+    dailyResults: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => getDailySideMatchResults(input.roundId)),
 
@@ -2437,7 +2767,8 @@ export const appRouter = router({
           players: z.array(z.object({ userId: z.number(), partnerId: z.number().optional() })),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, input.roundId);
         const matchId = await createSideMatch({ groupId: input.groupId, roundId: input.roundId, type: input.type });
         for (const p of input.players) {
           await addSideMatchPlayer({ sideMatchId: matchId, userId: p.userId, partnerId: p.partnerId });
@@ -2447,7 +2778,8 @@ export const appRouter = router({
 
     updateStatus: protectedProcedure
       .input(z.object({ id: z.number(), status: z.enum(["pending", "active", "completed"]) }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, await roundIdForSideMatch(input.id));
         await updateSideMatchStatus(input.id, input.status);
         return { success: true };
       }),
@@ -2466,12 +2798,13 @@ export const appRouter = router({
           player2PartnerId: z.number().optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, input.roundId);
         const id = await createMatchPlayResult(input);
         return { id };
       }),
 
-    getByRound: publicProcedure
+    getByRound: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const results = await getMatchPlayResultsByRound(input.roundId);
@@ -2507,21 +2840,27 @@ export const appRouter = router({
     submitHoleResult: protectedProcedure
       .input(
         z.object({
-          matchId: z.number(),
-          holeNumber: z.number(),
-          player1NetScore: z.number(),
-          player2NetScore: z.number(),
-          totalHoles: z.number().default(18),
+          matchId: z.number().int().positive(),
+          holeNumber: z.number().int().min(1).max(36),
+          player1NetScore: z.number().min(-10).max(40),
+          player2NetScore: z.number().min(-10).max(40),
+          totalHoles: z.number().int().min(1).max(36).default(18),
           // For alternate shot: which player tees off next hole
           nextTeePlayer: z.number().optional(),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const match = await getMatchPlayResult(input.matchId);
         if (!match) throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
+        await assertRoundMember(ctx.user, match.roundId);
 
-        const existingResults: { holeNumber: number; result: "player1" | "player2" | "halved" }[] =
-          JSON.parse(match.holeResults || "[]");
+        let existingResults: { holeNumber: number; result: "player1" | "player2" | "halved" }[] = [];
+        try {
+          const parsed = JSON.parse(match.holeResults || "[]");
+          if (Array.isArray(parsed)) existingResults = parsed;
+        } catch {
+          existingResults = [];
+        }
 
         // Remove any existing result for this hole (re-entry)
         const filtered = existingResults.filter((r) => r.holeNumber !== input.holeNumber);
@@ -3037,7 +3376,7 @@ export const appRouter = router({
   // ─── Nearest to Pin ─────────────────────────────────────────────────────────
   ntp: router({
     // Public: get all NTP holes for a round with entries and current leader
-    getByRound: publicProcedure
+    getByRound: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(({ input }) => getNtpByRound(input.roundId)),
 
@@ -3076,7 +3415,7 @@ export const appRouter = router({
   // ─── Custom Awards ──────────────────────────────────────────────────────────────
   awards: router({
     // List all awards for a trip (with winner if assigned)
-    list: protectedProcedure
+    list: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         return getAwardsByTrip(input.tripId);
@@ -3169,7 +3508,7 @@ export const appRouter = router({
       }),
 
     // All players: get leaderboard for a round
-    getLeaderboard: protectedProcedure
+    getLeaderboard: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         return getLongDriveLeaderboard(input.roundId);
@@ -3248,7 +3587,7 @@ export const appRouter = router({
         return { driveDistanceM, isNewLeader };
       }),
     // Admin: get all long drive entries grouped by hole for a round
-    getByRound: protectedProcedure
+    getByRound: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         const db = await (await import("./db")).getDb();
@@ -3296,7 +3635,7 @@ export const appRouter = router({
     }),
 
     // Returns the plan tier for a specific trip.
-    getTripPlan: protectedProcedure
+    getTripPlan: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         const { getDb } = await import("./db");
@@ -3360,14 +3699,14 @@ export const appRouter = router({
   // ─── Ambrose ──────────────────────────────────────────────────────────────
   ambrose: router({
     // Get the leaderboard for an Ambrose round (team standings)
-    getLeaderboard: publicProcedure
+    getLeaderboard: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => {
         return getAmbroseLeaderboard(input.roundId);
       }),
 
     // Get Ambrose scores for a specific group in a round
-    getGroupScores: publicProcedure
+    getGroupScores: tripScopedProcedure
       .input(z.object({ roundId: z.number(), groupId: z.number() }))
       .query(async ({ input }) => {
         return getAmbroseScoresByGroup(input.roundId, input.groupId);
@@ -3383,9 +3722,8 @@ export const appRouter = router({
         grossScore: z.number().min(1).max(20),
         selectedDriveUserId: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
-        const round = await getRound(input.roundId);
-        if (!round) throw new TRPCError({ code: "NOT_FOUND", message: "Round not found" });
+      .mutation(async ({ input, ctx }) => {
+        const round = await assertRoundMember(ctx.user, input.roundId);
         const courseHoles = await getHolesByCourse(round.courseId);
         const hole = courseHoles.find((h) => h.id === input.holeId);
         if (!hole) throw new TRPCError({ code: "NOT_FOUND", message: "Hole not found" });
@@ -3417,7 +3755,7 @@ export const appRouter = router({
       }),
 
     // Get trip-level Ambrose leaderboard
-    getTripLeaderboard: publicProcedure
+    getTripLeaderboard: tripScopedProcedure
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         return getTripAmbroseLeaderboard(input.tripId);
@@ -3427,14 +3765,15 @@ export const appRouter = router({
   // ─── Pennant Match Play ─────────────────────────────────────────────────────
   pennant: router({
     // Get all teams (with players) for a round
-    getTeams: publicProcedure
+    getTeams: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => getPennantTeams(input.roundId)),
 
     // Create a team
     createTeam: protectedProcedure
-      .input(z.object({ roundId: z.number(), name: z.string().min(1), emoji: z.string().default("🏌️") }))
-      .mutation(async ({ input }) => {
+      .input(z.object({ roundId: z.number(), name: z.string().trim().min(1).max(100), emoji: z.string().max(10).default("🏌️") }))
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
         const id = await createPennantTeam(input.roundId, input.name, input.emoji);
         return { id };
       }),
@@ -3442,20 +3781,30 @@ export const appRouter = router({
     // Delete a team (also removes all its players)
     deleteTeam: protectedProcedure
       .input(z.object({ teamId: z.number() }))
-      .mutation(async ({ input }) => deletePennantTeam(input.teamId)),
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, await roundIdForPennantTeam(input.teamId));
+        return deletePennantTeam(input.teamId);
+      }),
 
     // Assign a player to a team (moves them from any other team)
     assignPlayer: protectedProcedure
       .input(z.object({ teamId: z.number(), roundId: z.number(), userId: z.number().nullable().optional(), tripPlayerId: z.number().nullable().optional(), inviteId: z.number().optional() }))
-      .mutation(async ({ input }) => assignPlayerToTeam(input.teamId, input.roundId, input.userId ?? null, input.tripPlayerId ?? null, input.inviteId)),
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
+        if ((await roundIdForPennantTeam(input.teamId)) !== input.roundId) throw new TRPCError({ code: "BAD_REQUEST", message: "Team does not belong to this round" });
+        return assignPlayerToTeam(input.teamId, input.roundId, input.userId ?? null, input.tripPlayerId ?? null, input.inviteId);
+      }),
 
     // Remove a player from their team
     removePlayer: protectedProcedure
       .input(z.object({ roundId: z.number(), userId: z.number() }))
-      .mutation(async ({ input }) => removePlayerFromTeam(input.roundId, input.userId)),
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
+        return removePlayerFromTeam(input.roundId, input.userId);
+      }),
 
     // Get all fixtures (with hole results) for a round
-    getFixtures: publicProcedure
+    getFixtures: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => getPennantFixtures(input.roundId)),
 
@@ -3472,7 +3821,11 @@ export const appRouter = router({
         player1BId: z.number(),
         player2BId: z.number().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, input.roundId);
+        for (const teamId of [input.teamAId, input.teamBId]) {
+          if ((await roundIdForPennantTeam(teamId)) !== input.roundId) throw new TRPCError({ code: "BAD_REQUEST", message: "Team does not belong to this round" });
+        }
         const id = await createPennantFixture(input);
         return { id };
       }),
@@ -3480,21 +3833,25 @@ export const appRouter = router({
     // Delete a fixture
     deleteFixture: protectedProcedure
       .input(z.object({ fixtureId: z.number() }))
-      .mutation(async ({ input }) => deletePennantFixture(input.fixtureId)),
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundManager(ctx.user, await roundIdForPennantFixture(input.fixtureId));
+        return deletePennantFixture(input.fixtureId);
+      }),
 
     // Submit hole scores for a fixture hole
     submitHole: protectedProcedure
       .input(z.object({
-        fixtureId: z.number(),
-        holeNumber: z.number(),
-        gross1A: z.number(),
-        gross2A: z.number().optional(),
-        gross1B: z.number(),
-        gross2B: z.number().optional(),
-        holeStrokeIndex: z.number(),
-        holePar: z.number(),
+        fixtureId: z.number().int().positive(),
+        holeNumber: z.number().int().min(1).max(36),
+        gross1A: z.number().int().min(1).max(30),
+        gross2A: z.number().int().min(1).max(30).optional(),
+        gross1B: z.number().int().min(1).max(30),
+        gross2B: z.number().int().min(1).max(30).optional(),
+        holeStrokeIndex: z.number().int().min(1).max(36),
+        holePar: z.number().int().min(3).max(6),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await assertRoundMember(ctx.user, await roundIdForPennantFixture(input.fixtureId));
         await submitPennantHoleScores(
           input.fixtureId, input.holeNumber,
           input.gross1A, input.gross2A ?? null,
@@ -3504,7 +3861,7 @@ export const appRouter = router({
       }),
 
     // Get team score summary (actual + estimated)
-    getTeamScore: publicProcedure
+    getTeamScore: tripScopedProcedure
       .input(z.object({ roundId: z.number() }))
       .query(async ({ input }) => getPennantTeamScore(input.roundId)),
   }),

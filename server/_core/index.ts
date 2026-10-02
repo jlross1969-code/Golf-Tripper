@@ -1,9 +1,13 @@
 import "dotenv/config";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { ENV } from "./env";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
+import { registerPasswordAuthRoutes } from "../passwordAuth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -22,6 +26,12 @@ function isPortAvailable(port: number): Promise<boolean> {
   });
 }
 
+function assertRequiredEnv() {
+  if (!ENV.isProduction) return;
+  const missing = [["JWT_SECRET", ENV.cookieSecret], ["DATABASE_URL", ENV.databaseUrl]].filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+}
+
 async function findAvailablePort(startPort: number = 3000): Promise<number> {
   for (let port = startPort; port < startPort + 20; port++) {
     if (await isPortAvailable(port)) {
@@ -32,13 +42,33 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  assertRequiredEnv();
   const app = express();
   const server = createServer(app);
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.set("trust proxy", 1);
+  app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false, crossOriginResourcePolicy: false, frameguard: false }));
+  // File uploads go through multer with their own limits, so JSON bodies stay small.
+  app.use(express.json({ limit: "5mb" }));
+  app.use(express.urlencoded({ limit: "1mb", extended: true }));
+  // Cookies are SameSite=None, so reject cross-origin state-changing requests
+  // (multipart uploads are "simple" requests and would otherwise be forgeable).
+  app.use("/api", (req, res, next) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+    const origin = req.get("origin");
+    if (origin) {
+      try {
+        if (new URL(origin).host !== req.get("host")) return res.status(403).json({ error: "Cross-origin request blocked" });
+      } catch {
+        return res.status(403).json({ error: "Invalid origin" });
+      }
+    }
+    next();
+  });
+  app.use("/api/trpc", rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));
+  app.use("/api/upload", rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  registerPasswordAuthRoutes(app);
   registerPdfRoutes(app);
   registerUploadRoutes(app);
   registerScheduledTripEventRoutes(app);
@@ -69,4 +99,7 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+startServer().catch((error) => {
+  console.error("[Server] Failed to start:", error);
+  process.exit(1);
+});

@@ -89,7 +89,7 @@ export default function AdminGroups() {
   const [reseedStep, setReseedStep] = useState<"configure" | "preview">("configure");
   const [reseedPreviewEnabled, setReseedPreviewEnabled] = useState(false);
   // Smart seed sub-options
-  const [smartSeedMethod, setSmartSeedMethod] = useState<"random" | "handicap_mix" | "top_together" | "previous_round">("handicap_mix");
+  const [smartSeedMethod, setSmartSeedMethod] = useState<"random" | "handicap_mix" | "top_together" | "previous_round" | "fresh_faces">("handicap_mix");
   const [smartPairingMethod, setSmartPairingMethod] = useState<"random" | "keep_last" | "seed_4bbb">("random");
   const [smartTeeOrder, setSmartTeeOrder] = useState<"top_first" | "bottom_first">("top_first");
   // Drag-to-edit preview state
@@ -946,6 +946,7 @@ export default function AdminGroups() {
                         { value: "handicap_mix", label: "Handicap Mix", desc: "Bottom-half HCP paired with top-half — balanced, competitive groups." },
                         { value: "top_together", label: "Top Together", desc: "Best players grouped together, weakest together — tiered groups." },
                         { value: "previous_round", label: "Seed from Previous Round", desc: "Snake-draft by last round's leaderboard position." },
+                        { value: "fresh_faces", label: "Fresh Faces", desc: "Avoid grouping people who have already played together on this trip." },
                         { value: "random", label: "Random", desc: "Completely random distribution." },
                       ] as const).map((opt) => (
                         <button

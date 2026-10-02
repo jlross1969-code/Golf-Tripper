@@ -323,6 +323,55 @@
       "when": 1787624132753,
       "tag": "0045_fuzzy_tony_stark",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "5",
+      "when": 1790848823058,
+      "tag": "0046_nifty_sprite",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1790849514879,
+      "tag": "0047_gifted_gamma_corps",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "5",
+      "when": 1790849661782,
+      "tag": "0048_many_retro_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "5",
+      "when": 1790849813620,
+      "tag": "0049_abnormal_revanche",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1790850203949,
+      "tag": "0050_petite_betty_brant",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "5",
+      "when": 1790850521693,
+      "tag": "0051_huge_guardian",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "5",
+      "when": 1790855339985,
+      "tag": "0052_parallel_gertrude_yorkes",
+      "breakpoints": true
     }
   ]
 }

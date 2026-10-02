@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+import { getSignInUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
@@ -22,7 +22,7 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-3">
           {!loading && !isAuthenticated && (
-            <Button onClick={() => { window.location.href = getLoginUrl(); }} className="gap-2">
+            <Button onClick={() => { window.location.href = getSignInUrl(); }} className="gap-2">
               <LogIn className="w-4 h-4" />
               Sign In
             </Button>
@@ -32,6 +32,9 @@ export default function Home() {
               <span className="text-sm text-muted-foreground">{user?.name}</span>
               <Link href="/assistant">
                 <Button variant="outline" size="sm" className="gap-2"><Sparkles className="w-3.5 h-3.5" /> Assistant</Button>
+              </Link>
+              <Link href="/stats">
+                <Button variant="outline" size="sm" className="gap-2"><BarChart2 className="w-3.5 h-3.5" /> My stats</Button>
               </Link>
               <Link href="/settings">
                 <Button variant="outline" size="sm" className="gap-2"><Settings className="w-3.5 h-3.5" /> Settings</Button>
@@ -129,7 +132,7 @@ export default function Home() {
             <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
               Live leaderboards, automatic handicap adjustment, Stroke Play, 4BBB and Skins scoring — all in one place for your group.
             </p>
-            <Button size="lg" onClick={() => { window.location.href = getLoginUrl(); }} className="gap-2 text-base px-8">
+            <Button size="lg" onClick={() => { window.location.href = getSignInUrl(); }} className="gap-2 text-base px-8">
               Get Started <ChevronRight className="w-5 h-5" />
             </Button>
           </section>

@@ -5,16 +5,17 @@ import { getDb } from "./db";
 import { tripPlayers, pushSubscriptions, trips, rounds } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { createContext } from "./_core/context";
+import { isSafeImageType, safeExtension, uploadErrorHandler, verifyUploadedFile } from "./uploadSecurity";
 import { TRIP_CHAT_IMAGE_MAX_BYTES, isTripChatImageType } from "../shared/tripChatAttachment";
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
+    if (isSafeImageType(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error("Only image files are allowed"));
+      cb(new Error("Only JPEG, PNG, WebP or GIF images are allowed"));
     }
   },
 });
@@ -41,7 +42,7 @@ export function registerUploadRoutes(app: express.Application) {
   const router = Router();
 
   // POST /api/upload/profile-photo
-  router.post("/api/upload/profile-photo", upload.single("photo"), async (req: Request, res: Response) => {
+  router.post("/api/upload/profile-photo", upload.single("photo"), verifyUploadedFile, async (req: Request, res: Response) => {
     try {
       const ctx = await createContext({ req, res } as any);
       if (!ctx.user) {
@@ -77,7 +78,7 @@ export function registerUploadRoutes(app: express.Application) {
         return;
       }
 
-      const ext = req.file.mimetype.split("/")[1] || "jpg";
+      const ext = safeExtension(req.file.mimetype);
       const key = `profile-photos/${ctx.user.id}-${tripId}-${Date.now()}.${ext}`;
       const { url } = await storagePut(key, req.file.buffer, req.file.mimetype);
 
@@ -95,7 +96,7 @@ export function registerUploadRoutes(app: express.Application) {
   });
 
   // POST /api/upload/trip-logo — admin only, updates trips.logoUrl
-  router.post("/api/upload/trip-logo", upload.single("logo"), async (req: Request, res: Response) => {
+  router.post("/api/upload/trip-logo", upload.single("logo"), verifyUploadedFile, async (req: Request, res: Response) => {
     try {
       const ctx = await createContext({ req, res } as any);
       if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -108,7 +109,7 @@ export function registerUploadRoutes(app: express.Application) {
       const db = await getDb();
       if (!db) { res.status(500).json({ error: "Database unavailable" }); return; }
 
-      const ext = req.file.mimetype.split("/")[1] || "jpg";
+      const ext = safeExtension(req.file.mimetype);
       const key = `trip-logos/trip-${tripId}-${Date.now()}.${ext}`;
       const { url } = await storagePut(key, req.file.buffer, req.file.mimetype);
 
@@ -122,7 +123,7 @@ export function registerUploadRoutes(app: express.Application) {
   });
 
   // POST /api/upload/round-logo — admin only, updates rounds.logoUrl
-  router.post("/api/upload/round-logo", upload.single("logo"), async (req: Request, res: Response) => {
+  router.post("/api/upload/round-logo", upload.single("logo"), verifyUploadedFile, async (req: Request, res: Response) => {
     try {
       const ctx = await createContext({ req, res } as any);
       if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -135,7 +136,7 @@ export function registerUploadRoutes(app: express.Application) {
       const db = await getDb();
       if (!db) { res.status(500).json({ error: "Database unavailable" }); return; }
 
-      const ext = req.file.mimetype.split("/")[1] || "jpg";
+      const ext = safeExtension(req.file.mimetype);
       const key = `round-logos/round-${roundId}-${Date.now()}.${ext}`;
       const { url } = await storagePut(key, req.file.buffer, req.file.mimetype);
 
@@ -149,14 +150,14 @@ export function registerUploadRoutes(app: express.Application) {
   });
 
   // POST /api/upload/course-scorecard — admin only, stores an image for AI-assisted extraction.
-  router.post("/api/upload/course-scorecard", upload.single("scorecard"), async (req: Request, res: Response) => {
+  router.post("/api/upload/course-scorecard", upload.single("scorecard"), verifyUploadedFile, async (req: Request, res: Response) => {
     try {
       const ctx = await createContext({ req, res } as any);
       if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
       if (ctx.user.role !== "admin") { res.status(403).json({ error: "Admin only" }); return; }
       if (!req.file) { res.status(400).json({ error: "No scorecard image provided" }); return; }
 
-      const ext = req.file.mimetype.split("/")[1] || "jpg";
+      const ext = safeExtension(req.file.mimetype);
       const key = `course-scorecards/${ctx.user.id}/scorecard-${Date.now()}.${ext}`;
       const stored = await storagePut(key, req.file.buffer, req.file.mimetype);
       res.json(stored);
@@ -167,7 +168,7 @@ export function registerUploadRoutes(app: express.Application) {
   });
 
   // POST /api/upload/trip-chat-image — a trip member may upload one chat photo.
-  router.post("/api/upload/trip-chat-image", upload.single("image"), async (req: Request, res: Response) => {
+  router.post("/api/upload/trip-chat-image", upload.single("image"), verifyUploadedFile, async (req: Request, res: Response) => {
     try {
       const ctx = await createContext({ req, res } as any);
       if (!ctx.user) { res.status(401).json({ error: "Unauthorized" }); return; }
@@ -191,7 +192,7 @@ export function registerUploadRoutes(app: express.Application) {
   });
 
   // POST /api/upload/trip-expense-receipt — trip financial manager only.
-  router.post("/api/upload/trip-expense-receipt", receiptUpload.single("receipt"), async (req: Request, res: Response) => {
+  router.post("/api/upload/trip-expense-receipt", receiptUpload.single("receipt"), verifyUploadedFile, async (req: Request, res: Response) => {
     try {
       const ctx = await createContext({ req, res } as any);
       if (!ctx.user) return res.status(401).json({ error: "Unauthorized" });
@@ -203,7 +204,7 @@ export function registerUploadRoutes(app: express.Application) {
       const [trip] = await db.select().from(trips).where(eq(trips.id, tripId)).limit(1);
       if (!trip) return res.status(404).json({ error: "Trip not found" });
       if (ctx.user.role !== "admin" && trip.createdBy !== ctx.user.id && trip.financialManagerUserId !== ctx.user.id) return res.status(403).json({ error: "Financial manager access required" });
-      const extension = req.file.mimetype === "application/pdf" ? "pdf" : req.file.mimetype.split("/")[1] || "file";
+      const extension = safeExtension(req.file.mimetype);
       const stored = await storagePut(`trip-receipts/${tripId}/${ctx.user.id}-${Date.now()}.${extension}`, req.file.buffer, req.file.mimetype);
       res.json({ key: stored.key, url: stored.url, fileName: req.file.originalname });
     } catch (err) {
@@ -213,7 +214,7 @@ export function registerUploadRoutes(app: express.Application) {
   });
 
   // POST /api/upload/supplier-invoice — financial manager only.
-  router.post("/api/upload/supplier-invoice", receiptUpload.single("invoice"), async (req: Request, res: Response) => {
+  router.post("/api/upload/supplier-invoice", receiptUpload.single("invoice"), verifyUploadedFile, async (req: Request, res: Response) => {
     try {
       const ctx = await createContext({ req, res } as any);
       if (!ctx.user) return res.status(401).json({ error: "Unauthorized" });
@@ -235,7 +236,7 @@ export function registerUploadRoutes(app: express.Application) {
   });
 
   // POST /api/upload/trip-document — financial manager only.
-  router.post("/api/upload/trip-document", tripDocumentUpload.single("document"), async (req: Request, res: Response) => {
+  router.post("/api/upload/trip-document", tripDocumentUpload.single("document"), verifyUploadedFile, async (req: Request, res: Response) => {
     try {
       const ctx = await createContext({ req, res } as any);
       if (!ctx.user) return res.status(401).json({ error: "Unauthorized" });
@@ -267,6 +268,13 @@ export function registerUploadRoutes(app: express.Application) {
 
       const { endpoint, keys } = req.body as { endpoint: string; keys: { p256dh: string; auth: string } };
       if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        res.status(400).json({ error: "Invalid subscription object" });
+        return;
+      }
+
+      let endpointUrl: URL | null = null;
+      try { endpointUrl = new URL(endpoint); } catch { endpointUrl = null; }
+      if (typeof endpoint !== "string" || endpoint.length > 1024 || endpointUrl?.protocol !== "https:" || keys.p256dh.length > 255 || keys.auth.length > 255) {
         res.status(400).json({ error: "Invalid subscription object" });
         return;
       }
@@ -320,4 +328,5 @@ export function registerUploadRoutes(app: express.Application) {
   });
 
   app.use(router);
+  app.use(uploadErrorHandler);
 }

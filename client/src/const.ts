@@ -15,3 +15,9 @@ export const getLoginUrl = () => {
 
   return url.toString();
 };
+
+/** Our own sign-in page (email/password, with a Manus option); returns the user to the current page afterwards. */
+export const getSignInUrl = () => {
+  const here = `${window.location.pathname}${window.location.search}`;
+  return here.startsWith("/login") ? "/login" : `/login?next=${encodeURIComponent(here)}`;
+};

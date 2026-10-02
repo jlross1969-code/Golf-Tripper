@@ -153,7 +153,7 @@ export default function AdminRounds() {
 
   // Auto-seed state for Create Round dialog
   const [autoSeedEnabled, setAutoSeedEnabled] = useState(false);
-  const [autoSeedMethod, setAutoSeedMethod] = useState<"random" | "handicap_mix" | "top_together" | "previous_round">("handicap_mix");
+  const [autoSeedMethod, setAutoSeedMethod] = useState<"random" | "handicap_mix" | "top_together" | "previous_round" | "fresh_faces">("handicap_mix");
   const [autoSeedPairing, setAutoSeedPairing] = useState<"random" | "keep_last" | "seed_4bbb">("random");
   const [autoSeedTeeOrder, setAutoSeedTeeOrder] = useState<"top_first" | "bottom_first">("top_first");
   const [autoSeedGroupSize, setAutoSeedGroupSize] = useState("4");
@@ -564,6 +564,7 @@ export default function AdminRounds() {
                         { value: "handicap_mix", label: "Handicap Mix", desc: "Balanced groups — low HCP paired with high HCP." },
                         { value: "top_together", label: "Top Together", desc: "Best players grouped together." },
                         { value: "previous_round", label: "Seed from Previous Round", desc: "Snake-draft by last round's leaderboard." },
+                        { value: "fresh_faces", label: "Fresh Faces", desc: "Avoid grouping people who have already played together on this trip." },
                         { value: "random", label: "Random", desc: "Completely random distribution." },
                       ] as const).map((opt) => (
                         <button

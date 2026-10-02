@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useParams } from "wouter";
 import { ArrowLeft, BarChart2, Save, History, AlertTriangle, Info } from "lucide-react";
+import { HandicapImport } from "@/components/HandicapImport";
 import { EditTripDialog } from "@/components/EditTripDialog";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -125,6 +126,7 @@ export default function AdminHandicap() {
 
           {/* ── Settings Tab ── */}
           <TabsContent value="settings" className="space-y-6">
+            <HandicapImport tripId={id} />
             {/* Validation note for unconfigured trips */}
             {baselineIsUnconfigured && (
               <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-sm">

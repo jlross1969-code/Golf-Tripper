@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { getLoginUrl } from "@/const";
+import { getSignInUrl } from "@/const";
 import { CheckCircle, Flag, Loader2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useParams, useSearch } from "wouter";
@@ -173,7 +173,7 @@ export default function JoinTripShare() {
               Sign in to join this trip and start tracking your scores.
             </p>
             <Button className="w-full" onClick={() => {
-              window.location.href = getLoginUrl();
+              window.location.href = getSignInUrl();
             }}>
               Sign In to Join
             </Button>

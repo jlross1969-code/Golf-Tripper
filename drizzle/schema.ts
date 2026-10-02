@@ -1,11 +1,13 @@
 import {
   boolean,
   float,
+  index,
   int,
   mysqlEnum,
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -105,6 +107,8 @@ export const trips = mysqlTable("trips", {
   location: varchar("location", { length: 255 }),
   description: text("description"),
   shareToken: varchar("shareToken", { length: 64 }),
+  // Read-only spectator link token. Separate from shareToken, which lets people join the trip.
+  spectatorToken: varchar("spectatorToken", { length: 64 }),
   rules: text("rules"),
   logoUrl: varchar("logoUrl", { length: 512 }),
   // Optional colour scheme applied to players who have not chosen a personal appearance preference.
@@ -119,6 +123,9 @@ export const trips = mysqlTable("trips", {
   paymentReminderCronTaskUid: varchar("paymentReminderCronTaskUid", { length: 65 }),
   // Optional co-admin trusted to manage the organiser's trip payment ledger.
   financialManagerUserId: int("financialManagerUserId"),
+  // Where players send their trip payment (a Stripe/PayPal/bank-app link and/or plain instructions such as a PayID).
+  paymentLinkUrl: varchar("paymentLinkUrl", { length: 1024 }),
+  paymentInstructions: varchar("paymentInstructions", { length: 1000 }),
   financialDigestEnabled: boolean("financialDigestEnabled").default(false).notNull(),
   financialDigestHourUtc: int("financialDigestHourUtc").default(8).notNull(),
   financialDigestCronTaskUid: varchar("financialDigestCronTaskUid", { length: 65 }),
@@ -182,7 +189,7 @@ export const tripPlayers = mysqlTable("trip_players", {
   // Co-admin: can perform admin actions on this trip (max 4 per trip, assigned by owner)
   isCoAdmin: boolean("isCoAdmin").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("trip_players_trip_user_idx").on(t.tripId, t.userId)]);
 
 export type TripPlayer = typeof tripPlayers.$inferSelect;
 
@@ -412,7 +419,7 @@ export const rounds = mysqlTable("rounds", {
   // Optional round-specific logo (falls back to trip logo if not set)
   logoUrl: varchar("logoUrl", { length: 512 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("rounds_trip_idx").on(t.tripId)]);
 
 export type Round = typeof rounds.$inferSelect;
 
@@ -430,7 +437,7 @@ export const groups = mysqlTable("groups", {
   // Starting hole number (1-18)
   startingHole: int("startingHole"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("groups_round_idx").on(t.roundId)]);
 
 export type Group = typeof groups.$inferSelect;
 
@@ -453,7 +460,7 @@ export const groupPlayers = mysqlTable("group_players", {
   teamName: varchar("teamName", { length: 64 }),
   // Optional emoji mascot for the pair (single emoji, shared by both players)
   teamEmoji: varchar("teamEmoji", { length: 8 }),
-});
+}, (t) => [index("group_players_group_idx").on(t.groupId), index("group_players_user_idx").on(t.userId)]);
 
 export type GroupPlayer = typeof groupPlayers.$inferSelect;
 
@@ -470,7 +477,7 @@ export const scores = mysqlTable("scores", {
   mercyCapped: boolean("mercyCapped").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (t) => [uniqueIndex("scores_round_user_hole_unique").on(t.roundId, t.userId, t.holeId), index("scores_user_idx").on(t.userId)]);
 
 export type Score = typeof scores.$inferSelect;
 
@@ -488,7 +495,7 @@ export const achievements = mysqlTable("achievements", {
   confirmed: boolean("confirmed").default(false).notNull(),
   broadcastSent: boolean("broadcastSent").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("achievements_round_idx").on(t.roundId)]);
 
 export type Achievement = typeof achievements.$inferSelect;
 
@@ -501,7 +508,7 @@ export const notifications = mysqlTable("notifications", {
   type: mysqlEnum("type", ["achievement", "round_start", "round_complete", "handicap_update", "general"]).notNull(),
   achievementId: int("achievementId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("notifications_trip_created_idx").on(t.tripId, t.createdAt)]);
 
 export type Notification = typeof notifications.$inferSelect;
 
@@ -592,7 +599,7 @@ export const tripMessages = mysqlTable("trip_messages", {
   pinnedAt: timestamp("pinnedAt"),
   pinnedByUserId: int("pinnedByUserId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => [index("trip_messages_trip_idx").on(t.tripId)]);
 
 export type TripMessage = typeof tripMessages.$inferSelect;
 
@@ -947,3 +954,82 @@ export const matchPlayFixtureHoles = mysqlTable("match_play_fixture_holes", {
 });
 
 export type MatchPlayFixtureHole = typeof matchPlayFixtureHoles.$inferSelect;
+
+// ─── Score audit log and disputes ─────────────────────────────────────────────
+
+export const scoreAuditLog = mysqlTable("score_audit_log", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  userId: int("userId").notNull(),
+  holeId: int("holeId").notNull(),
+  holeNumber: int("holeNumber").notNull(),
+  oldGross: int("oldGross"),
+  newGross: int("newGross").notNull(),
+  changedBy: int("changedBy").notNull(),
+  source: mysqlEnum("source", ["entry", "admin_correction", "offline_sync"]).default("entry").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("score_audit_round_idx").on(t.roundId, t.userId, t.holeId)]);
+
+export const scoreDisputes = mysqlTable("score_disputes", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  userId: int("userId").notNull(),
+  holeId: int("holeId").notNull(),
+  holeNumber: int("holeNumber").notNull(),
+  raisedBy: int("raisedBy").notNull(),
+  note: varchar("note", { length: 500 }).notNull(),
+  status: mysqlEnum("status", ["open", "resolved", "dismissed"]).default("open").notNull(),
+  resolvedBy: int("resolvedBy"),
+  resolutionNote: varchar("resolutionNote", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+}, (t) => [index("score_disputes_round_idx").on(t.roundId, t.status)]);
+
+// ─── Side-bet / settle-up ledger ──────────────────────────────────────────────
+
+export const tripSettlements = mysqlTable("trip_settlements", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  roundId: int("roundId"),
+  fromUserId: int("fromUserId").notNull(),
+  toUserId: int("toUserId").notNull(),
+  amountCents: int("amountCents").notNull(),
+  reason: varchar("reason", { length: 200 }).notNull(),
+  settledAt: timestamp("settledAt"),
+  createdBy: int("createdBy").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("trip_settlements_trip_idx").on(t.tripId)]);
+
+// ─── Scorecard attestation (player + marker sign-off) ─────────────────────────
+
+export const scoreAttestations = mysqlTable("score_attestations", {
+  id: int("id").autoincrement().primaryKey(),
+  roundId: int("roundId").notNull(),
+  userId: int("userId").notNull(),
+  attestedBy: int("attestedBy").notNull(),
+  role: mysqlEnum("role", ["player", "marker"]).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [uniqueIndex("score_attestations_unique").on(t.roundId, t.userId, t.attestedBy)]);
+
+// ─── Email/password login ─────────────────────────────────────────────────────
+
+export const passwordCredentials = mysqlTable("password_credentials", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+// Single-use emailed tokens. Only a SHA-256 of the token is stored.
+export const authTokens = mysqlTable("auth_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  purpose: mysqlEnum("purpose", ["verify_email", "reset_password"]).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  // Registration details held until the email address is proven.
+  name: varchar("name", { length: 255 }),
+  passwordHash: varchar("passwordHash", { length: 255 }),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => [index("auth_tokens_email_idx").on(t.email)]);

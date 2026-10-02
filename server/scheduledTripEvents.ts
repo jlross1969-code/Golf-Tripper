@@ -4,6 +4,7 @@ import { createNotification, getIncompleteChecklistPlayerIds, getTrip, getTripBy
 import { sendPushToTrip, sendPushToUsers } from "./webPush";
 import { buildFinancialDigestMessage } from "../shared/financialDigest";
 import { getProjectBackupSettingsByTaskUid } from "./projectBackupDb";
+import { notifyOwner } from "./_core/notification";
 import { createPrivateProjectBackup } from "./projectBackupService";
 
 function cronOnly(user: Awaited<ReturnType<typeof sdk.authenticateRequest>>, res: Response) {
@@ -23,9 +24,13 @@ export function registerScheduledTripEventRoutes(app: Express) {
       if (!settings) return res.json({ ok: true, skipped: "orphan" });
       if (!settings.monthlyEnabled) return res.json({ ok: true, skipped: "disabled" });
       const result = await createPrivateProjectBackup();
+      const failed = (JSON.parse(result.summary) as { failedObjectCount?: number }).failedObjectCount ?? 0;
+      if (failed > 0) await notifyOwner({ title: "Backup finished with problems", content: `${failed} stored file(s) could not be included in the monthly backup. See the backup status page for details.` }).catch(() => false);
       res.json({ ok: true, ...result });
     } catch (error) {
       console.error("[ScheduledTripEvents] monthly backup error", error);
+      // A silent backup failure is the worst kind, so tell the owner.
+      await notifyOwner({ title: "Monthly backup failed", content: `The scheduled private backup failed: ${String(error).slice(0, 500)}` }).catch(() => false);
       res.status(500).json({ error: String(error), timestamp: new Date().toISOString() });
     }
   });

@@ -5,7 +5,8 @@ import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
-import { getLoginUrl } from "./const";
+import { applyTextSize, getTextSize } from "./lib/textSize";
+import { getSignInUrl } from "./const";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -18,7 +19,8 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
   if (!isUnauthorized) return;
 
-  window.location.href = getLoginUrl();
+  if (window.location.pathname.startsWith("/login")) return;
+  window.location.href = getSignInUrl();
 };
 
 queryClient.getQueryCache().subscribe(event => {
@@ -87,6 +89,8 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     registrations.forEach((registration) => registration.unregister());
   });
 }
+
+applyTextSize(getTextSize());
 
 createRoot(document.getElementById("root")!).render(
   <trpc.Provider client={trpcClient} queryClient={queryClient}>

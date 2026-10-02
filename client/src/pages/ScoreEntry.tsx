@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { calculateNetScore, calculateStablefordPoints, detectAchievement, formatAchievementType } from "../../../shared/scoring";
+import { useOfflineScoreSubmit } from "@/hooks/useOfflineScoreSubmit";
 import AchievementAlert from "@/components/AchievementAlert";
 import { useAuth } from "@/_core/hooks/useAuth";
 
@@ -238,7 +239,7 @@ export default function ScoreEntry() {
     }
   };
 
-  const submitScore = trpc.scores.submit.useMutation();
+  const submitScore = useOfflineScoreSubmit(id);
   const createAchievement = trpc.achievements.create.useMutation();
   const confirmAchievement = trpc.achievements.confirm.useMutation();
   const recalcMatch = trpc.groupMatch.recalc.useMutation();
@@ -650,6 +651,12 @@ export default function ScoreEntry() {
           <Flag className="w-5 h-5 text-primary" />
           <div>
             <h1 className="font-bold text-foreground text-sm">{round.name}</h1>
+            <Link href={`/round/${id}/review`} className="text-xs text-primary underline">History &amp; disputes</Link>
+            {submitScore.pendingCount > 0 && (
+              <button type="button" onClick={() => void submitScore.flush()} className="ml-2 text-xs text-amber-400 underline" aria-live="polite">
+                {submitScore.pendingCount} score{submitScore.pendingCount === 1 ? "" : "s"} waiting to sync
+              </button>
+            )}
             {myGroup?.teeTime && (
               <p className="text-xs text-muted-foreground">
                 Tee {myGroup.teeTime}{myGroup.startingHole ? ` · Hole ${myGroup.startingHole}` : ""}

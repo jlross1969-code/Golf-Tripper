@@ -13,6 +13,15 @@ import AdminRounds from "./pages/admin/AdminRounds";
 import AdminGroups from "./pages/admin/AdminGroups";
 import AdminHandicap from "./pages/admin/AdminHandicap";
 import AdminCourses from "./pages/admin/AdminCourses";
+import AdminBackups from "./pages/admin/AdminBackups";
+import Login from "./pages/Login";
+import { ResetPassword, VerifyEmail } from "./pages/AuthTokenPages";
+import TripGallery from "./pages/TripGallery";
+import MyStats from "./pages/MyStats";
+import TripRecap from "./pages/TripRecap";
+import TripSettleUp from "./pages/TripSettleUp";
+import SpectatorView from "./pages/SpectatorView";
+import ScoreReview from "./pages/ScoreReview";
 import ScoreEntry from "./pages/ScoreEntry";
 import DailyLeaderboard from "./pages/DailyLeaderboard";
 import TripLeaderboard from "./pages/TripLeaderboard";
@@ -60,6 +69,7 @@ function Router() {
       <Route path="/trip/:tripId/notifications" component={NotificationFeed} />
       <Route path="/round/:roundId/leaderboard" component={DailyLeaderboard} />
       <Route path="/round/:roundId/score" component={ScoreEntry} />
+      <Route path="/round/:roundId/review" component={ScoreReview} />
       <Route path="/round/:roundId/side-matches" component={SideMatches} />
       <Route path="/round/:roundId/match-play" component={MatchPlay} />
       <Route path="/trip/:tripId/chat" component={TripChat} />
@@ -93,9 +103,18 @@ function Router() {
       <Route path="/admin/trips/:tripId/handicap" component={AdminHandicap} />
       <Route path="/admin/courses" component={AdminCourses} />
       <Route path="/admin/trips/:tripId/roster" component={AdminRoster} />
+      <Route path="/admin/backups" component={AdminBackups} />
       <Route path="/admin/plans" component={AdminPlanManagement} />
       <Route path="/join/:token" component={JoinTrip} />
       <Route path="/join-trip/:tripId" component={JoinTripShare} />
+      <Route path="/watch/:tripId" component={SpectatorView} />
+      <Route path="/trip/:tripId/settle-up" component={TripSettleUp} />
+      <Route path="/trip/:tripId/recap" component={TripRecap} />
+      <Route path="/stats" component={MyStats} />
+      <Route path="/trip/:tripId/gallery" component={TripGallery} />
+      <Route path="/login" component={Login} />
+      <Route path="/verify-email" component={VerifyEmail} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

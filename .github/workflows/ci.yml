@@ -1,0 +1,24 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+        env:
+          # server/email.test.ts only checks the key is present and shaped like "re_…"; no email is sent.
+          RESEND_API_KEY: re_ci_placeholder_key
+      - run: pnpm build
+      - run: pnpm audit --prod --audit-level high
+        continue-on-error: true
