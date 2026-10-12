@@ -2,6 +2,7 @@ import "dotenv/config";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { ENV } from "./env";
+import { isAllowedOrigin } from "../originCheck";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -54,14 +55,14 @@ async function startServer() {
   // (multipart uploads are "simple" requests and would otherwise be forgeable).
   app.use("/api", (req, res, next) => {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
-    const origin = req.get("origin");
-    if (origin) {
-      try {
-        if (new URL(origin).host !== req.get("host")) return res.status(403).json({ error: "Cross-origin request blocked" });
-      } catch {
-        return res.status(403).json({ error: "Invalid origin" });
-      }
-    }
+    const allowed = isAllowedOrigin({
+      origin: req.get("origin"),
+      host: req.get("host"),
+      forwardedHost: req.get("x-forwarded-host"),
+      publicAppUrl: ENV.publicAppUrl,
+      secFetchSite: req.get("sec-fetch-site"),
+    });
+    if (!allowed) return res.status(403).json({ error: "Cross-origin request blocked" });
     next();
   });
   app.use("/api/trpc", rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false }));

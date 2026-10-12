@@ -17,8 +17,21 @@ const RESET_TTL_MS = 60 * 60 * 1000;
 const MAX_FAILURES = 5;
 const LOCK_MS = 15 * 60 * 1000;
 
-// Failed sign-ins per email, held in memory (resets on restart; the IP rate limit is the backstop).
+// Failed sign-ins per email + IP, held in memory (resets on restart; the IP rate limit is the backstop).
+// Keying on both means a stranger guessing at someone's email cannot lock the real owner out.
 const failures = new Map<string, { count: number; lockedUntil: number }>();
+const MAX_TRACKED = 5000;
+const failureKey = (email: string, req: Request) => `${email}|${req.ip ?? "unknown"}`;
+
+function recordFailure(key: string) {
+  if (failures.size >= MAX_TRACKED) {
+    const now = Date.now();
+    failures.forEach((state, k) => { if (state.lockedUntil <= now) failures.delete(k); });
+    if (failures.size >= MAX_TRACKED) failures.delete(failures.keys().next().value as string); // oldest entry
+  }
+  const count = (failures.get(key)?.count ?? 0) + 1;
+  failures.set(key, { count, lockedUntil: count >= MAX_FAILURES ? Date.now() + LOCK_MS : 0 });
+}
 
 function appUrl(req: Request) {
   return ENV.publicAppUrl || `${req.protocol}://${req.get("host")}`;
@@ -71,9 +84,7 @@ export function registerPasswordAuthRoutes(app: Express) {
     try {
       const email = normaliseEmail(req.body?.email);
       const name = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 100) : "";
-      const passwordError = validatePassword(req.body?.password);
       if (!isEmail(email) || !name) return res.status(400).json({ error: "Enter your name and a valid email address" });
-      if (passwordError) return res.status(400).json({ error: passwordError });
 
       const existing = await findUserByEmail(email);
       const db = await requireDb();
@@ -84,8 +95,9 @@ export function registerPasswordAuthRoutes(app: Express) {
         // Same response as a new sign-up so the form cannot be used to discover accounts.
         void sendPlainEmail({ to: email, subject: "Golf Trip App sign-in", text: `Someone tried to create an account with this email address, but you already have one.\n\nSign in at ${appUrl(req)}/login, or reset your password if you have forgotten it.` });
       } else {
-        const token = await storeToken("verify_email", email, VERIFY_TTL_MS, { name, passwordHash: await hashPassword(req.body.password) });
-        void sendPlainEmail({ to: email, subject: "Confirm your Golf Trip App email", text: `Hi ${name},\n\nConfirm your email to finish creating your account (link valid for 24 hours):\n\n${appUrl(req)}/verify-email?token=${token}\n\nIf you did not ask for this, ignore this email.` });
+        // The password is chosen by whoever opens the emailed link, never by whoever typed the address.
+        const token = await storeToken("verify_email", email, VERIFY_TTL_MS, { name });
+        void sendPlainEmail({ to: email, subject: "Confirm your Golf Trip App email", text: `Hi ${name},\n\nChoose a password to finish creating your account (link valid for 24 hours):\n\n${appUrl(req)}/verify-email?token=${token}\n\nIf you did not ask for this, ignore this email.` });
       }
       res.json({ ok: true });
     } catch (error) {
@@ -96,8 +108,11 @@ export function registerPasswordAuthRoutes(app: Express) {
 
   app.post("/api/auth/verify", async (req: Request, res: Response) => {
     try {
+      // Check the password first so a typo does not use up the single-use link.
+      const passwordError = validatePassword(req.body?.password);
+      if (passwordError) return res.status(400).json({ error: passwordError });
       const row = await consumeToken("verify_email", req.body?.token);
-      if (!row || !row.passwordHash) return res.status(400).json({ error: "This link is invalid or has expired" });
+      if (!row) return res.status(400).json({ error: "This link is invalid or has expired" });
       const matches = await findUserByEmail(row.email);
       const db = await requireDb();
       let user = matches[0];
@@ -110,7 +125,7 @@ export function registerPasswordAuthRoutes(app: Express) {
         await db.insert(users).values({ openId, name: row.name, email: row.email, loginMethod: "password", lastSignedIn: new Date() });
         [user] = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
       }
-      await setCredential(user.id, row.passwordHash);
+      await setCredential(user.id, await hashPassword(req.body.password));
       await issueSession(req, res, user);
       res.json({ ok: true });
     } catch (error) {
@@ -125,7 +140,8 @@ export function registerPasswordAuthRoutes(app: Express) {
       const email = normaliseEmail(req.body?.email);
       const password = typeof req.body?.password === "string" ? req.body.password.slice(0, 200) : "";
       if (!isEmail(email) || !password) return fail();
-      const state = failures.get(email);
+      const key = failureKey(email, req);
+      const state = failures.get(key);
       if (state && state.lockedUntil > Date.now()) return res.status(429).json({ error: "Too many failed attempts. Try again in a few minutes." });
 
       const db = await requireDb();
@@ -137,11 +153,10 @@ export function registerPasswordAuthRoutes(app: Express) {
       }
       if (!candidates.length) await burnPasswordCheck(password);
       if (!signedIn) {
-        const count = (state?.count ?? 0) + 1;
-        failures.set(email, { count, lockedUntil: count >= MAX_FAILURES ? Date.now() + LOCK_MS : 0 });
+        recordFailure(key);
         return fail();
       }
-      failures.delete(email);
+      failures.delete(key);
       await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, signedIn.id));
       await issueSession(req, res, signedIn);
       res.json({ ok: true });
@@ -174,7 +189,6 @@ export function registerPasswordAuthRoutes(app: Express) {
       const [user] = await findUserByEmail(row.email);
       if (!user) return res.status(400).json({ error: "This link is invalid or has expired" });
       await setCredential(user.id, await hashPassword(req.body.password));
-      failures.delete(row.email);
       // Any other outstanding reset links for this email are now void.
       const db = await requireDb();
       await db.update(authTokens).set({ usedAt: new Date() }).where(and(eq(authTokens.email, row.email), eq(authTokens.purpose, "reset_password"), isNull(authTokens.usedAt)));

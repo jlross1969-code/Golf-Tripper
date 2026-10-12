@@ -99,7 +99,8 @@ export async function tripViewForUser<T extends { id: number; createdBy: number;
   const member = manager || (!!user && !!(await getTripPlayer(trip.id, user.id)));
   if (member) {
     if (manager) return trip;
-    const { shareToken: _shareToken, ...rest } = trip;
+    // Tokens that grant access to the trip must stay with the people who manage it.
+    const { shareToken: _shareToken, spectatorToken: _spectatorToken, ...rest } = trip as T & { spectatorToken?: string | null };
     return rest;
   }
   const t = trip as any;

@@ -24,7 +24,7 @@ import {
   getDailySideMatchResults,
 } from "./db";
 
-type MembershipTarget = { tripId?: number; roundId?: number };
+type MembershipTarget = { tripId?: number; roundId?: number; expectedTripId?: number };
 
 async function requireTripMembership(req: Request, res: Response, next: NextFunction, target: MembershipTarget) {
   try {
@@ -33,6 +33,8 @@ async function requireTripMembership(req: Request, res: Response, next: NextFunc
       if (!Number.isInteger(target.roundId)) return res.status(400).json({ error: "Invalid roundId" });
       tripId = (await getRound(target.roundId))?.tripId;
       if (tripId === undefined) return res.status(404).json({ error: "Round not found" });
+      // Handlers also read the trip id from the URL, so it must be the round's own trip.
+      if (target.expectedTripId !== undefined && target.expectedTripId !== tripId) return res.status(404).json({ error: "Round not found" });
     }
     if (tripId === undefined || !Number.isInteger(tripId)) return res.status(400).json({ error: "Invalid tripId" });
     const user = await sdk.authenticateRequest(req).catch(() => null);
@@ -56,7 +58,7 @@ export function registerPdfRoutes(app: Express) {
   // Report routes expose trip data, so require a logged-in trip member.
   app.get("/api/pdf/itinerary/:tripId", (req, res, next) => requireTripMembership(req, res, next, { tripId: Number(req.params.tripId) }));
   app.get("/api/pdf/trip/:tripId", (req, res, next) => requireTripMembership(req, res, next, { tripId: Number(req.params.tripId) }));
-  app.get("/api/pdf/teesheet/:tripId/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId) }));
+  app.get("/api/pdf/teesheet/:tripId/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId), expectedTripId: Number(req.params.tripId) }));
   app.get("/api/pdf/side-matches/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId) }));
   app.get("/api/pdf/scorecard/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId) }));
   app.get("/api/pdf/round-summary/:roundId", (req, res, next) => requireTripMembership(req, res, next, { roundId: Number(req.params.roundId) }));
