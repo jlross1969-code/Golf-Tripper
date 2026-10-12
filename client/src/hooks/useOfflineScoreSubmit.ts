@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { calculateNetScore, calculateStablefordPoints } from "../../../shared/scoring";
-import { enqueueScore, isNetworkError, pendingScores, removeScore, subscribeQueue, type QueuedScore } from "@/lib/offlineScoreQueue";
+import { dropQueuedHole, enqueueScore, isNetworkError, isUnauthorizedError, pendingScores, removeScore, subscribeQueue, type QueuedScore } from "@/lib/offlineScoreQueue";
 
 type ScoreInput = Omit<QueuedScore, "queuedAt">;
 
@@ -29,6 +29,8 @@ export function useOfflineScoreSubmit(roundId: number) {
     let synced = 0;
     try {
       for (const item of pendingScores()) {
+        // Skip entries dropped while this loop ran (a newer online save for the same hole).
+        if (!pendingScores().some((p) => p.queuedAt === item.queuedAt && p.roundId === item.roundId && p.userId === item.userId && p.holeId === item.holeId)) continue;
         const { queuedAt: _queuedAt, ...input } = item;
         try {
           await submit.mutateAsync({ ...input, source: "offline_sync" });
@@ -36,6 +38,11 @@ export function useOfflineScoreSubmit(roundId: number) {
           synced++;
         } catch (error) {
           if (isNetworkError(error)) break; // still offline; try again later
+          if (isUnauthorizedError(error)) {
+            // Signed out or session expired: the scores are still valid, so keep them until the user signs in again.
+            toast.error("Sign in again to sync your saved scores");
+            break;
+          }
           removeScore(item); // the server rejected it; retrying will not help
           toast.error(`A saved score for hole ${item.holeNumber} was rejected: ${(error as Error).message}`);
         }
@@ -59,7 +66,10 @@ export function useOfflineScoreSubmit(roundId: number) {
 
   const mutateAsync = async (input: ScoreInput & { source?: "entry" | "offline_sync" }) => {
     try {
-      return { ...(await submit.mutateAsync(input)), queued: false as const };
+      const result = await submit.mutateAsync(input);
+      // This newer value supersedes anything saved offline for the same hole, so it must not be replayed later.
+      dropQueuedHole(input);
+      return { ...result, queued: false as const };
     } catch (error) {
       if (!isNetworkError(error)) throw error;
       enqueueScore(input);

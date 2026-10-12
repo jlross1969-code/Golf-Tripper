@@ -46,6 +46,18 @@ export function removeScore(score: QueuedScore) {
   write(read().filter((item) => !(sameHole(item, score) && item.queuedAt === score.queuedAt)));
 }
 
+/** Forgets any queued value for a hole, used when a newer value for it has reached the server. */
+export function dropQueuedHole(hole: Pick<QueuedScore, "roundId" | "userId" | "holeId">) {
+  const items = read();
+  const kept = items.filter((item) => !sameHole(item, hole as QueuedScore));
+  if (kept.length !== items.length) write(kept);
+}
+
+/** True when the server refused because nobody is signed in (e.g. an expired session): keep the score and retry later. */
+export function isUnauthorizedError(error: unknown) {
+  return (error as { data?: { code?: string } } | null)?.data?.code === "UNAUTHORIZED";
+}
+
 export function subscribeQueue(listener: () => void) {
   listeners.add(listener);
   return () => { listeners.delete(listener); };

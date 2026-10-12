@@ -24,12 +24,12 @@ export default function Login() {
     setNotice(null);
     const result =
       mode === "signin" ? await authPost("login", { email, password })
-      : mode === "register" ? await authPost("register", { name, email, password })
+      : mode === "register" ? await authPost("register", { name, email })
       : await authPost("forgot", { email });
     setBusy(false);
     if (!result.ok) return setError(result.error);
     if (mode === "signin") window.location.assign(next);
-    else setNotice(mode === "register" ? "Check your email for a link to confirm your address and finish creating your account." : "If that email has an account, a reset link is on its way.");
+    else setNotice(mode === "register" ? "Check your email. The link lets you confirm your address and choose your password." : "If that email has an account, a reset link is on its way.");
   }
 
   return (
@@ -42,7 +42,7 @@ export default function Login() {
         <form onSubmit={submit} className="space-y-3 bg-card border border-border rounded-xl p-4">
           {mode === "register" && <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" autoComplete="name" required maxLength={100} aria-label="Name" />}
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="email" required aria-label="Email" />
-          {mode !== "forgot" && <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === "register" ? "Password (10+ characters)" : "Password"} autoComplete={mode === "register" ? "new-password" : "current-password"} required minLength={mode === "register" ? 10 : undefined} aria-label="Password" />}
+          {mode === "signin" && <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete="current-password" required aria-label="Password" />}
           {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
           {notice && <p role="status" className="text-sm text-emerald-400">{notice}</p>}
           <Button type="submit" className="w-full" disabled={busy}>{busy ? "Please wait…" : mode === "register" ? "Create account" : mode === "forgot" ? "Send reset link" : "Sign in"}</Button>
